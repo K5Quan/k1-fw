@@ -31,3 +31,5 @@ void SYSTICK_DelayUs(uint32_t Delay) {
 }
 
 void SysTick_Handler(void) {}
+
+void SYSTICK_DelayMs(uint32_t Delay) { SYSTICK_DelayUs(Delay * 1000); }

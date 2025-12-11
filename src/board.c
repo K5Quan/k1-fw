@@ -1,14 +1,13 @@
+#include "board.h"
+#include "driver/backlight.h"
 #include "driver/gpio.h"
+#include "driver/py25q16.h"
+#include "driver/st7565.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_adc.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_bus.h"
-#include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dma.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_gpio.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_rcc.h"
-#include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_usart.h"
 #include <stdint.h>
-
-
-void _putchar(__attribute__((unused)) char c) { UART_Send((uint8_t *)&c, 1); }
 
 void BOARD_GPIO_Init(void) {
   LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA   //
@@ -62,28 +61,19 @@ void BOARD_GPIO_Init(void) {
   InitStruct.Pin = LL_GPIO_PIN_9 | LL_GPIO_PIN_8 | LL_GPIO_PIN_2;
   LL_GPIO_Init(GPIOB, &InitStruct);
 
-  // TODO: conditional compile per ENABLE_FLASHLIGHT
   // Flashlight: PC13
   InitStruct.Pin = LL_GPIO_PIN_13;
   LL_GPIO_Init(GPIOC, &InitStruct);
 
-#ifdef ENABLE_FMRADIO
   // BK1080 SCK: PF5
   // BK1080 SDA: PF6
   InitStruct.Pin = LL_GPIO_PIN_6 | LL_GPIO_PIN_5;
   LL_GPIO_Init(GPIOF, &InitStruct);
-#endif
 
   // Backlight: PF8
   // BK4819 CS: PF9
   InitStruct.Pin = LL_GPIO_PIN_9 | LL_GPIO_PIN_8;
   LL_GPIO_Init(GPIOF, &InitStruct);
-
-#ifndef ENABLE_SWD
-  // A14:13
-  InitStruct.Pin = LL_GPIO_PIN_14 | LL_GPIO_PIN_13;
-  LL_GPIO_Init(GPIOA, &InitStruct);
-#endif // ENABLE_SWD
 }
 
 void BOARD_ADC_Init(void) {
@@ -124,15 +114,12 @@ void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
   *pCurrent = 0;
 }
 
-void BOARD_FlashlightToggle() {
-  GPIO_TogglePin(GPIO_PIN_FLASHLIGHT);
-}
-
 void BOARD_Init(void) {
   BOARD_GPIO_Init();
+  BACKLIGHT_InitHardware();
   BOARD_ADC_Init();
+  PY25Q16_Init();
+  ST7565_Init();
 }
 
-void _init(void) {
-  // No specific initialization needed here
-}
+void BOARD_FlashlightToggle() { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }
