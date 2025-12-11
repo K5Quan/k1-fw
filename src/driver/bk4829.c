@@ -827,7 +827,8 @@ void BK4819_ExitTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0x3B20); }
 
 void BK4819_RX_TurnOn(void) {
   BK4819_WriteRegister(BK4819_REG_36, 0x0000);
-  BK4819_WriteRegister(BK4819_REG_37, 0x1F0F);
+  // BK4819_WriteRegister(BK4819_REG_37, 0x1F0F);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
   BK4819_WriteRegister(BK4819_REG_30, 0x0200);
 
   BK4819_WriteRegister(
@@ -856,7 +857,8 @@ void BK4819_PrepareTransmit(void) {
 }
 
 void BK4819_TxOn_Beep(void) {
-  BK4819_WriteRegister(BK4819_REG_37, 0x1D0F);
+  // BK4819_WriteRegister(BK4819_REG_37, 0x1D0F);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
   BK4819_WriteRegister(BK4819_REG_52, 0x028F);
   BK4819_Idle();
   BK4819_WriteRegister(BK4819_REG_30, 0xC1FE);
@@ -1201,7 +1203,8 @@ static void initialize_registers(void) {
   BK4819_WriteRegister(BK4819_REG_00, 0x8000);
   BK4819_WriteRegister(BK4819_REG_00, 0x0000);
   // power up rf
-  BK4819_WriteRegister(BK4819_REG_37, 0x1D0F);
+  // BK4819_WriteRegister(BK4819_REG_37, 0x1D0F);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
 
   gGpioOutState = 0x9000;
   BK4819_WriteRegister(BK4819_REG_33, gGpioOutState);
