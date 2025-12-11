@@ -1,0 +1,1027 @@
+/* Quansheng UV-K5 Flash programmer v0.9 
+ * (c) 2023 Jacek Lipkowski <sq5bpf@lipkowski.org>
+ *
+ * This program can flash the Quansheng UVK5 Mark II 
+ * and probably other similar radios via the serial port. 
+ *
+ * The flash image is an unencrypted image, without the version inserted at 0x2000.
+ *
+ * Use at your own risk. 
+ *
+ *
+ * This program is licensed under the GNU GENERAL PUBLIC LICENSE v3
+ * License text avaliable at: http://www.gnu.org/copyleft/gpl.html 
+ */
+
+/*
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/select.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <string.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <termios.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <getopt.h>
+#include <ctype.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "uvk5.h"
+
+#define VERSION "Quansheng UV-K5 Flash programmer v0.9 (c) 2023 Jacek Lipkowski <sq5bpf@lipkowski.org>"
+
+#define MODE_NONE 0
+#define MODE_FLASH_DEBUG 5
+#define MODE_FLASH 6
+
+/* actually the flash is bigger, but there is a bootloader at 0xf000 that we don't want to overwrite 
+ * if you're really brave, then you can modify the code by changing UVK5_MAX_FLASH_SIZE to 0x10000
+ * and probably flash the bootloader too, but i would really advise against doing this
+ *
+ * maybe at some point i will make a command line flag for this
+ */
+#define UVK5_MAX_FLASH_SIZE 0xf000 
+#define UVK5_FLASH_BLOCKSIZE 0x100
+
+#define DEFAULT_SERIAL_PORT "/dev/ttyUSB0"
+#define DEFAULT_FLASH_NAME "k5_flash.raw"
+
+/* the vendor flasher sends the firmware version like "2.01.23" */
+#define DEFAULT_FLASH_VERSION "*.01.23"
+
+/* globals */
+speed_t ser_speed = B38400;
+char *ser_port = DEFAULT_SERIAL_PORT;
+int verbose = 0;
+int mode = MODE_NONE;
+char *flash_file = DEFAULT_FLASH_NAME;
+int flash_length=0;
+char flash_version_string[16] = DEFAULT_FLASH_VERSION;
+
+int write_offset = 0;
+int write_length = -1;
+
+int i_know_what_im_doing = 0; /* flag the user sets to confirm that he thinks he knows what he's doing */
+
+int py32 = 0; /* flag for PY32 MCU support */
+
+struct k5_command {
+	unsigned char *cmd;
+	int len;
+	unsigned char *obfuscated_cmd;
+	int obfuscated_len;
+	int crcok;
+};
+
+/**** commands ********/
+
+/*
+ * flash commands:
+ * 0x30 - say hello to the radio and present the version (reply is also 0x18)
+ * 0x19 - send flash block (reply from radio is 0x1a)
+ *
+ * from the radio:
+ * 0x18 - broadcast from the radio when flash mode is enabled
+ * 
+ */
+
+/* terrible hexdump ripped from some old code, please don't look */
+void hdump(unsigned char *buf, int len)
+{
+	int tmp1;
+	char adump[80];
+	int tmp2 = 0;
+	int tmp3 = 0;
+	unsigned char sss;
+	char hexz[] = "0123456789abcdef";
+
+	int lasttmp = 0;
+
+	printf("\n0x%6.6x |0 |1 |2 |3 |4 |5 |6 |7 |8 |9 |a |b |c |d |e |f |\n", len);
+	printf("---------+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+------------\n");
+
+	memset(&adump, ' ', 78);
+	adump[78] = 0;
+
+	for (tmp1 = 0; tmp1 < len; tmp1++) {
+		tmp2 = tmp1%16;
+		if (tmp2 == 0) {
+			if (tmp1 !=0 ) {
+				printf("0x%6.6x: %.69s\n",tmp3,adump);
+				lasttmp=tmp1;
+			}
+			memset(&adump, ' ', 78);
+			adump[78] = 0;
+			tmp3 = tmp1;
+		}
+		sss = buf[tmp1];
+		adump[tmp2*3] = hexz[sss/16];
+		adump[tmp2*3+1] = hexz[sss%16];
+
+		if (isprint(sss))
+			adump[tmp2+50]=sss;
+		else
+			adump[tmp2+50]='.';
+	}
+	if (lasttmp!=tmp1)
+		printf("0x%6.6x: %.69s\n", tmp3, adump);
+}
+
+int openport(char *port,speed_t speed)
+{
+	int fd, len;
+	struct termios my_termios;
+
+	fd = open(port, O_RDWR | O_NOCTTY);
+
+	if (fd < 0) {
+		printf("opening '%s' error %d: %s\n", port, errno, strerror(errno));
+		return(-1);
+	}
+
+	if (tcgetattr(fd, &my_termios)) {
+		printf("tcgetattr error %d %s\n", errno, strerror(errno));
+		return(-1);
+	}
+
+	if (tcflush(fd, TCIFLUSH)) {
+		printf("tcgetattr error %d %s\n", errno, strerror(errno));
+		return(-1);
+	}
+
+	my_termios.c_cflag =  CS8 | CREAD | CLOCAL | HUPCL;
+	cfmakeraw(&my_termios);
+	cfsetspeed(&my_termios, speed);
+	if (tcsetattr(fd, TCSANOW, &my_termios)) {
+		fprintf(stderr, "tcsetattr error %d %s\n", errno, strerror(errno));
+		return(-1);
+	}
+
+	/* see if there is already data in the input buffer and
+	   flush it if there is */
+	len=0;
+	ioctl(fd, FIONREAD, &len);
+	if (len>0) {
+		unsigned char *buf;
+		buf=malloc(len);
+		read(fd, buf, len);
+		free(buf);
+	}
+
+	return(fd);
+}
+
+/* read with timeout */
+int read_timeout(int fd, unsigned char *buf, int maxlen, int timeout)
+{
+	fd_set rfd;
+	int len = 0;
+	int ret;
+	struct timeval tv;
+	int nr;
+	unsigned char *buf2;
+	buf2 = buf;
+	FD_ZERO(&rfd);
+
+	while (1) {
+		FD_SET(fd,&rfd);
+		tv.tv_sec = timeout / 1000;
+		tv.tv_usec = (timeout % 1000) / 1000;
+
+		ret = select(fd+1, &rfd, 0, 0, &tv);
+
+		if (ret == 0)  {
+			if (timeout) /* Only print if we requested a timeout */
+				fprintf(stderr, "read_timeout\n");
+			/* error or timeout */
+			break;
+		}
+
+		if (FD_ISSET(fd, &rfd)) {
+			nr = read(fd, buf, maxlen);
+			len = len + nr;
+			buf = buf + nr;
+			if (nr >= 0)
+				maxlen = maxlen - nr;
+			if (maxlen == 0)
+				break;
+		}
+	}
+	if (verbose > 2 && len > 0) {
+		printf("RXRXRX:\n");
+		hdump(buf2, len);
+	}
+
+	return(len);
+}
+
+void destroy_k5_struct(struct k5_command *cmd)
+{
+	if (cmd->cmd) {
+		free(cmd->cmd);
+		cmd->cmd = NULL;
+	}
+	if (cmd->obfuscated_cmd) {
+		free(cmd->obfuscated_cmd);
+		cmd->obfuscated_cmd = NULL;
+	}
+	free(cmd);
+	cmd = NULL;
+}
+
+/* ripped from https://mdfs.net/Info/Comp/Comms/CRC16.htm */
+uint16_t crc16xmodem(unsigned char *addr, int num, int crc)
+{
+#define poly 0x1021
+	int i;
+
+	for (; num>0; num--) {
+		/* Step through bytes in memory */
+		crc = crc ^ (*addr++ << 8);      /* Fetch byte from memory, XOR into CRC top byte*/
+		for (i=0; i<8; i++) {
+			/* Prepare to rotate 8 bits */
+			crc = crc << 1;                /* rotate */
+			if (crc & 0x10000)             /* bit 15 was set (now bit 16)... */
+				crc = (crc ^ poly) & 0xFFFF; /* XOR with XMODEM polynomic */
+			/* and ensure CRC remains 16-bit value */
+		}                              /* Loop for 8 bits */
+	}                                /* Loop until num=0 */
+
+	return(crc);                     /* Return updated CRC */
+}
+
+
+/* (de)obfuscate the string using xor */
+void xorarr(unsigned char *inarr, int len)
+{
+	int len2 = 0;
+	unsigned char k5_xor_array[16] = { 
+		0x16 , 0x6c , 0x14 , 0xe6 , 0x2e , 0x91 , 0x0d , 0x40 ,
+		0x21 , 0x35 , 0xd5 , 0x40 , 0x13 , 0x03 , 0xe9 , 0x80
+	};
+
+	while (len2 < len) {
+		*inarr = *inarr ^ k5_xor_array[len2 % sizeof(k5_xor_array)];
+		len2++;
+		inarr++;
+	}
+}
+
+/* hexdump a k5_command struct */
+void k5_hexdump(struct k5_command *cmd) {
+	printf ("********  k5 command hexdump [obf_len:%i clear_len:%i crc_ok:%i **********\n", cmd->obfuscated_len, cmd->len, cmd->crcok);
+	if (cmd->obfuscated_cmd) {
+		printf("## obfuscated ##\n");
+		hdump(cmd->obfuscated_cmd, cmd->obfuscated_len);
+	}
+	if (cmd->cmd) {
+		printf("## cleartext ##\n");
+		hdump(cmd->cmd, cmd->len);
+	}
+	printf("*****************\n");
+}
+
+
+/* obfuscate a k5 datagram */
+int k5_obfuscate(struct k5_command *cmd)
+{
+	uint16_t c;
+
+	if (!cmd->cmd)
+		return(0);
+	if (cmd->obfuscated_cmd) {
+		free (cmd->obfuscated_cmd);
+		cmd->obfuscated_cmd = NULL;
+	}
+
+	cmd->obfuscated_len = cmd->len+8; /* header  + length + data + crc + footer */
+	cmd->obfuscated_cmd = calloc(cmd->obfuscated_len,1);
+	cmd->obfuscated_cmd[0] = 0xab;
+	cmd->obfuscated_cmd[1] = 0xcd;
+	cmd->obfuscated_cmd[2] = (cmd->len) & 0xff;
+	cmd->obfuscated_cmd[3] = (cmd->len >> 8) & 0xff;
+	memcpy((cmd->obfuscated_cmd) + 4, cmd->cmd, cmd->len);
+	c = crc16xmodem((cmd->obfuscated_cmd) + 4, cmd->len, 0);
+	cmd->obfuscated_cmd[cmd->len + 4] = c & 0xff;
+	cmd->obfuscated_cmd[cmd->len + 5] = (c >> 8) & 0xff;
+	xorarr((cmd->obfuscated_cmd) + 4, cmd->len + 2);
+	cmd->obfuscated_cmd[cmd->len + 6] = 0xdc;
+	cmd->obfuscated_cmd[cmd->len + 7] = 0xba;
+	cmd->crcok = 1;
+
+	return(1);
+}
+
+/* deobfuscate a k5 datagram and verify it */
+int k5_deobfuscate(struct k5_command *cmd)
+{
+	uint16_t c,d;
+
+	if (!cmd->obfuscated_cmd)
+		return(0);
+	if (cmd->cmd) {
+		free (cmd->cmd);
+		cmd->cmd = NULL;
+	}
+	/* check the obfuscated datagram */
+	if ((cmd->obfuscated_cmd[0] != 0xab) || (cmd->obfuscated_cmd[1] != 0xcd)) { 
+		//bad header
+		if (verbose > 2) {
+			printf("bad header\n");
+			k5_hexdump(cmd);
+		}
+		return(0); 
+	} 
+	if ((cmd->obfuscated_cmd[cmd->obfuscated_len-2] != 0xdc) || (cmd->obfuscated_cmd[cmd->obfuscated_len-1] != 0xba)) { 
+		//bad footer
+		if (verbose > 2) {
+			printf("bad footer\n");
+			k5_hexdump(cmd);
+		}
+		return(0); 
+	} 
+	cmd->len = cmd->obfuscated_len - 6; /* header  + length + data + crc + footer */
+	cmd->cmd = calloc(cmd->len, 1);
+	memcpy(cmd->cmd,cmd->obfuscated_cmd+4, cmd->len);
+	xorarr(cmd->cmd,cmd->len);
+	c = crc16xmodem(cmd->cmd,cmd->len-2, 0);
+	d = (cmd->cmd[cmd->len-2]) | (cmd->cmd[cmd->len-1] << 8);
+	/* the protocol looks like it would use crc from the radio to the pc, but instead the radio sends 0xffff */
+	if (d = 0xffff) {
+		cmd->crcok = 1;
+		cmd->len = cmd->len - 2; /* skip crc */
+	} else {
+		if (d == c) {
+			printf("** the protocol actually uses proper crc on datagrams from the radio, please inform the author of the radio/firmware version\n");
+			k5_hexdump(cmd);
+		} 
+		cmd->crcok = 0;
+		if (verbose > 2) {
+			printf("bad crc 0x%4.4x (should be 0x%4.4x)\n", d, c);
+			k5_hexdump(cmd);
+		}
+		cmd->len = cmd->len - 2; /* skip crc */
+		return(0); 
+	}
+
+	return(1);
+}
+
+/* obfuscate a command, send it */
+int k5_send_cmd(int fd,struct k5_command *cmd) {
+	int l;
+
+	if (!k5_obfuscate(cmd)) { 
+		fprintf(stderr, "obfuscate error!\n");
+		return(0);
+	}
+
+	if (verbose > 1)
+		k5_hexdump(cmd);
+
+	l = write(fd, cmd->obfuscated_cmd, cmd->obfuscated_len);
+
+	if (verbose > 2)
+		printf("write %i\n", l);
+
+	return(1);
+}
+
+int k5_send_buf(int fd,unsigned char *buf,int len) {
+	int l;
+	struct k5_command *cmd;
+
+	cmd = calloc(sizeof(struct k5_command), 1);
+	cmd->len = len;
+	cmd->cmd = malloc(cmd->len);
+	memcpy(cmd->cmd, buf,len);
+	l = k5_send_cmd(fd, cmd);
+	destroy_k5_struct(cmd);
+
+	return(l);
+}
+
+/* receive a response, deobfuscate it */
+struct k5_command *k5_receive(int fd,int tmout) {
+	unsigned char buf[4];
+	struct k5_command *cmd;
+	int len;
+
+	len = read_timeout(fd, buf, sizeof(buf), 10000); /* wait 500ms */
+
+	if (len > 0) {
+		if (verbose > 2) {
+			printf("magic:\n");
+			hdump((unsigned char *)&buf, len);
+		}
+	} else {
+		fprintf(stderr, "k5_receive: err read1\n");
+		return(0);
+	}
+
+	/* During plugging in etc we can receive a single byte.
+	 * Handle this case here. */
+	if (len != sizeof(buf)) {
+		fprintf(stderr, "k5_receive: got %d expected %ld\n", len, sizeof(buf));
+		return(0);
+	}
+
+	if ((buf[0] != 0xab) || (buf[1] != 0xcd)) {
+		fprintf(stderr, "k5_receive: bad magic number\n");
+		/* Assume we are out of sync and flush rx buffer by reading everything.
+		 * This works because the boot message is repeated. */
+		while (len > 0)
+			len = read_timeout(fd, (unsigned char *)&buf, sizeof(buf), 10000);
+		return(0);
+	}
+
+	if (buf[3] != 0) {
+		fprintf(stderr, "k5_receive: it seems that byte 3 can be something else than 0, please notify the author\n");
+		return(0);
+	}
+
+	cmd = calloc(sizeof(struct k5_command), 1);
+	cmd->obfuscated_len = buf[2] + 8;
+	cmd->obfuscated_cmd = calloc(cmd->obfuscated_len, 1);
+	memcpy(cmd->obfuscated_cmd, buf, 4);
+	len = read_timeout(fd, cmd->obfuscated_cmd+4, buf[2]+4, tmout); /* wait 500ms */
+	if ((len + 4) != (cmd->obfuscated_len)) {
+		fprintf(stderr,"k5_receive err read1 len=%i wanted=%i\n", len, cmd->obfuscated_len);
+		return(0);
+	}
+
+
+	/* deobfuscate */
+	k5_deobfuscate(cmd);
+	if (verbose > 2)
+		k5_hexdump(cmd);
+
+	return(cmd);
+}
+
+/******************************/
+ /*  flash read/write support */
+ /******************************/
+
+/* wait for a "i'm in flashing mode" message */
+int wait_flash_message(int fd, int ntimes) {
+	struct k5_command *cmd;
+	int ok=0;
+	char buf[17];
+	int i,j;
+
+	while (ntimes) {
+		ntimes--;
+
+		if (verbose > 1) {
+			printf("wait_flash_message try %i\n",ntimes);
+		}
+
+		cmd = k5_receive(fd, 10000);
+
+		if (!cmd) {
+			continue;
+		}
+
+		if (verbose > 1)
+			k5_hexdump(cmd);
+
+		if (!cmd->cmd) {
+			printf("wait_flash_message: received malformed packet\n");
+			destroy_k5_struct(cmd);
+			continue;
+		}
+
+		if ((cmd->cmd[0] != 0x18) && (cmd->cmd[1] != 0x05)) {
+			printf("wait_flash_message: got unexpected command type 0x%2.2x 0x%2.2x\n", cmd->cmd[1], cmd->cmd[0]);
+			destroy_k5_struct(cmd);
+			continue;
+		}
+
+		if ((cmd->len < 18) || (cmd->len > 50)) {
+			printf("wait_flash_message: got unexpected command length %i\n", cmd->len);
+			destroy_k5_struct(cmd);
+			continue;
+		}
+
+		ok=1;
+		break;
+	}
+
+	if (!ok) {
+		printf("wait_flash_message: no flash message from radio\n");
+		return(0);
+	}
+
+	for (i=0; i<(sizeof(buf)-1); i++) {
+		j = i + 0x14;
+		if (j >= cmd->len)
+			break;
+		if (!isprint(cmd->cmd[j]))
+			break;
+		buf[i] = cmd->cmd[j];
+	}
+	buf[i] = 0;
+	printf("Flasher version is: [%s]\n", buf);
+
+	/* Detect PY32 MCU by flasher version starting with '5' */
+	if (buf[0] == '5') {
+		py32 = 1;
+		printf("Detected PY32 MCU (protocol V2), using AES encryption for firmware.\n");
+	} else {
+		printf("Detected DP32 MCU (protocol V1), using XOR obfuscation for firmware.\n");
+	}
+
+	destroy_k5_struct(cmd);
+
+	return(1);
+}
+
+/* sends the version of firmware that we will be flashing, 
+ * unobfuscated firmware will have the version number in 16 bytes at 0x2000
+ * probably these bytes are sent.
+ *
+ * the vendor flasher sends the real version,  something like  2.01.23
+ * if we send a * as the first character, then all known bootloaders
+ * will accept it
+ */
+int k5_send_flash_version_message(int fd,char *version_string)
+{
+	int r;
+	struct k5_command *cmd;
+	unsigned char uvk5_flash_version[] = {0x30, 0x5, 0x10, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+
+	strncpy((char *)&uvk5_flash_version+4, version_string, 16);
+	r = k5_send_buf(fd, uvk5_flash_version, sizeof(uvk5_flash_version));
+	if (!r)
+		return(0);
+
+	/* check if we're still getting packets, usually this is a 0x18 type packet, but not sure what else the radio can send  */
+	cmd = k5_receive(fd, 10000);
+	if (!cmd)
+		return(0);
+
+	if (verbose > 1)
+		k5_hexdump(cmd);
+
+	destroy_k5_struct(cmd);
+
+	return(1);
+}
+
+int k5_writeflash(int fd, unsigned char *buf, int  len, int offset, int max_flash_addr)
+{
+	int l;
+	unsigned char writeflash[512];
+	int ok=0;
+	int r;
+	struct k5_command *cmd;
+
+	if (verbose > 1)
+		printf("@@@@@@@@@@@@@@@@@@     writeflash offset=0x%4.4x len=0x%2.2x\n", offset, len);
+
+	memset(writeflash, 0, sizeof(writeflash));
+
+	/* 0x19  0x5  0xc  0x1  0x8a  0x8d  0x9f  0x1d  
+ * address_msb  address_lsb  0xe6  0x0  length_msb  length_lsb  0x0  0x0 
+ * [0x100 bytes of data, if length is <0x100 then fill the rest with zeroes] */
+	writeflash[0] = 0x19;
+	writeflash[1] = 0x05;
+	/* bytes 2,3: length is 0x10c */
+	writeflash[2] = 0x0c;
+	writeflash[3] = 0x01;
+	writeflash[4] = 0x8a;
+	writeflash[5] = 0x8d;
+	writeflash[6] = 0x9f;
+	writeflash[7] = 0x1d;
+
+	writeflash[8] = (offset >> 8) & 0xff;
+	writeflash[9] = offset & 0xff;
+	writeflash[10] = (max_flash_addr>>8) & 0xff;
+	writeflash[11] = 0x00;
+	writeflash[12] = len & 0xff;
+	writeflash[13] = (len>>8) & 0xff;
+	writeflash[14] = 0x00;
+	writeflash[15] = 0x00;
+
+	memcpy(writeflash+16, buf, len);
+
+	r = k5_send_buf(fd, writeflash, 0x100+16); /* we always send 0x100 bytes, header is 16 bytes */
+	if (!r)
+		return(0);
+
+	/* wait for a reply packet */
+	l = 5;
+	while(l) {
+		cmd = k5_receive(fd, 10000);
+		l--;
+		if (!cmd) { 
+			usleep(1000); 
+			continue;
+		}
+
+		if (verbose > 1) {
+			printf("|||||  reply packet after flash command\n");
+			k5_hexdump(cmd);
+		}
+
+		/* we're still getting "i'm in flash mode packets", can happen after the first flash command, ignore it */
+		if ((cmd->cmd[0]==0x18) && (cmd->cmd[1] == 0x05) && (cmd->cmd[2] == 0x20) && (cmd->cmd[3] == 0x0) && (cmd->cmd[4] == 0x1) && (cmd->cmd[5] == 0x2) && (cmd->cmd[6] == 0x2)) {
+			if (verbose > 1)
+				printf("&&&&|  ignoring \"i'm in flash mode\" packet\n");
+			destroy_k5_struct(cmd);
+			continue;
+		}
+
+		/* reply packet:
+		 * 0x1a  0x5  0x8  0x0  0x8a  0x8d  0x9f  0x1d  0x0  0x0  0x0  0x0
+		 */
+		if (((cmd->cmd[0]) != 0x1a) || ((cmd->cmd[8]) != writeflash[8]) || ((cmd->cmd[9]) != writeflash[9])) {
+			fprintf(stderr,"bad write confirmation\n");
+			destroy_k5_struct(cmd);
+			continue;
+		}
+		ok = 1; 
+		destroy_k5_struct(cmd);
+		break;
+	}
+
+	if (!ok) {
+		printf("\n\nERROR: no confirmation for flash block 0x%4.4x, length 0x%4.4x\n\n", offset, len);
+		/* TODO: what do we do if there wasn't a proper confirmation? retry maybe? */
+	}
+	return(ok);
+}
+
+bool check_image_magic(const unsigned char *flash)
+{
+	if (flash[2] == 0x00 && flash[3] == 0x20 && flash[6] == 0x00 && flash[10] == 0x00 && flash[14] == 0x00)
+		return true;
+	else
+		return false;
+}
+
+/* takes a flash image buffer and checks if the image is packed/encrypted or raw,
+   returns -1 on error, 0 for raw and 1 for packed/encrypted */
+int de_xor_file(unsigned char *flash)
+{
+	int i, len2;
+	uint16_t crc1, crc2;
+	const unsigned char key[] = {
+		0x47, 0x22, 0xC0, 0x52, 0x5D, 0x57, 0x48, 0x94, 0xB1, 0x60, 0x60, 0xDB, 0x6F, 0xE3, 0x4C, 0x7C,
+		0xD8, 0x4A, 0xD6, 0x8B, 0x30, 0xEC, 0x25, 0xE0, 0x4C, 0xD9, 0x00, 0x7F, 0xBF, 0xE3, 0x54, 0x05,
+		0xE9, 0x3A, 0x97, 0x6B, 0xB0, 0x6E, 0x0C, 0xFB, 0xB1, 0x1A, 0xE2, 0xC9, 0xC1, 0x56, 0x47, 0xE9,
+		0xBA, 0xF1, 0x42, 0xB6, 0x67, 0x5F, 0x0F, 0x96, 0xF7, 0xC9, 0x3C, 0x84, 0x1B, 0x26, 0xE1, 0x4E,
+		0x3B, 0x6F, 0x66, 0xE6, 0xA0, 0x6A, 0xB0, 0xBF, 0xC6, 0xA5, 0x70, 0x3A, 0xBA, 0x18, 0x9E, 0x27,
+		0x1A, 0x53, 0x5B, 0x71, 0xB1, 0x94, 0x1E, 0x18, 0xF2, 0xD6, 0x81, 0x02, 0x22, 0xFD, 0x5A, 0x28,
+		0x91, 0xDB, 0xBA, 0x5D, 0x64, 0xC6, 0xFE, 0x86, 0x83, 0x9C, 0x50, 0x1C, 0x73, 0x03, 0x11, 0xD6,
+		0xAF, 0x30, 0xF4, 0x2C, 0x77, 0xB2, 0x7D, 0xBB, 0x3F, 0x29, 0x28, 0x57, 0x22, 0xD6, 0x92, 0x8B,
+	};
+	unsigned char *xflash;
+	bool isstr = true;
+	bool isterm = false;
+	bool crcmatch = false;
+	bool iisraw = false;
+	bool oisraw = false;
+
+	if (flash == NULL) {
+		fprintf(stderr, "buffer too small!");
+		return -1;
+	}
+
+	iisraw = check_image_magic(flash);
+
+	crc1 = (uint16_t)(flash[flash_length-1] << 8 | flash[flash_length-2]);
+	crc2 = crc16xmodem(flash, flash_length-2, 0);
+	if (crc1 == crc2) {
+		crcmatch = true;
+		flash_length -= 2;
+	} else
+		printf ("CRCs don't match\n");
+
+	if (crcmatch && !iisraw && flash_length>(0x200f)) {
+		/* de-obfuscate the firmware image */
+		if (py32) {
+			/* Use AES decryption for PY32 MCU */
+			// TODO: Implement AES-128 ECB decryption here using the key (first 16 bytes of key)
+			// For example, using tiny-AES-c library:
+			// struct AES_ctx ctx;
+			// AES_init_ctx(&ctx, key); // key is 16 bytes
+			// for (len2 = 0; len2 < flash_length; len2 += 16) {
+			//     AES_ECB_decrypt(&ctx, flash + len2);
+			// }
+			// Note: Ensure flash_length is multiple of 16, pad if necessary.
+			fprintf(stderr, "AES decryption for PY32 not implemented yet.\n");
+			return -1;
+		} else {
+			xflash = flash;
+			len2=0;
+			while (len2 < flash_length) {
+				*xflash = *xflash ^ key[len2 % sizeof(key)];
+				len2++;
+				xflash++;
+			}
+		}
+
+		/* in the obfuscated firmware images the firmware version
+		   is located @ 0x2000, a NULL terminated string
+		   of max. 15 characters */
+		for (i=0; i<16; i++) {
+			if (!isprint(*(flash+0x2000+i))) {
+				if (*(flash+0x2000+i) == 0x00)
+					isterm = true;
+				else
+					isstr = false;
+			}
+		}
+
+		/* there is a version string of 16 bytes in total,
+		   remove it to get a raw image */
+		if (isstr && isterm) {
+			/* copy version string */
+			memset(flash_version_string, 0, 16);
+			strncpy(flash_version_string, (char *)flash+0x2000, 15);
+			/* stitch version string hole */
+			memmove((unsigned char *)(flash+0x2000), (unsigned char *)(flash+0x2000+16), flash_length-0x2000-16);
+			flash_length -= 16;
+		}
+	}
+	oisraw = check_image_magic((unsigned char *)flash);
+	if (!oisraw) {
+		fprintf(stderr, "firmware image lacks magic\n");
+		return -1;
+	}
+
+	if (crcmatch && isstr && isterm) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+void helpme()
+{
+	printf( 
+		"cmdline opts:\n"
+		"-b <file>\tfilename that contains the raw flash image (default " DEFAULT_FLASH_NAME ")\n"
+		"-Y \tincrease \"I know what I'm doing\" value, to enable functionality likely to break the radio\n"
+		"-D \twait for the message from the radio flasher, print it's version\n"
+		"-F \tflash firmware, WARNING: this will likely brick your radio!\n"
+		"-M <ver> \tSet the firmware major version to <ver> during the flash process (default: " DEFAULT_FLASH_VERSION ")\n"
+		"-p <port>\tdevice name (default: " DEFAULT_SERIAL_PORT ")\n"
+		"-s <speed>\tserial speed (default: 38400, the UV-K5 doesn't accept any other speed)\n"
+		"-h \tprint this help\n"
+		"-v \tbe verbose, use multiple times for more verbosity\n"
+	      );
+}
+
+static speed_t baud_to_speed_t(int baud)
+{
+	switch (baud) {
+		case 0:
+			return B0;
+		case 50:
+			return B50;
+		case 75:
+			return B75;
+		case 110:
+			return B110;
+		case 150:
+			return B150;
+		case 200:
+			return B200;
+		case 300:
+			return B300;
+		case 600:
+			return B600;
+		case 1200:
+			return B1200;
+		case 1800:
+			return B1800;
+		case 2400:
+			return B2400;
+		case 4800:
+			return B4800;
+		case 9600:
+			return B9600;
+		case 19200:
+			return B19200;
+		case 38400:
+			return B38400;
+		case 57600:
+			return B57600;
+		case 115200:
+			return B115200;
+		default:
+			return B0;
+	}
+}
+
+void parse_cmdline(int argc, char **argv)
+{
+	int opt;
+
+	while ((opt = getopt(argc, argv, "b:DFM:p:s:hvY")) != EOF) {
+		switch (opt) {
+			case 'h':
+				helpme();
+				exit(0);
+				break;
+			case 'v':
+				verbose++;
+				break;
+			case 'Y':
+				i_know_what_im_doing++;
+				break;
+			case 'D':
+				mode = MODE_FLASH_DEBUG;
+				break;
+			case 'F':
+				mode = MODE_FLASH;
+				break;
+			case 'b':
+				flash_file = optarg;
+				break;
+			case 'M':
+				strncpy(flash_version_string, optarg, sizeof(flash_version_string)-1);
+				break;
+			case 'p':
+				ser_port = optarg;
+				break;
+			case 's':
+				ser_speed = baud_to_speed_t(atoi(optarg));
+				if (ser_speed == B0) {
+					fprintf(stderr, "ERROR, unknown speed %s\n", optarg);
+					exit(1);
+					break;
+				}
+			default:
+				fprintf(stderr,"Unknown command line option %s\n",optarg);
+				exit(1);
+				break;
+		}
+	}
+	if ((mode == MODE_FLASH) && (write_offset%UVK5_FLASH_BLOCKSIZE != 0)) {
+		fprintf(stderr, "ERROR: write offset has to be a multiple of %x\n", UVK5_FLASH_BLOCKSIZE);
+		exit(1);
+	}
+}
+
+int write_file(char *name, unsigned char *buffer, int len)
+{
+	int fd;
+	int l;
+
+	fd = open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
+	if (fd < 0) {
+		printf("open %s error %d %s\n", name,errno, strerror(errno));
+		return(-1);
+	}
+
+	l = write(fd, buffer, len);
+
+	if (l != len) {
+		printf("short write (%i) error %d %s\n", l, errno, strerror(errno));
+		return(-1);
+	}
+
+	close(fd);
+	return(1);
+}
+
+int main(int argc, char **argv)
+{
+	int fd=-1;
+	int ffd=-1;
+	unsigned char flash[UVK5_MAX_FLASH_SIZE];
+	int flash_max_addr;
+	int flash_max_block_addr;
+	int i, r, len;
+
+	if (verbose)
+		printf (VERSION "\n\n"); 
+
+	parse_cmdline(argc, argv);
+
+	if (mode == MODE_NONE) {
+		fprintf(stderr,"No operating mode selected, use -F or -D\n");
+		helpme();
+		exit(1);
+	}
+
+	fd = openport(ser_port, ser_speed);
+	if (fd < 0) {
+		exit(1);
+	}
+
+	if (i_know_what_im_doing) {
+		printf("\"I know what i'm doing\" value set to %i\n", i_know_what_im_doing);
+	}
+
+	switch (mode) {
+		case MODE_FLASH_DEBUG:
+			if (i_know_what_im_doing < 1) {
+				fprintf(stderr,"ERROR: the \"I know what i'm doing\" value has to be at least 1 to confirm that you know what you're doing\n");
+				exit(0);
+			}
+			wait_flash_message(fd, 10000);
+			exit(0);
+			break;
+
+		case MODE_FLASH:
+			ffd = open(flash_file, O_RDONLY);
+			if (ffd < 0) {
+				fprintf(stderr, "open %s error %d %s\n", flash_file, errno, strerror(errno));
+				exit(1);
+			}
+			flash_length = read(ffd, flash, UVK5_MAX_FLASH_SIZE);
+			close(ffd);
+			if (verbose) {
+				printf ("Read file %s success, len %d bytes\n", flash_file, flash_length);
+			}
+			r = de_xor_file(flash);
+			if (r == 1)
+				printf("packed firmware image detected: '%s'\n", flash_version_string);
+			else if (r == 0)
+				printf("raw firmware image\n");
+			else {
+				fprintf(stderr, "firmware image wrong format\n");
+				exit(1);
+			}
+			fflush(stdout);
+			if ((i_know_what_im_doing < 5) && (flash_length < 50000)) {
+				fprintf(stderr, "Failed to read whole firmware image from file %s (read %i), file too short or some other error\n", flash_file, flash_length);
+				if (flash_length > 0) {
+					fprintf(stderr, "This failsafe is here so that people don't mistake config files with flash.\nIt can be ignored with an 'i know what i'm doing' value of at least 5\n");
+				}
+				exit(1);
+			}
+			flash_max_addr = flash_length;
+
+			if (write_length > 0)
+				flash_max_addr = write_offset + write_length;
+			if (flash_max_addr > flash_length)
+				flash_max_addr = flash_length;
+			if (flash_max_addr & 0xff) {
+				flash_max_block_addr = (flash_max_addr & 0xff00) + UVK5_FLASH_BLOCKSIZE;
+			} else {
+				flash_max_block_addr = (flash_max_addr & 0xff00);
+			}
+
+			if (flash_max_block_addr > UVK5_MAX_FLASH_SIZE)  {
+				fprintf(stderr, "flash length 0x%x is greater than max flash size 0x%x\n", flash_max_block_addr, UVK5_MAX_FLASH_SIZE);
+				exit(1);
+			}
+
+			printf("Writing blocks from address 0x%x to 0x%x, firmware size is 0x%x\n", write_offset, flash_max_block_addr, flash_length);
+
+			r = wait_flash_message(fd, 10000);
+			if (!r)
+				exit(0);
+
+			k5_send_flash_version_message(fd, flash_version_string);
+
+			for (i = write_offset; i < flash_max_addr; i += UVK5_FLASH_BLOCKSIZE) {
+				len = flash_max_addr - i;
+				if (len > UVK5_FLASH_BLOCKSIZE)
+					len = UVK5_FLASH_BLOCKSIZE;
+
+				r = k5_writeflash(fd, flash+i, len, i, flash_max_block_addr);
+
+				if (verbose) {
+					printf("*** FLASH at 0x%4.4x length 0x%4.4x  result=%i\n", i, len, r);
+				} else {
+					printf("Flashing 0x%4.4x %i%%\r", i, (100 * i / flash_max_addr));
+					fflush(stdout);
+				}
+				if (!r) {
+					fprintf(stderr, "\nStopping flash due to ERROR!!!\n");
+					break;
+				}
+			}
+			printf("\nFlash successful, radio will restart automatically...\n");
+			exit(0);
+	}
+
+	return(0);
+}
+
