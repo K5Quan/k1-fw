@@ -4,3 +4,9 @@
 
 > ./k5prog/k5prog -F -YYYYY -b ./bin/firmware.bin
 
+## Credits
+
+[Muzkr](https://github.com/muzkr) - thanks for PY32F071 LL library compilation and boilerplate
+[DualTachyon](https://github.com/DualTachyon) - father of UV-K5 codebase
+
+
