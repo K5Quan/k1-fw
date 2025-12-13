@@ -1,8 +1,24 @@
 # K1 FW
 
+## Build
+
+### FW
+
+```sh
+make clean && make release
+```
+
+### k5prog
+
+```sh
+g++ k5prog.c -o k5prog
+```
+
 ## Flash
 
-> ./k5prog/k5prog -F -YYYYY -b ./bin/firmware.bin
+```sh 
+./k5prog/k5prog -F -YYYYY -b ./bin/firmware.bin
+```
 
 ## Credits
 
