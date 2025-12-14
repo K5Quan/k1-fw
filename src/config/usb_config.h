@@ -8,13 +8,14 @@
 
 /* ================ USB common Configuration ================ */
 
-#define CONFIG_USB_PRINTF(...) //printf(__VA_ARGS__)
+#include "../external/printf/printf.h"
+#define CONFIG_USB_PRINTF(...) printf(__VA_ARGS__)
 
 #define usb_malloc(size) malloc(size)
-#define usb_free(ptr)    free(ptr)
+#define usb_free(ptr) free(ptr)
 
 #ifndef CONFIG_USB_DBG_LEVEL
-#define CONFIG_USB_DBG_LEVEL USB_DBG_ERROR
+#define CONFIG_USB_DBG_LEVEL USB_DBG_INFO
 #endif
 
 /* Enable print with color */
@@ -47,15 +48,15 @@
 #endif
 
 #ifndef CONFIG_USBDEV_MSC_MANUFACTURER_STRING
-#define CONFIG_USBDEV_MSC_MANUFACTURER_STRING ""
+#define CONFIG_USBDEV_MSC_MANUFACTURER_STRING "PUYA"
 #endif
 
 #ifndef CONFIG_USBDEV_MSC_PRODUCT_STRING
-#define CONFIG_USBDEV_MSC_PRODUCT_STRING ""
+#define CONFIG_USBDEV_MSC_PRODUCT_STRING "Flash Disk"
 #endif
 
 #ifndef CONFIG_USBDEV_MSC_VERSION_STRING
-#define CONFIG_USBDEV_MSC_VERSION_STRING "0.01"
+#define CONFIG_USBDEV_MSC_VERSION_STRING "1.00"
 #endif
 
 // #define CONFIG_USBDEV_MSC_THREAD
@@ -78,19 +79,17 @@
 #define CONFIG_USBDEV_AUDIO_MAX_CHANNEL 8
 #endif
 
-
 /* ================ USB Device Port Configuration ================*/
 #include "py32f0xx.h"
 
-#define USBD_IRQn       USB_IRQn
+#define USBD_IRQn USB_IRQn
 
 #define USBD_IRQHandler USB_IRQHandler
 
-typedef struct
-{
-    uint8_t *buf;
-    const uint32_t size;
-    volatile uint32_t *write_pointer;
+typedef struct {
+  uint8_t *buf;
+  const uint32_t size;
+  volatile uint32_t *write_pointer;
 } cdc_acm_rx_buf_t;
 
 void cdc_acm_init(cdc_acm_rx_buf_t rx_buf);

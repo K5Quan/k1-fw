@@ -4,23 +4,25 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// FAT16 конфигурация для 2MB флеш
+// FAT12 configuration for 2MB flash (cluster count ~505, <4085 = FAT12)
 #define FAT_SECTOR_SIZE 512
-#define FAT_SECTORS_PER_CLUSTER 8  // 4KB кластер
+#define FAT_SECTORS_PER_CLUSTER 8  // 4KB cluster
 #define FAT_RESERVED_SECTORS 1
-#define FAT_NUM_FATS 1  // Одна таблица FAT для экономии места
+#define FAT_NUM_FATS 2  // Change to 2 for standard redundancy
 #define FAT_ROOT_ENTRIES 512
-#define FAT_TOTAL_SECTORS 4096  // 2MB / 512 байт
+#define FAT_TOTAL_SECTORS 4096  // 2MB / 512 bytes
 
-// Вычисляемые параметры
-#define FAT_ROOT_DIR_SECTORS ((FAT_ROOT_ENTRIES * 32 + FAT_SECTOR_SIZE - 1) / FAT_SECTOR_SIZE)
-#define FAT_SECTORS_PER_FAT 16  // ~2048 кластеров для FAT16
+// Calculated parameters
+#define FAT_ROOT_DIR_SECTORS ((FAT_ROOT_ENTRIES * 32 + FAT_SECTOR_SIZE - 1) / FAT_SECTOR_SIZE)  // 32
+#define FAT_SECTORS_PER_FAT 8  // Change to 8 (total FAT: 16 sectors; enough for ~2048 clusters max)
 
-// Смещения секторов
+// Offsets
 #define FAT_BOOT_SECTOR 0
 #define FAT_TABLE_SECTOR (FAT_BOOT_SECTOR + FAT_RESERVED_SECTORS)
 #define FAT_ROOT_DIR_SECTOR (FAT_TABLE_SECTOR + (FAT_NUM_FATS * FAT_SECTORS_PER_FAT))
 #define FAT_DATA_SECTOR (FAT_ROOT_DIR_SECTOR + FAT_ROOT_DIR_SECTORS)
+
+
 
 // FAT Entry типы
 #define FAT_FREE_CLUSTER 0x0000

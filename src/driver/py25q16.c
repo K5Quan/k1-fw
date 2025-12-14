@@ -190,9 +190,25 @@ static void SectorErase(uint32_t Addr);
 static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size);
 static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size);
 
-void PY25Q16_Init() {
+/* void PY25Q16_Init() {
   CS_Release();
   SPI_Init();
+} */
+
+void PY25Q16_Init(void) {
+    CS_Release();
+    SPI_Init();
+    SectorCacheAddr = 0x1000000;
+    memset(SectorCache, 0, SECTOR_SIZE);
+
+    // Add reset (optional but recommended to clear any state)
+    CS_Assert();
+    SPI_WriteByte(0x66);  // Reset Enable
+    CS_Release();
+    CS_Assert();
+    SPI_WriteByte(0x99);  // Reset
+    CS_Release();
+    PY25Q16_WaitBusy();  // Wait after reset
 }
 
 void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
@@ -326,6 +342,38 @@ static void WriteEnable() {
   CS_Release();
 }
 
+static uint8_t PY25Q16_ReadStatus(void) {
+  uint8_t cmd = 0x05;
+  uint8_t status = 0;
+
+  CS_Assert(); // CS low (start transaction)
+
+  // Send command
+  while (LL_SPI_IsActiveFlag_TXE(SPIx) == 0)
+    ; // Wait TX empty (use SPIx = SPI2)
+  LL_SPI_TransmitData8(SPIx, cmd);
+  while (LL_SPI_IsActiveFlag_RXNE(SPIx) == 0)
+    ;                        // Wait RX not empty
+  LL_SPI_ReceiveData8(SPIx); // Dummy read to clear RX
+
+  // Read status (clock out with dummy TX)
+  while (LL_SPI_IsActiveFlag_TXE(SPIx) == 0)
+    ;
+  LL_SPI_TransmitData8(SPIx, 0xFF); // Dummy byte
+  while (LL_SPI_IsActiveFlag_RXNE(SPIx) == 0)
+    ;
+  status = LL_SPI_ReceiveData8(SPIx);
+
+  CS_Release(); // CS high (end transaction)
+
+  return status;
+}
+
+static void PY25Q16_WaitBusy(void) {
+  while (PY25Q16_ReadStatus() & 0x01)
+    ; // Poll until WIP (bit 0) == 0
+}
+
 static void SectorErase(uint32_t Addr) {
 #ifdef DEBUG
   printf("spi flash sector erase: %06x\n", Addr);
@@ -338,7 +386,8 @@ static void SectorErase(uint32_t Addr) {
   WriteAddr(Addr);
   CS_Release();
 
-  WaitWIP();
+  // WaitWIP();
+  PY25Q16_WaitBusy();
 }
 
 static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
@@ -382,7 +431,8 @@ static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
 
   CS_Release();
 
-  WaitWIP();
+  // WaitWIP();
+  PY25Q16_WaitBusy();
 }
 
 void DMA1_Channel4_5_6_7_IRQHandler() {
