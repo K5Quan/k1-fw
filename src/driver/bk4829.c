@@ -268,10 +268,15 @@ void BK4819_ToggleGpioOut(BK4819_GPIO_PIN_t pin, bool enable) {
 // ============================================================================
 
 static void configure_agc_registers(void) {
-  BK4819_WriteRegister(0x12, (3u << 8) | (3u << 5) | (3u << 3) | (4u << 0));
+  /* BK4819_WriteRegister(0x12, (3u << 8) | (3u << 5) | (3u << 3) | (4u << 0));
   BK4819_WriteRegister(0x11, (2u << 8) | (3u << 5) | (3u << 3) | (3u << 0));
   BK4819_WriteRegister(0x10, (0u << 8) | (3u << 5) | (3u << 3) | (2u << 0));
-  BK4819_WriteRegister(0x14, (0u << 8) | (0u << 5) | (3u << 3) | (1u << 0));
+  BK4819_WriteRegister(0x14, (0u << 8) | (0u << 5) | (3u << 3) | (1u << 0)); */
+
+  // BK4819_WriteRegister(BK4819_REG_13, 0x03BE); //  11 101 11 110 /  -7dB
+  BK4819_WriteRegister(BK4819_REG_12, 0x037B); //  11 011 11 011 / -24dB
+  BK4819_WriteRegister(BK4819_REG_11, 0x027B); //  10 011 11 011 / -43dB
+  BK4819_WriteRegister(BK4819_REG_10, 0x007A); //  00 011 11 010 / -58dB
 }
 
 int8_t BK4819_GetAgcIndex() {
@@ -308,7 +313,7 @@ uint8_t BK4819_GetAttenuation() {
          (uint8_t[]){33, 27, 21, 15, 9, 6, 3, 0}[v & 7];
 }
 
-void BK4819_SetAGC(bool useDefault, uint8_t gainIndex) {
+void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   const bool enableAgc = (gainIndex == AUTO_GAIN_INDEX);
   uint16_t regVal = BK4819_ReadRegister(BK4819_REG_7E);
 
@@ -327,11 +332,17 @@ void BK4819_SetAGC(bool useDefault, uint8_t gainIndex) {
 
   configure_agc_registers();
 
-  // const AgcConfig *config = useDefault ? &AGC_DEFAULT : &AGC_FAST;
-  const AgcConfig *config = &AGC_DEFAULT;
+  if (fm) {
+    BK4819_WriteRegister(BK4819_REG_14, 0x0019);
+  } else {
+    BK4819_WriteRegister(BK4819_REG_14, 0x0000);
+  }
+
+  const AgcConfig *config = fm ? &AGC_DEFAULT : &AGC_FAST;
+  // const AgcConfig *config = &AGC_DEFAULT;
   BK4819_WriteRegister(BK4819_REG_49, (config->lo << 14) | (config->high << 7) |
                                           (config->low << 0));
-  BK4819_WriteRegister(BK4819_REG_7B, 0x8420); // 0x8420
+  BK4819_WriteRegister(BK4819_REG_7B, 0x8420);
 }
 
 // ============================================================================
@@ -824,17 +835,9 @@ void BK4819_ExitTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0x3B20); }
 
 void BK4819_RX_TurnOn(void) {
   BK4819_WriteRegister(BK4819_REG_36, 0x0000);
-  // BK4819_WriteRegister(BK4819_REG_37, 0x1F0F);
-  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F | 1 << 9);
   BK4819_WriteRegister(BK4819_REG_30, 0x0200);
-
-  BK4819_WriteRegister(
-      BK4819_REG_30,
-      BK4819_REG_30_ENABLE_VCO_CALIB | BK4819_REG_30_DISABLE_UNKNOWN |
-          BK4819_REG_30_ENABLE_RX_LINK | BK4819_REG_30_ENABLE_AF_DAC |
-          BK4819_REG_30_ENABLE_DISC_MODE | BK4819_REG_30_ENABLE_PLL_VCO |
-          BK4819_REG_30_DISABLE_PA_GAIN | BK4819_REG_30_DISABLE_MIC_ADC |
-          BK4819_REG_30_DISABLE_TX_DSP | BK4819_REG_30_ENABLE_RX_DSP);
+  BK4819_WriteRegister(BK4819_REG_30, 0xBFF1);
 }
 
 void BK4819_EnableTXLink(void) {
@@ -1327,30 +1330,10 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(0x40, 0x3516);
 
-#if 1
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
   for (unsigned int i = 0; i < ARRAY_SIZE(dtmf_coeffs); i++)
     BK4819_WriteRegister(BK4819_REG_09, (i << 12) | dtmf_coeffs[i]);
-#else
-  // original code
-  BK4819_WriteRegister(BK4819_REG_09, 0x006F); // 6F
-  BK4819_WriteRegister(BK4819_REG_09, 0x106B); // 6B
-  BK4819_WriteRegister(BK4819_REG_09, 0x2067); // 67
-  BK4819_WriteRegister(BK4819_REG_09, 0x3062); // 62
-  BK4819_WriteRegister(BK4819_REG_09, 0x4050); // 50
-  BK4819_WriteRegister(BK4819_REG_09, 0x5047); // 47
-  BK4819_WriteRegister(BK4819_REG_09, 0x603A); // 3A
-  BK4819_WriteRegister(BK4819_REG_09, 0x702C); // 2C
-  BK4819_WriteRegister(BK4819_REG_09, 0x8041); // 41
-  BK4819_WriteRegister(BK4819_REG_09, 0x9037); // 37
-  BK4819_WriteRegister(BK4819_REG_09, 0xA025); // 25
-  BK4819_WriteRegister(BK4819_REG_09, 0xB017); // 17
-  BK4819_WriteRegister(BK4819_REG_09, 0xC0E4); // E4
-  BK4819_WriteRegister(BK4819_REG_09, 0xD0CB); // CB
-  BK4819_WriteRegister(BK4819_REG_09, 0xE0B5); // B5
-  BK4819_WriteRegister(BK4819_REG_09, 0xF09F); // 9F
-#endif
 
   BK4819_WriteRegister(0x1C, 0x07C0);
   BK4819_WriteRegister(0x1D, 0xE555);

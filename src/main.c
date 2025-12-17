@@ -8,63 +8,79 @@
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
+#include "helper/measurements.h"
 #include "ui/graphics.h"
 #include <stdbool.h>
+#include <stdint.h>
 
-static uint32_t fInitial = 17230000;
+static const uint32_t fStart = 43300000;
+static const uint32_t fEnd = fStart + 2500 * LCD_WIDTH;
+static uint32_t f;
 
-#include "config/usb_config.h"
-#include "py32f071_ll_bus.h"
+uint16_t rssiHistory[LCD_WIDTH];
+bool redraw = true;
+uint32_t lastRedrawtime;
+bool open = false;
+bool listen = false;
 
-// Тест флеш перед инициализацией USB
-void test_flash(void) {
-  uint8_t test_buf[512];
-  uint8_t read_buf[512];
+uint16_t rssiMin = 60;
 
-  // Заполняем тестовым паттерном
-  for (int i = 0; i < 512; i++) {
-    test_buf[i] = i & 0xFF;
+uint16_t measure(uint32_t f) {
+  BK4819_SelectFilter(f);
+  BK4819_TuneTo(f, true);
+  SYSTICK_DelayUs(1200);
+  return BK4819_GetRSSI();
+}
+
+void tick() {
+  uint16_t rssi = measure(f);
+  // listen = rssi > 75;
+
+  uint8_t x = ConvertDomain(f, fStart, fEnd, 0, LCD_WIDTH);
+  if (rssi > rssiHistory[x]) {
+    rssiHistory[x] = rssi;
   }
 
-  PY25Q16_Init();
-
-  // Стираем сектор
-  PY25Q16_SectorErase(0);
-  for (volatile int i = 0; i < 100000; i++)
-    ;
-
-  // Пишем
-  PY25Q16_WriteBuffer(0, test_buf, 512, false);
-  for (volatile int i = 0; i < 100000; i++)
-    ;
-
-  // Читаем
-  PY25Q16_ReadBuffer(0, read_buf, 512);
-
-  // Проверяем
-  bool ok = true;
-  for (int i = 0; i < 512; i++) {
-    if (read_buf[i] != test_buf[i]) {
-      ok = false;
-      break;
+  if (listen != open) {
+    listen = open;
+    redraw = true;
+    if (listen) {
+      AUDIO_AudioPathOn();
+    } else {
+      AUDIO_AudioPathOff();
     }
   }
 
-  if (ok) {
-    // Мигнуть зелёным 3 раза = флеш работает
-    for (int i = 0; i < 3; i++) {
-      BK4819_ToggleGpioOut(BK4819_GREEN, true);
-      for (volatile int j = 0; j < 500000; j++)
-        ;
-      BK4819_ToggleGpioOut(BK4819_GREEN, false);
-      for (volatile int j = 0; j < 500000; j++)
-        ;
+  if (f >= fEnd) {
+    f = fStart;
+
+    UI_ClearScreen();
+    uint16_t mi = 512;
+    uint16_t ma = 0;
+    for (uint8_t i = 0; i < LCD_WIDTH; ++i) {
+      uint16_t r = rssiHistory[i];
+      if (r > ma) {
+        ma = r;
+      }
+      if (r < mi) {
+        mi = r;
+      }
+      uint8_t v = ConvertDomain(r, rssiMin - 2, 180, 0, LCD_HEIGHT - 16);
+      DrawVLine(i, LCD_HEIGHT - v, v, C_FILL);
+      rssiHistory[i] = 0;
     }
+    rssiMin = mi;
+    PrintSmall(0, 8 + 6, "Max: %u", ma);
+    PrintSmall(0, 8 + 12, "Min: %u", mi);
+    redraw = true;
   } else {
-    // Зелёный постоянно = флеш НЕ работает
-    BK4819_ToggleGpioOut(BK4819_GREEN, true);
-    while (1)
-      ;
+    f += 2500;
+  }
+
+  if (redraw && Now() - lastRedrawtime >= 40) {
+    redraw = false;
+    lastRedrawtime = Now();
+    ST7565_BlitFullScreen();
   }
 }
 
@@ -77,34 +93,17 @@ int main(void) {
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   BK4819_RX_TurnOn();
 
-  BK4819_TuneTo(fInitial, true);
-  BK4819_SelectFilter(fInitial);
+  f = fStart;
+
+  BK4819_TuneTo(f, true);
+  BK4819_SelectFilter(f);
   BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
   BK4819_SetModulation(MOD_FM);
   BK4819_SetAGC(true, 0);
 
-  AUDIO_AudioPathOn();
-
   BACKLIGHT_TurnOn();
 
-  // test_flash();
-
-  FAT_Init();
-
-
-  bool b = false;
   for (;;) {
-    bool b = !b;
-    BK4819_SelectFilterEx(b ? FILTER_UHF : FILTER_VHF);
-    printf("RSSI=%u\n", BK4819_GetRSSI());
-    // BOARD_FlashlightToggle();
-    UI_ClearScreen();
-    PrintBigDigitsEx(LCD_WIDTH - 1, 32, POS_R, C_FILL, "%u",
-                     BK4819_GetFrequency());
-    PrintMedium(0, 40, "RSSI: %u", BK4819_GetRSSI());
-    PrintMedium(0, 48, "NOW: %u", Now());
-    PrintMedium(0, 56, "Key: %u", KEYBOARD_Poll());
-    ST7565_BlitFullScreen();
-    SYSTICK_DelayMs(500);
+    tick();
   }
 }
