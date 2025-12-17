@@ -489,21 +489,18 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_XtalSet(XTAL_2_26M);
   }
 
-  // https://github.com/armel/uv-k1-k5v3-firmware-custom/pull/15
-  uint16_t uVar1 = BK4819_ReadRegister(0x31);
+  uint16_t r31 = BK4819_ReadRegister(0x31);
   if (type == MOD_AM) {
-    BK4819_WriteRegister(0x31, uVar1 | 1);
+    BK4819_WriteRegister(0x31, r31 | 1);
     BK4819_WriteRegister(0x42, 0x6F5C);
-    // BK4819_WriteRegister(0x43, 0x347C);
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants
-    BK4819_WriteRegister(0x2B, 0x600);  // AF RX HPF300 filter is disabled
+    BK4819_WriteRegister(0x2B, 0x0500); // HPF300 & DE-EMPH bypass
     BK4819_WriteRegister(0x2F, 0x9990);
   } else {
-    BK4819_WriteRegister(0x31, uVar1 & 0xFFFFFFFE);
+    BK4819_WriteRegister(0x31, r31 & 0xFFFE);
     BK4819_WriteRegister(0x42, 0x6B5A);
-    // BK4819_WriteRegister(0x43, 0x3028);
     BK4819_WriteRegister(0x2A, 0x7400);
-    BK4819_WriteRegister(0x2B, 0);
+    BK4819_WriteRegister(0x2B, 0x0000);
     BK4819_WriteRegister(0x2F, 0x9890);
   }
 }
@@ -1276,106 +1273,108 @@ void _BK4819_Init(void) {
   isInitialized = true;
 }
 
-void BK4819_Init(void)
-{
-    CS_Release();
-    SCL_Set();
-    SDA_Set();
+void BK4819_Init(void) {
+  CS_Release();
+  SCL_Set();
+  SDA_Set();
 
-    BK4819_WriteRegister(BK4819_REG_00, 0x8000);
-    BK4819_WriteRegister(BK4819_REG_00, 0x0000);
+  BK4819_WriteRegister(BK4819_REG_00, 0x8000);
+  BK4819_WriteRegister(BK4819_REG_00, 0x0000);
 
-    BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
-    BK4819_WriteRegister(BK4819_REG_36, 0x0022);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
+  BK4819_WriteRegister(BK4819_REG_36, 0x0022);
 
-    // BK4819_InitAGC(false);
-    // BK4819_SetAGC(true);
-    BK4819_WriteRegister(BK4819_REG_10, 0x0318);
-    BK4819_WriteRegister(BK4819_REG_11, 0x033A);
-    BK4819_WriteRegister(BK4819_REG_12, 0x03DB);
-    BK4819_WriteRegister(BK4819_REG_13, 0x03DF);
-    BK4819_WriteRegister(BK4819_REG_14, 0x0210);
-    BK4819_WriteRegister(BK4819_REG_49, 0x2AB2);
-    BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
+  // BK4819_InitAGC(false);
+  // BK4819_SetAGC(true);
+  BK4819_WriteRegister(BK4819_REG_10, 0x0318);
+  BK4819_WriteRegister(BK4819_REG_11, 0x033A);
+  BK4819_WriteRegister(BK4819_REG_12, 0x03DB);
+  BK4819_WriteRegister(BK4819_REG_13, 0x03DF);
+  BK4819_WriteRegister(BK4819_REG_14, 0x0210);
+  BK4819_WriteRegister(BK4819_REG_49, 0x2AB2);
+  BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
 
-    // BK4819_WriteRegister(BK4819_REG_19, 0b0001000001000001);   // <15> MIC AGC  1 = disable  0 = enable
+  // BK4819_WriteRegister(BK4819_REG_19, 0b0001000001000001);   // <15> MIC AGC
+  // 1 = disable  0 = enable
 
-    BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
+  BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
 
-    // REG_48 .. RX AF level
-    //
-    // <15:12> 11  ???  0 to 15
-    //
-    // <11:10> 0 AF Rx Gain-1
-    //         0 =   0dB
-    //         1 =  -6dB
-    //         2 = -12dB
-    //         3 = -18dB
-    //
-    // <9:4>   60 AF Rx Gain-2  -26dB ~ 5.5dB   0.5dB/step
-    //         63 = max
-    //          0 = mute
-    //
-    // <3:0>   15 AF DAC Gain (after Gain-1 and Gain-2) approx 2dB/step
-    //         15 = max
-    //          0 = min
-    //
-    BK4819_WriteRegister(BK4819_REG_48, //  0xB3A8);     // 1011 00 111010 1000
-        // (11u << 12) |     // ??? 0..15
-        // ( 0u << 10) |     // AF Rx Gain-1
-        // (58u <<  4) |     // AF Rx Gain-2
-        // ( 8u <<  0));     // AF DAC Gain (after Gain-1 and Gain-2)
-        0x33A8);
+  // REG_48 .. RX AF level
+  //
+  // <15:12> 11  ???  0 to 15
+  //
+  // <11:10> 0 AF Rx Gain-1
+  //         0 =   0dB
+  //         1 =  -6dB
+  //         2 = -12dB
+  //         3 = -18dB
+  //
+  // <9:4>   60 AF Rx Gain-2  -26dB ~ 5.5dB   0.5dB/step
+  //         63 = max
+  //          0 = mute
+  //
+  // <3:0>   15 AF DAC Gain (after Gain-1 and Gain-2) approx 2dB/step
+  //         15 = max
+  //          0 = min
+  //
+  BK4819_WriteRegister(BK4819_REG_48, //  0xB3A8);     // 1011 00 111010 1000
+                                      // (11u << 12) |     // ??? 0..15
+                                      // ( 0u << 10) |     // AF Rx Gain-1
+                                      // (58u <<  4) |     // AF Rx Gain-2
+                                      // ( 8u <<  0));     // AF DAC Gain (after
+                                      // Gain-1 and Gain-2)
+                       0x33A8);
 
-    BK4819_WriteRegister(0x40, 0x3516);
+  BK4819_WriteRegister(0x40, 0x3516);
 
 #if 1
-    const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80, 71, 58, 44, 65, 55, 37, 23, 228, 203, 181, 159};
-    for (unsigned int i = 0; i < ARRAY_SIZE(dtmf_coeffs); i++)
-        BK4819_WriteRegister(BK4819_REG_09, (i << 12) | dtmf_coeffs[i]);
+  const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
+                                 65,  55,  37,  23, 228, 203, 181, 159};
+  for (unsigned int i = 0; i < ARRAY_SIZE(dtmf_coeffs); i++)
+    BK4819_WriteRegister(BK4819_REG_09, (i << 12) | dtmf_coeffs[i]);
 #else
-    // original code
-    BK4819_WriteRegister(BK4819_REG_09, 0x006F);  // 6F
-    BK4819_WriteRegister(BK4819_REG_09, 0x106B);  // 6B
-    BK4819_WriteRegister(BK4819_REG_09, 0x2067);  // 67
-    BK4819_WriteRegister(BK4819_REG_09, 0x3062);  // 62
-    BK4819_WriteRegister(BK4819_REG_09, 0x4050);  // 50
-    BK4819_WriteRegister(BK4819_REG_09, 0x5047);  // 47
-    BK4819_WriteRegister(BK4819_REG_09, 0x603A);  // 3A
-    BK4819_WriteRegister(BK4819_REG_09, 0x702C);  // 2C
-    BK4819_WriteRegister(BK4819_REG_09, 0x8041);  // 41
-    BK4819_WriteRegister(BK4819_REG_09, 0x9037);  // 37
-    BK4819_WriteRegister(BK4819_REG_09, 0xA025);  // 25
-    BK4819_WriteRegister(BK4819_REG_09, 0xB017);  // 17
-    BK4819_WriteRegister(BK4819_REG_09, 0xC0E4);  // E4
-    BK4819_WriteRegister(BK4819_REG_09, 0xD0CB);  // CB
-    BK4819_WriteRegister(BK4819_REG_09, 0xE0B5);  // B5
-    BK4819_WriteRegister(BK4819_REG_09, 0xF09F);  // 9F
+  // original code
+  BK4819_WriteRegister(BK4819_REG_09, 0x006F); // 6F
+  BK4819_WriteRegister(BK4819_REG_09, 0x106B); // 6B
+  BK4819_WriteRegister(BK4819_REG_09, 0x2067); // 67
+  BK4819_WriteRegister(BK4819_REG_09, 0x3062); // 62
+  BK4819_WriteRegister(BK4819_REG_09, 0x4050); // 50
+  BK4819_WriteRegister(BK4819_REG_09, 0x5047); // 47
+  BK4819_WriteRegister(BK4819_REG_09, 0x603A); // 3A
+  BK4819_WriteRegister(BK4819_REG_09, 0x702C); // 2C
+  BK4819_WriteRegister(BK4819_REG_09, 0x8041); // 41
+  BK4819_WriteRegister(BK4819_REG_09, 0x9037); // 37
+  BK4819_WriteRegister(BK4819_REG_09, 0xA025); // 25
+  BK4819_WriteRegister(BK4819_REG_09, 0xB017); // 17
+  BK4819_WriteRegister(BK4819_REG_09, 0xC0E4); // E4
+  BK4819_WriteRegister(BK4819_REG_09, 0xD0CB); // CB
+  BK4819_WriteRegister(BK4819_REG_09, 0xE0B5); // B5
+  BK4819_WriteRegister(BK4819_REG_09, 0xF09F); // 9F
 #endif
 
-    BK4819_WriteRegister(0x1C, 0x07C0);
-    BK4819_WriteRegister(0x1D, 0xE555);
-    BK4819_WriteRegister(0x1E, 0x4C58);
+  BK4819_WriteRegister(0x1C, 0x07C0);
+  BK4819_WriteRegister(0x1D, 0xE555);
+  BK4819_WriteRegister(0x1E, 0x4C58);
 
-    BK4819_WriteRegister(BK4819_REG_1F, 0xC65A);
-    BK4819_WriteRegister(BK4819_REG_3E, 0x94C6);
+  BK4819_WriteRegister(BK4819_REG_1F, 0xC65A);
+  BK4819_WriteRegister(BK4819_REG_3E, 0x94C6);
 
-    BK4819_WriteRegister(0x73, 0x4691);
-    BK4819_WriteRegister(0x77, 0x88EF);
-    BK4819_WriteRegister(BK4819_REG_19, 0x104E);
-    BK4819_WriteRegister(BK4819_REG_28, 0x0B40);
-    BK4819_WriteRegister(BK4819_REG_29, 0xAA00);
-    BK4819_WriteRegister(0x2A, 0x6600);
-    BK4819_WriteRegister(0x2C, 0x1822);
-    BK4819_WriteRegister(0x2F, 0x9890);
-    BK4819_WriteRegister(0x53, 0x2028);
-    BK4819_WriteRegister(BK4819_REG_7E, 0x303E);
-    BK4819_WriteRegister(BK4819_REG_46, 0x600A);
-    BK4819_WriteRegister(0x4A, 0x5430);
-    BK4819_WriteRegister(BK4819_REG_07, 0x61CE);
+  BK4819_WriteRegister(0x73, 0x4691);
+  BK4819_WriteRegister(0x77, 0x88EF);
+  BK4819_WriteRegister(BK4819_REG_19, 0x104E);
+  BK4819_WriteRegister(BK4819_REG_28, 0x0B40);
+  BK4819_WriteRegister(BK4819_REG_29, 0xAA00);
+  BK4819_WriteRegister(0x2A, 0x6600);
+  BK4819_WriteRegister(0x2C, 0x1822);
+  BK4819_WriteRegister(0x2F, 0x9890);
+  BK4819_WriteRegister(0x53, 0x2028);
+  BK4819_WriteRegister(BK4819_REG_7E, 0x303E);
+  BK4819_WriteRegister(BK4819_REG_46, 0x600A);
+  BK4819_WriteRegister(0x4A, 0x5430);
+  BK4819_WriteRegister(BK4819_REG_07, 0x61CE);
 
-    gGpioOutState = 0x9000;
+  gGpioOutState = 0x9000;
 
-    BK4819_WriteRegister(BK4819_REG_33, gGpioOutState);
-    BK4819_WriteRegister(BK4819_REG_3F, 0);
+  BK4819_WriteRegister(BK4819_REG_33, gGpioOutState);
+  BK4819_WriteRegister(BK4819_REG_3F, 0);
 }

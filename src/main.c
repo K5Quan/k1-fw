@@ -14,7 +14,6 @@
 static uint32_t fInitial = 17230000;
 
 #include "config/usb_config.h"
-#include "driver/usb_msc.h"
 #include "py32f071_ll_bus.h"
 
 // Тест флеш перед инициализацией USB
@@ -92,23 +91,6 @@ int main(void) {
 
   FAT_Init();
 
-  // Инициализация USB MSC
-  LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_SYSCFG);
-  LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA); // PA12:11
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USBD);
-
-  for (volatile int i = 0; i < 100000; i++)
-    ;
-
-  NVIC_SetPriority(USBD_IRQn, 3);
-  NVIC_EnableIRQ(USBD_IRQn);
-
-  msc_init();
-
-  for (;;) {
-    // Ничего не делаем - только USB прерывания
-    __WFI(); // Wait For Interrupt - экономит энергию
-  }
 
   bool b = false;
   for (;;) {

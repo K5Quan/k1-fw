@@ -23,6 +23,14 @@ SRC := $(wildcard $(SRC_DIR)/*.c) \
        $(wildcard $(SRC_DIR)/ui/*.c) \
        $(wildcard $(SRC_DIR)/apps/*.c)
 
+TINYUSB_DIR := src/external/tinyusb
+TINYUSB_PORT_DIR := $(TINYUSB_DIR)/portable/$(TINYUSB_PORT)
+TINYUSB_LIB_DIR := $(TINYUSB_DIR)/lib
+
+TINYUSB_SRCS = \
+
+CFLAGS += -I$(TINYUSB_DIR)/src -DTUD_RHPORT
+
 OBJS := $(OBJ_DIR)/start.o \
         $(OBJ_DIR)/init.o \
         $(OBJ_DIR)/external/printf/printf.o \
@@ -105,6 +113,7 @@ INC_DIRS := -I./src/config \
 			-I./src/external/CherryUSB/core \
 			-I./src/external/CherryUSB/common \
 			-I./src/external/CherryUSB/class/msc \
+			-I./src/external/CherryUSB/class/cdc \
 			-I./src/external/PY32F071_HAL_Driver/Inc
 
 # =============================================================================

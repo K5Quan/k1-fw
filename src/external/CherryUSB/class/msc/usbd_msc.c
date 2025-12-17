@@ -93,7 +93,6 @@ void msc_storage_notify_handler(uint8_t event, void *arg)
             usbd_msc_reset();
             break;
         case USBD_EVENT_CONFIGURED:
-            printf("MSC: CONFIGURED event, starting CBW read\n");
             USB_LOG_DBG("Start reading cbw\r\n");
             usbd_ep_start_read(mass_ep_data[MSD_OUT_EP_IDX].ep_addr, (uint8_t *)&usbd_msc_cfg.cbw, USB_SIZEOF_MSC_CBW);
             break;
@@ -632,9 +631,6 @@ static bool SCSI_processRead(void)
 {
     uint32_t transfer_len;
 
-printf("SCSI_processRead: lba=%lu, nsectors=%lu\n", 
-           usbd_msc_cfg.start_sector, usbd_msc_cfg.nsectors);
-
     USB_LOG_DBG("read lba:%d\r\n", usbd_msc_cfg.start_sector);
 
     transfer_len = MIN(usbd_msc_cfg.nsectors * usbd_msc_cfg.scsi_blk_size, CONFIG_USBDEV_MSC_BLOCK_SIZE);
@@ -827,10 +823,8 @@ static bool SCSI_CBWDecode(uint32_t nbytes)
     return ret;
 }
 
-#include "../../../printf/printf.h"
 void mass_storage_bulk_out(uint8_t ep, uint32_t nbytes)
 {
-    printf("MSC bulk out: len=%u\n", nbytes);
     switch (usbd_msc_cfg.stage) {
         case MSC_READ_CBW:
             if (SCSI_CBWDecode(nbytes) == false) {

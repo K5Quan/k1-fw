@@ -1,28 +1,31 @@
 /**
- ******************************************************************************
- * @file    usb_dc_py32.c
- * @author  MCU Application Team
- * @brief   CMSIS Cortex-M4 Device Peripheral Access Layer System Source File
- ******************************************************************************
- * @attention
- *
- * <h2><center>&copy; Copyright (c) Puya Semiconductor Co.
- * All rights reserved.</center></h2>
- *
- * This software component is licensed by ST under BSD 3-Clause license,
- * the "License"; You may not use this file except in compliance with the
- * License. You may obtain a copy of the License at:
- *                        opensource.org/licenses/BSD-3-Clause
- *
- ******************************************************************************
- */
+  ******************************************************************************
+  * @file    usb_dc_py32.c
+  * @author  MCU Application Team
+  * @brief   CMSIS Cortex-M4 Device Peripheral Access Layer System Source File
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) Puya Semiconductor Co.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
 
 #include "usb_py32_reg.h"
 #include "usbd_core.h"
 
-#define HWREG(x) (*((volatile uint32_t *)(x)))
-#define HWREGH(x) (*((volatile uint16_t *)(x)))
-#define HWREGB(x) (*((volatile uint8_t *)(x)))
+#define HWREG(x) \
+    (*((volatile uint32_t *)(x)))
+#define HWREGH(x) \
+    (*((volatile uint16_t *)(x)))
+#define HWREGB(x) \
+    (*((volatile uint8_t *)(x)))
 
 #ifndef USB_BASE
 #define USB_BASE (0x40005C00)
@@ -58,56 +61,73 @@ struct pyusb_udc {
   volatile uint8_t dev_addr;
   volatile uint32_t fifo_size_offset;
   __attribute__((aligned(32))) struct usb_setup_packet setup;
-  struct pyusb_ep_state
-      in_ep[USB_NUM_BIDIR_ENDPOINTS]; /*!< IN endpoint parameters*/
-  struct pyusb_ep_state
-      out_ep[USB_NUM_BIDIR_ENDPOINTS]; /*!< OUT endpoint parameters */
+  struct pyusb_ep_state in_ep[USB_NUM_BIDIR_ENDPOINTS];  /*!< IN endpoint parameters*/
+  struct pyusb_ep_state out_ep[USB_NUM_BIDIR_ENDPOINTS]; /*!< OUT endpoint parameters */
 } g_pyusb_udc;
 
 static volatile uint8_t usb_ep0_state = USB_EP0_STATE_SETUP;
 volatile bool zlp_flag = 0;
 
-void usbd_ep0_set_zlp_flag() { zlp_flag = TRUE; }
+void usbd_ep0_set_zlp_flag()
+{
+  zlp_flag = TRUE;
+}
 
-void usbd_ep0_reset_zlp_flag() { zlp_flag = FALSE; }
+void usbd_ep0_reset_zlp_flag()
+{
+  zlp_flag = FALSE;
+}
 
 /* get current active ep */
-static uint8_t pyusb_get_active_ep(void) { return (uint8_t)(USB->INDEX); }
+static uint8_t pyusb_get_active_ep(void)
+{
+  return (uint8_t)(USB->INDEX);
+}
 
 /* set the active ep */
-static void pyusb_set_active_ep(uint8_t ep_index) { USB->INDEX = ep_index; }
+static void pyusb_set_active_ep(uint8_t ep_index)
+{
+  USB->INDEX = ep_index;
+}
 
-static void pyusb_write_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len) {
-  uint8_t *nAddr;
-  uint8_t *tmp = (uint8_t *)buffer;
+static void pyusb_write_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len)
+{
+  uint8_t  *nAddr;
+  uint8_t  *tmp = (uint8_t *)buffer;
   uint16_t count = len;
 
-  nAddr = &((uint8_t *)&USB->FIFO_EP0)[ep_idx << 2];
+  nAddr = &((uint8_t *)&USB->FIFO_EP0)[ep_idx<<2];
 
-  if (count) {
-    while (count) {
+  if(count)
+  {
+    while (count)
+    {
       *nAddr = *tmp++;
       count--;
     }
   }
 }
 
-static void pyusb_read_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len) {
+static void pyusb_read_packet(uint8_t ep_idx, uint8_t *buffer, uint16_t len)
+{
   uint8_t *tmp = (uint8_t *)buffer;
   uint8_t *nAddr;
   uint16_t count = len;
 
-  nAddr = &((uint8_t *)&USB->FIFO_EP0)[ep_idx << 2];
+  nAddr = &((uint8_t *)&USB->FIFO_EP0)[ep_idx<<2];
 
-  if (count) {
-    while (count) {
+  if(count)
+  {
+    while (count)
+    {
       *tmp++ = *nAddr;
       count--;
     }
   }
 }
 
-static uint32_t pyusb_get_fifo_size(uint16_t mps, uint16_t *used) {
+static uint32_t pyusb_get_fifo_size(uint16_t mps, uint16_t *used)
+{
   uint32_t size;
 
   for (uint8_t i = USB_TXFIFOSZ_SIZE_8; i <= USB_TXFIFOSZ_SIZE_M; i++) {
@@ -122,17 +142,22 @@ static uint32_t pyusb_get_fifo_size(uint16_t mps, uint16_t *used) {
   return USB_TXFIFOSZ_SIZE_8;
 }
 
-__WEAK void usb_dc_low_level_init(void) {}
+__WEAK void usb_dc_low_level_init(void)
+{
+}
 
-__WEAK void usb_dc_low_level_deinit(void) {}
+__WEAK void usb_dc_low_level_deinit(void)
+{
+}
 
-int usb_dc_init(void) {
+int usb_dc_init(void)
+{
   usb_dc_low_level_init();
 
   pyusb_set_active_ep(0);
   USB->ADDR = 0;
 
-  //  USB->INT_USBE = USB_INTR_RESET;
+//  USB->INT_USBE = USB_INTR_RESET;
   USB->INT_USBE = USB_INTR_RESET | USB_INTR_SUSPEND | USB_INTR_RESUME;
   USB->INT_IN1E = USB_INTR_EP0;
   USB->INT_OUT1E = 0;
@@ -140,17 +165,23 @@ int usb_dc_init(void) {
   return 0;
 }
 
-int usb_dc_deinit(void) { return 0; }
+int usb_dc_deinit(void)
+{
+  return 0;
+}
 
-int usbd_set_address(const uint8_t addr) {
-  if (addr == 0) {
+int usbd_set_address(const uint8_t addr)
+{
+  if (addr == 0)
+  {
     USB->ADDR = 0;
   }
   g_pyusb_udc.dev_addr = addr;
   return 0;
 }
 
-int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg) {
+int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg)
+{
   uint16_t used = 0;
   uint16_t fifo_size = 0;
   uint8_t ep_idx = USB_EP_GET_IDX(ep_cfg->ep_addr);
@@ -176,7 +207,7 @@ int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg) {
   old_ep_idx = pyusb_get_active_ep();
   pyusb_set_active_ep(ep_idx);
 
-  if (USB_EP_DIR_IS_OUT(ep_cfg->ep_addr)) /* OUT endpoint */
+  if (USB_EP_DIR_IS_OUT(ep_cfg->ep_addr))  /* OUT endpoint */
   {
     g_pyusb_udc.out_ep[ep_idx].ep_mps = ep_cfg->ep_mps;
     g_pyusb_udc.out_ep[ep_idx].ep_type = ep_cfg->ep_type;
@@ -184,28 +215,34 @@ int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg) {
 
     /* Allow auto clearing of RxPktRdy when packet of size max packet
        has been unloaded from the FIFO. */
-    if (ui32Flags & USB_EP_AUTO_CLEAR) {
+    if (ui32Flags & USB_EP_AUTO_CLEAR)
+    {
       ui32Register = USB_OUTCSR2_AutoClear;
     }
 
     /* Configure the DMA mode. */
-    if (ui32Flags & USB_EP_DMA_MODE_1) {
+    if (ui32Flags & USB_EP_DMA_MODE_1)
+    {
       ui32Register |= USB_OUTCSR2_DMAEnab | USB_OUTCSR2_DMAMode;
-    } else if (ui32Flags & USB_EP_DMA_MODE_0) {
+    } else if (ui32Flags & USB_EP_DMA_MODE_0)
+    {
       ui32Register |= USB_OUTCSR2_DMAEnab;
     }
 
     /* Enable isochronous mode if requested. */
-    if (ep_cfg->ep_type == 0x01) {
+    if (ep_cfg->ep_type == 0x01)
+    {
       ui32Register |= USB_OUTCSR2_ISO;
     }
 
     USB->OUT_CSR2 = ui32Register;
 
     /* Reset the Data toggle to zero. */
-    if (USB->OUT_CSR1 & USB_OUTCSR_OPR) {
+    if (USB->OUT_CSR1 & USB_OUTCSR_OPR)
+    {
       USB->OUT_CSR1 = (USB_OUTCSR_FF | USB_OUTCSR_CDT);
-    } else {
+    } else
+    {
       USB->OUT_CSR1 = USB_OUTCSR_CDT;
     }
 
@@ -242,9 +279,11 @@ int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg) {
     USB->IN_CSR2 = ui32Register;
 
     /* Reset the Data toggle to zero. */
-    if (USB->IN_CSR1 & USB_INCSR_FifoNotEmpty) {
+    if (USB->IN_CSR1 & USB_INCSR_FifoNotEmpty)
+    {
       USB->IN_CSR1 = (USB_INCSR_FF | USB_INCSR_CDT);
-    } else {
+    } else
+    {
       USB->IN_CSR1 = USB_INCSR_CDT;
     }
 
@@ -260,29 +299,39 @@ int usbd_ep_open(const struct usbd_endpoint_cfg *ep_cfg) {
   return 0;
 }
 
-int usbd_ep_close(const uint8_t ep) { return 0; }
+int usbd_ep_close(const uint8_t ep)
+{
+  return 0;
+}
 
-int usbd_ep_set_stall(const uint8_t ep) {
+int usbd_ep_set_stall(const uint8_t ep)
+{
   uint8_t ep_idx = USB_EP_GET_IDX(ep);
   uint8_t old_ep_idx;
 
   old_ep_idx = pyusb_get_active_ep();
   pyusb_set_active_ep(ep_idx);
 
-  if (USB_EP_DIR_IS_OUT(ep)) {
-    if (ep_idx == 0x00) {
+  if (USB_EP_DIR_IS_OUT(ep))
+  {
+    if (ep_idx == 0x00)
+    {
       usb_ep0_state = USB_EP0_STATE_STALL;
 
       USB->EP0_CSR |= (USB_CSR0_SENDSTALL | USB_CSR0_SVDOUTPKTRDY);
-    } else {
+    } else
+    {
       USB->OUT_CSR1 |= USB_OUTCSR_SendStall;
     }
-  } else {
-    if (ep_idx == 0x00) {
+  } else
+  {
+    if (ep_idx == 0x00)
+    {
       usb_ep0_state = USB_EP0_STATE_STALL;
 
       USB->EP0_CSR |= (USB_CSR0_SENDSTALL | USB_CSR0_SVDOUTPKTRDY);
-    } else {
+    } else
+    {
       USB->IN_CSR1 |= USB_INCSR_SendStall;
     }
   }
@@ -291,24 +340,30 @@ int usbd_ep_set_stall(const uint8_t ep) {
   return 0;
 }
 
-int usbd_ep_clear_stall(const uint8_t ep) {
+int usbd_ep_clear_stall(const uint8_t ep)
+{
   uint8_t ep_idx = USB_EP_GET_IDX(ep);
   uint8_t old_ep_idx;
 
   old_ep_idx = pyusb_get_active_ep();
   pyusb_set_active_ep(ep_idx);
 
-  if (USB_EP_DIR_IS_OUT(ep)) {
-    if (ep_idx == 0x00) {
+  if (USB_EP_DIR_IS_OUT(ep))
+  {
+    if (ep_idx == 0x00)
+    {
       USB->EP0_CSR &= ~USB_CSR0_SENTSTALL;
-    } else {
+    } else
+    {
       /* Clear the stall on an OUT endpoint. */
       USB->OUT_CSR1 &= ~(USB_OUTCSR_SendStall | USB_OUTCSR_SentStall);
       /* Reset the data toggle. */
       USB->OUT_CSR1 |= USB_OUTCSR_CDT;
     }
-  } else {
-    if (ep_idx == 0x00) {
+  } else
+  {
+    if (ep_idx == 0x00)
+    {
       USB->EP0_CSR &= ~USB_CSR0_SENTSTALL;
     } else {
       /* Clear the stall on an IN endpoint. */
@@ -322,21 +377,27 @@ int usbd_ep_clear_stall(const uint8_t ep) {
   return 0;
 }
 
-int usbd_ep_is_stalled(const uint8_t ep, uint8_t *stalled) {
+int usbd_ep_is_stalled(const uint8_t ep, uint8_t *stalled)
+{
   uint8_t ep_idx = USB_EP_GET_IDX(ep);
   uint8_t old_ep_idx;
 
   old_ep_idx = pyusb_get_active_ep();
   pyusb_set_active_ep(ep_idx);
 
-  if (USB_EP_DIR_IS_OUT(ep)) {
-    if (ep_idx == 0x00) {
+  if (USB_EP_DIR_IS_OUT(ep))
+  {
+    if (ep_idx == 0x00)
+    {
       *stalled = 0;
-    } else {
+    } else
+    {
       *stalled = !!(USB->OUT_CSR1 & USB_OUTCSR_SendStall);
     }
-  } else {
-    if (ep_idx == 0x00) {
+  } else
+  {
+    if (ep_idx == 0x00)
+    {
       *stalled = 0;
     } else {
       *stalled = !!(USB->IN_CSR1 & USB_INCSR_SendStall);
@@ -347,8 +408,8 @@ int usbd_ep_is_stalled(const uint8_t ep, uint8_t *stalled) {
   return 0;
 }
 
-int usbd_ep_start_write(const uint8_t ep, const uint8_t *data,
-                        uint32_t data_len) {
+int usbd_ep_start_write(const uint8_t ep, const uint8_t *data, uint32_t data_len)
+{
   uint8_t ep_idx = USB_EP_GET_IDX(ep);
   uint8_t old_ep_idx;
 
@@ -362,7 +423,8 @@ int usbd_ep_start_write(const uint8_t ep, const uint8_t *data,
   old_ep_idx = pyusb_get_active_ep();
   pyusb_set_active_ep(ep_idx);
 
-  if (USB->IN_CSR1 & USB_INCSR_IPR) {
+  if (USB->IN_CSR1 & USB_INCSR_IPR)
+  {
     pyusb_set_active_ep(old_ep_idx);
     return -3;
   }
@@ -371,77 +433,84 @@ int usbd_ep_start_write(const uint8_t ep, const uint8_t *data,
   g_pyusb_udc.in_ep[ep_idx].xfer_len = data_len;
   g_pyusb_udc.in_ep[ep_idx].actual_xfer_len = 0;
 
-  if (ep_idx == 0) {
-    switch (usb_ep0_state) {
-    case USB_EP0_STATE_SETUP:
-      /* Zero data request */
-      if (data_len == 0) {
+  if(ep_idx == 0)
+  {
+    switch(usb_ep0_state)
+    {
+      case USB_EP0_STATE_SETUP:
+        /* Zero data request */
+        if(data_len == 0)
+        {
+          USB->EP0_CSR = (USB_CSR0_SVDOUTPKTRDY | USB_CSR0_DATAEND);
+          usb_ep0_state = USB_EP0_STATE_IN_STATUS;
+        }
+        /* Enter IN data stage */
+        else
+        {
+          /* Clear OutPktRdy bit for the next setup packet receive */
+          USB->EP0_CSR = USB_CSR0_SVDOUTPKTRDY;
+
+          /* The length of the sent data is less than or equal to the maximum packet length and no additional 0 packets are required */
+          if(data_len <= g_pyusb_udc.in_ep[ep_idx].ep_mps && zlp_flag == FALSE)
+          {
+            pyusb_write_packet(ep_idx, (uint8_t *)data, data_len);
+            USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
+          }
+          /* If the packet length exceeds the maximum, only the data with the maximum packet length is sent */
+          else
+          {
+            pyusb_write_packet(ep_idx, (uint8_t *)data, g_pyusb_udc.in_ep[ep_idx].ep_mps);
+            USB->EP0_CSR = USB_CSR0_INPKTRDY;
+          }
+          usb_ep0_state = USB_EP0_STATE_IN_DATA;
+        }
+      break;
+      case USB_EP0_STATE_IN_DATA:
+        /* Zero length packet need to be sent */
+        if(data_len == 0)
+        {
+          /* clear zlp flag */
+          usbd_ep0_reset_zlp_flag();
+          USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
+          usb_ep0_state = USB_EP0_STATE_IN_ZLP;
+        }
+        /* Start sending the remain data */
+        else
+        {
+          /* The length of the sent data is less than or equal to the maximum packet length and no additional 0 packets are required */
+          if(data_len <= g_pyusb_udc.in_ep[ep_idx].ep_mps && zlp_flag == FALSE)
+          {
+            pyusb_write_packet(ep_idx, (uint8_t *)data, data_len);
+            USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
+          }
+          /* If the packet length exceeds the maximum, only the data with the maximum packet length is sent */
+          else
+          {
+            pyusb_write_packet(ep_idx, (uint8_t *)data, g_pyusb_udc.in_ep[ep_idx].ep_mps);
+            USB->EP0_CSR = USB_CSR0_INPKTRDY;
+          }
+        }
+      break;
+
+      case USB_EP0_STATE_OUT_DATA:
+        /* Received all data, enter status stage */
         USB->EP0_CSR = (USB_CSR0_SVDOUTPKTRDY | USB_CSR0_DATAEND);
         usb_ep0_state = USB_EP0_STATE_IN_STATUS;
-      }
-      /* Enter IN data stage */
-      else {
-        /* Clear OutPktRdy bit for the next setup packet receive */
-        USB->EP0_CSR = USB_CSR0_SVDOUTPKTRDY;
-
-        /* The length of the sent data is less than or equal to the maximum
-         * packet length and no additional 0 packets are required */
-        if (data_len <= g_pyusb_udc.in_ep[ep_idx].ep_mps && zlp_flag == FALSE) {
-          pyusb_write_packet(ep_idx, (uint8_t *)data, data_len);
-          USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
-        }
-        /* If the packet length exceeds the maximum, only the data with the
-           maximum packet length is sent */
-        else {
-          pyusb_write_packet(ep_idx, (uint8_t *)data,
-                             g_pyusb_udc.in_ep[ep_idx].ep_mps);
-          USB->EP0_CSR = USB_CSR0_INPKTRDY;
-        }
-        usb_ep0_state = USB_EP0_STATE_IN_DATA;
-      }
-      break;
-    case USB_EP0_STATE_IN_DATA:
-      /* Zero length packet need to be sent */
-      if (data_len == 0) {
-        /* clear zlp flag */
-        usbd_ep0_reset_zlp_flag();
-        USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
-        usb_ep0_state = USB_EP0_STATE_IN_ZLP;
-      }
-      /* Start sending the remain data */
-      else {
-        /* The length of the sent data is less than or equal to the maximum
-         * packet length and no additional 0 packets are required */
-        if (data_len <= g_pyusb_udc.in_ep[ep_idx].ep_mps && zlp_flag == FALSE) {
-          pyusb_write_packet(ep_idx, (uint8_t *)data, data_len);
-          USB->EP0_CSR = (USB_CSR0_INPKTRDY | USB_CSR0_DATAEND);
-        }
-        /* If the packet length exceeds the maximum, only the data with the
-           maximum packet length is sent */
-        else {
-          pyusb_write_packet(ep_idx, (uint8_t *)data,
-                             g_pyusb_udc.in_ep[ep_idx].ep_mps);
-          USB->EP0_CSR = USB_CSR0_INPKTRDY;
-        }
-      }
-      break;
-
-    case USB_EP0_STATE_OUT_DATA:
-      /* Received all data, enter status stage */
-      USB->EP0_CSR = (USB_CSR0_SVDOUTPKTRDY | USB_CSR0_DATAEND);
-      usb_ep0_state = USB_EP0_STATE_IN_STATUS;
       break;
     }
-  } else {
-    if (data_len != 0) {
-      /* If the packet length exceeds the maximum, only the data with the
-       * maximum packet length is sent */
-      if (data_len > g_pyusb_udc.in_ep[ep_idx].ep_mps) {
-        pyusb_write_packet(ep_idx, (uint8_t *)data,
-                           g_pyusb_udc.in_ep[ep_idx].ep_mps);
+  }
+  else
+  {
+    if(data_len != 0)
+    {
+      /* If the packet length exceeds the maximum, only the data with the maximum packet length is sent */
+      if(data_len > g_pyusb_udc.in_ep[ep_idx].ep_mps)
+      {
+        pyusb_write_packet(ep_idx, (uint8_t *)data, g_pyusb_udc.in_ep[ep_idx].ep_mps);
       }
       /* The remaining data can be sent in one package */
-      else {
+      else
+      {
         pyusb_write_packet(ep_idx, (uint8_t *)data, data_len);
       }
     }
@@ -452,17 +521,17 @@ int usbd_ep_start_write(const uint8_t ep, const uint8_t *data,
   return 0;
 }
 
-int usbd_ep_start_read(const uint8_t ep, uint8_t *data, uint32_t data_len) {
-  /* printf("usbd_ep_start_read: ep=0x%02X, len=%lu\n", ep,
-         data_len); // ← Добавьте */
-
+int usbd_ep_start_read(const uint8_t ep, uint8_t *data, uint32_t data_len)
+{
   uint8_t ep_idx = USB_EP_GET_IDX(ep);
   uint8_t old_ep_idx;
 
-  if (!data && data_len) {
+  if (!data && data_len)
+  {
     return -1;
   }
-  if (!g_pyusb_udc.out_ep[ep_idx].ep_enable) {
+  if (!g_pyusb_udc.out_ep[ep_idx].ep_enable)
+  {
     return -2;
   }
 
@@ -473,21 +542,25 @@ int usbd_ep_start_read(const uint8_t ep, uint8_t *data, uint32_t data_len) {
   g_pyusb_udc.out_ep[ep_idx].xfer_len = data_len;
   g_pyusb_udc.out_ep[ep_idx].actual_xfer_len = 0;
 
-  if (ep_idx == 0) {
-    switch (usb_ep0_state) {
-    case USB_EP0_STATE_SETUP:
-      /* Enter data stage, start receive data */
-      USB->EP0_CSR |= USB_CSR0_SVDOUTPKTRDY;
-      usb_ep0_state = USB_EP0_STATE_OUT_DATA;
+  if(ep_idx == 0)
+  {
+    switch(usb_ep0_state)
+    {
+      case USB_EP0_STATE_SETUP:
+        /* Enter data stage, start receive data */
+        USB->EP0_CSR |= USB_CSR0_SVDOUTPKTRDY;
+        usb_ep0_state = USB_EP0_STATE_OUT_DATA;
       break;
 
-    case USB_EP0_STATE_IN_DATA:
-    case USB_EP0_STATE_IN_ZLP:
-      /* Enter status stage, nothing to do */
-      usb_ep0_state = USB_EP0_STATE_OUT_STATUS;
+      case USB_EP0_STATE_IN_DATA:
+      case USB_EP0_STATE_IN_ZLP:
+        /* Enter status stage, nothing to do */
+        usb_ep0_state = USB_EP0_STATE_OUT_STATUS;
       break;
     }
-  } else {
+  }
+  else
+  {
     /* Enable ep receive interrupt before clear OutPktRdy */
     USB->INT_OUT1E |= (1 << ep_idx);
 
@@ -499,31 +572,37 @@ int usbd_ep_start_read(const uint8_t ep, uint8_t *data, uint32_t data_len) {
   return 0;
 }
 
-static void handle_ep0(void) {
-  uint8_t ep0_status = USB->EP0_CSR;
+static void handle_ep0(void)
+{
+  uint8_t  ep0_status = USB->EP0_CSR;
   uint16_t read_count;
 
-  if (ep0_status & USB_CSR0_SENTSTALL) {
+  if (ep0_status & USB_CSR0_SENTSTALL)
+  {
     USB->EP0_CSR &= ~USB_CSR0_SENTSTALL;
     usb_ep0_state = USB_EP0_STATE_SETUP;
     return;
   }
 
-  if (ep0_status & USB_CSR0_SETUPEND) {
+  if (ep0_status & USB_CSR0_SETUPEND)
+  {
     USB->EP0_CSR = USB_CSR0_SVDSETUPEND;
     usb_ep0_state = USB_EP0_STATE_SETUP;
   }
 
-  if (g_pyusb_udc.dev_addr > 0) {
+  if (g_pyusb_udc.dev_addr > 0)
+  {
     USB->ADDR = g_pyusb_udc.dev_addr;
     g_pyusb_udc.dev_addr = 0;
   }
 
   switch (usb_ep0_state) {
   case USB_EP0_STATE_SETUP:
-    if (ep0_status & USB_CSR0_OUTPKTRDY) {
+    if (ep0_status & USB_CSR0_OUTPKTRDY)
+    {
       read_count = USB->EP0_COUNT;
-      if (read_count != 8) {
+      if (read_count != 8)
+      {
         return;
       }
 
@@ -542,12 +621,12 @@ static void handle_ep0(void) {
       g_pyusb_udc.in_ep[0].xfer_len = 0;
     }
 
-    usbd_event_ep_in_complete_handler(0x80,
-                                      g_pyusb_udc.in_ep[0].actual_xfer_len);
+    usbd_event_ep_in_complete_handler(0x80, g_pyusb_udc.in_ep[0].actual_xfer_len);
 
     break;
   case USB_EP0_STATE_OUT_DATA:
-    if (ep0_status & USB_CSR0_OUTPKTRDY) {
+    if (ep0_status & USB_CSR0_OUTPKTRDY)
+    {
       read_count = USB->EP0_COUNT;
 
       pyusb_read_packet(0, g_pyusb_udc.out_ep[0].xfer_buf, read_count);
@@ -558,12 +637,11 @@ static void handle_ep0(void) {
          1.Current packet length less than the max packet length
          2.The total transfer size reaches the preset size of setup packet
        */
-      if ((read_count < g_pyusb_udc.out_ep[0].ep_mps) ||
-          (g_pyusb_udc.out_ep[0].actual_xfer_len ==
-           g_pyusb_udc.out_ep[0].xfer_len)) {
-        usbd_event_ep_out_complete_handler(
-            0x00, g_pyusb_udc.out_ep[0].actual_xfer_len);
-      } else {
+      if ((read_count < g_pyusb_udc.out_ep[0].ep_mps) || (g_pyusb_udc.out_ep[0].actual_xfer_len == g_pyusb_udc.out_ep[0].xfer_len))
+      {
+        usbd_event_ep_out_complete_handler(0x00, g_pyusb_udc.out_ep[0].actual_xfer_len);
+      } else
+      {
         USB->EP0_CSR = USB_CSR0_SVDOUTPKTRDY;
       }
     }
@@ -575,13 +653,12 @@ static void handle_ep0(void) {
   case USB_EP0_STATE_OUT_STATUS:
     usb_ep0_state = USB_EP0_STATE_SETUP;
     break;
+    
   }
 }
 
-#include "../../../printf/printf.h"
-void USBD_IRQHandler(void) {
-  // ОТЛАДКА: проверим что прерывания вообще происходят
-  // printf("USB IRQ\n");
+void USBD_IRQHandler(void)
+{
   uint32_t is;
   uint32_t txis;
   uint32_t rxis;
@@ -589,7 +666,7 @@ void USBD_IRQHandler(void) {
   uint8_t ep_idx;
   uint16_t write_count, read_count;
 
-  is = USB->INT_USB;
+  is   = USB->INT_USB;
   txis = USB->INT_IN1;
   rxis = USB->INT_OUT1;
 
@@ -607,20 +684,24 @@ void USBD_IRQHandler(void) {
     usb_ep0_state = USB_EP0_STATE_SETUP;
   }
 
-  if (is & USB_INTR_SOF) {
+  if (is & USB_INTR_SOF)
+  {
   }
 
-  if (is & USB_INTR_RESUME) {
-    usbd_event_resume_handler();
+  if (is & USB_INTR_RESUME)
+  {
+     usbd_event_resume_handler();
   }
 
-  if (is & USB_INTR_SUSPEND) {
-    usbd_event_suspend_handler();
+  if (is & USB_INTR_SUSPEND)
+  {
+     usbd_event_suspend_handler();
   }
 
   txis &= USB->INT_IN1E;
   /* Handle EP0 interrupt */
-  if (txis & USB_INTR_EP0) {
+  if (txis & USB_INTR_EP0)
+  {
     pyusb_set_active_ep(0);
     handle_ep0();
     txis &= ~USB_INTR_EP0;
@@ -628,36 +709,35 @@ void USBD_IRQHandler(void) {
 
   ep_idx = 1;
   while (txis) {
-    if (txis & (1 << ep_idx)) {
+    if (txis & (1 << ep_idx))
+    {
       pyusb_set_active_ep(ep_idx);
 
-      if (USB->IN_CSR1 & USB_INCSR_UnderRun) {
+      if (USB->IN_CSR1 & USB_INCSR_UnderRun)
+      {
         USB->IN_CSR1 &= ~USB_INCSR_UnderRun;
       }
 
-      if (g_pyusb_udc.in_ep[ep_idx].xfer_len >
-          g_pyusb_udc.in_ep[ep_idx].ep_mps) {
+      if (g_pyusb_udc.in_ep[ep_idx].xfer_len > g_pyusb_udc.in_ep[ep_idx].ep_mps)
+      {
         g_pyusb_udc.in_ep[ep_idx].xfer_buf += g_pyusb_udc.in_ep[ep_idx].ep_mps;
-        g_pyusb_udc.in_ep[ep_idx].actual_xfer_len +=
-            g_pyusb_udc.in_ep[ep_idx].ep_mps;
+        g_pyusb_udc.in_ep[ep_idx].actual_xfer_len += g_pyusb_udc.in_ep[ep_idx].ep_mps;
         g_pyusb_udc.in_ep[ep_idx].xfer_len -= g_pyusb_udc.in_ep[ep_idx].ep_mps;
-      } else {
-        g_pyusb_udc.in_ep[ep_idx].xfer_buf +=
-            g_pyusb_udc.in_ep[ep_idx].xfer_len;
-        g_pyusb_udc.in_ep[ep_idx].actual_xfer_len +=
-            g_pyusb_udc.in_ep[ep_idx].xfer_len;
+      } else
+      {
+        g_pyusb_udc.in_ep[ep_idx].xfer_buf += g_pyusb_udc.in_ep[ep_idx].xfer_len;
+        g_pyusb_udc.in_ep[ep_idx].actual_xfer_len += g_pyusb_udc.in_ep[ep_idx].xfer_len;
         g_pyusb_udc.in_ep[ep_idx].xfer_len = 0;
       }
 
-      if (g_pyusb_udc.in_ep[ep_idx].xfer_len == 0) {
-        usbd_event_ep_in_complete_handler(
-            ep_idx | 0x80, g_pyusb_udc.in_ep[ep_idx].actual_xfer_len);
-      } else {
-        write_count = MIN(g_pyusb_udc.in_ep[ep_idx].xfer_len,
-                          g_pyusb_udc.in_ep[ep_idx].ep_mps);
+      if (g_pyusb_udc.in_ep[ep_idx].xfer_len == 0)
+      {
+        usbd_event_ep_in_complete_handler(ep_idx | 0x80, g_pyusb_udc.in_ep[ep_idx].actual_xfer_len);
+      } else
+      {
+        write_count = MIN(g_pyusb_udc.in_ep[ep_idx].xfer_len, g_pyusb_udc.in_ep[ep_idx].ep_mps);
 
-        pyusb_write_packet(ep_idx, g_pyusb_udc.in_ep[ep_idx].xfer_buf,
-                           write_count);
+        pyusb_write_packet(ep_idx, g_pyusb_udc.in_ep[ep_idx].xfer_buf, write_count);
 
         USB->IN_CSR1 = USB_INCSR_IPR;
       }
@@ -669,25 +749,27 @@ void USBD_IRQHandler(void) {
 
   rxis &= USB->INT_OUT1E;
   ep_idx = 1;
-  while (rxis) {
-    if (rxis & (1 << ep_idx)) {
+  while (rxis)
+  {
+    if (rxis & (1 << ep_idx))
+    {
       pyusb_set_active_ep(ep_idx);
-      if (USB->OUT_CSR1 & USB_OUTCSR_OPR) {
+      if (USB->OUT_CSR1 & USB_OUTCSR_OPR)
+      {
         read_count = USB->OUT_COUNT;
 
-        pyusb_read_packet(ep_idx, g_pyusb_udc.out_ep[ep_idx].xfer_buf,
-                          read_count);
+        pyusb_read_packet(ep_idx, g_pyusb_udc.out_ep[ep_idx].xfer_buf, read_count);
 
         g_pyusb_udc.out_ep[ep_idx].xfer_buf += read_count;
         g_pyusb_udc.out_ep[ep_idx].actual_xfer_len += read_count;
         g_pyusb_udc.out_ep[ep_idx].xfer_len -= read_count;
 
-        if ((read_count < g_pyusb_udc.out_ep[ep_idx].ep_mps) ||
-            (g_pyusb_udc.out_ep[ep_idx].xfer_len == 0)) {
-          USB->INT_OUT1E &= ~(1 << ep_idx);
-          usbd_event_ep_out_complete_handler(
-              ep_idx, g_pyusb_udc.out_ep[ep_idx].actual_xfer_len);
-        } else {
+        if ((read_count < g_pyusb_udc.out_ep[ep_idx].ep_mps) || (g_pyusb_udc.out_ep[ep_idx].xfer_len == 0))
+        {
+          USB->INT_OUT1E &=  ~(1 << ep_idx);
+          usbd_event_ep_out_complete_handler(ep_idx, g_pyusb_udc.out_ep[ep_idx].actual_xfer_len);
+        } else
+        {
           USB->OUT_CSR1 &= ~USB_OUTCSR_OPR;
         }
       }
@@ -700,6 +782,12 @@ void USBD_IRQHandler(void) {
   pyusb_set_active_ep(old_ep_idx);
 }
 
-void usbd_activateremotewakeup(void) { USB->POWER |= USB_POWER_RESUME; }
+void usbd_activateremotewakeup(void)
+{
+  USB->POWER |= USB_POWER_RESUME;
+}
 
-void usbd_deactivateremotewakeup(void) { USB->POWER &= ~USB_POWER_RESUME; }
+void usbd_deactivateremotewakeup(void)
+{
+  USB->POWER &= ~USB_POWER_RESUME;
+}
