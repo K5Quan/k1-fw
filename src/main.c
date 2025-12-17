@@ -1,6 +1,7 @@
 #include "board.h"
 #include "driver/audio.h"
 #include "driver/backlight.h"
+#include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
 #include "driver/keyboard.h"
 #include "driver/st7565.h"
@@ -14,7 +15,11 @@ static const uint32_t fStart = 17200000;
 static const uint32_t fEnd = fStart + 2500 * LCD_WIDTH;
 static uint32_t f;
 
+bool open;
+bool listening;
+
 static uint32_t delay = 1200;
+static uint16_t treshold = 70;
 
 uint16_t rssiHistory[LCD_WIDTH];
 bool redraw = true;
@@ -65,6 +70,19 @@ uint16_t measure(uint32_t freq) {
 void tick() {
   uint16_t rssi = measure(f);
   uint8_t x = ConvertDomain(f, fStart, fEnd, 0, LCD_WIDTH - 1);
+  open = rssi >= treshold;
+
+  if (listening != open) {
+    listening = open;
+    if (listening) {
+      AUDIO_AudioPathOn();
+    } else {
+      AUDIO_AudioPathOff();
+    }
+    BK4819_ToggleGpioOut(BK4819_GREEN, listening);
+  } else if (listening) {
+    return;
+  }
   // printf("f=%u x=%u flt=%u rssi=%u\n", f, x, b, rssi);
 
   if (rssi > rssiHistory[x]) {
@@ -106,6 +124,8 @@ void tick() {
     PrintSmall(0, 14, "%uus", delay);
     PrintSmall(0, 14 + 8, "Max: %u (%u)", realMax, ma);
     PrintSmall(0, 20 + 8, "Min: %u", mi);
+    DrawHLine(0, ConvertDomain(treshold, mi, ma, LCD_HEIGHT, LCD_HEIGHT - 16),
+              LCD_WIDTH, C_FILL);
     redraw = true;
   } else {
     f += 2500;
