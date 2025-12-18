@@ -349,7 +349,7 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
 // Filter Management
 // ============================================================================
 
-void BK4819_SelectFilterEx(Filter filter) {
+inline void BK4819_SelectFilterEx(Filter filter) {
   if (gSelectedFilter == filter) {
     return;
   }
@@ -373,7 +373,7 @@ void BK4819_SelectFilterEx(Filter filter) {
   BK4819_WriteRegister(BK4819_REG_33, gGpioOutState);
 }
 
-void BK4819_SelectFilter(uint32_t frequency) {
+inline void BK4819_SelectFilter(uint32_t frequency) {
   Filter filter = (frequency < 24000000) ? FILTER_VHF : FILTER_UHF;
 
   BK4819_SelectFilterEx(filter);
@@ -1138,24 +1138,46 @@ uint8_t BK4819_GetAFCSpeed(void) {
 
 uint8_t BK4819_GetLnaPeakRSSI(void) { return BK4819_ReadRegister(0x62) & 0xFF; }
 
+// signal strength after RxADC dB/1
 uint8_t BK4819_GetAgcRSSI(void) {
   return (BK4819_ReadRegister(0x62) >> 8) & 0xFF;
+}
+
+// glitch Total Number within 10ms
+uint8_t BK4819_GetGlitch(void) {
+  return BK4819_ReadRegister(BK4819_REG_63) & 0xFF;
+}
+
+uint16_t BK4819_GetVoiceAmplitude(void) { return BK4819_ReadRegister(0x64); }
+
+uint8_t BK4819_GetNoise(void) {
+  return BK4819_ReadRegister(BK4819_REG_65) & 0x7F;
+}
+
+uint8_t BK4819_GetUpperChannelRelativePower(void) {
+  return (BK4819_ReadRegister(0x66) >> 8) & 0xFF;
+}
+
+uint8_t BK4819_GetLowerChannelRelativePower(void) {
+  return BK4819_ReadRegister(0x66) & 0xFF;
 }
 
 uint16_t BK4819_GetRSSI(void) {
   return BK4819_ReadRegister(BK4819_REG_67) & 0x1FF;
 }
 
-uint8_t BK4819_GetNoise(void) {
-  return BK4819_ReadRegister(BK4819_REG_65) & 0x7F;
+// Freq = Nout*25390.625/Rout
+uint8_t BK4819_GetAfFreqOutNout(void) {
+  return (BK4819_ReadRegister(0x6E) >> 9) & 0x7F;
 }
 
-uint8_t BK4819_GetGlitch(void) {
-  return BK4819_ReadRegister(BK4819_REG_63) & 0xFF;
+uint8_t BK4819_GetAfFreqOutRout(void) {
+  return (BK4819_ReadRegister(0x6E)) & 0x1FF;
 }
 
+// AF rx tx input amplitude
 uint8_t BK4819_GetAfTxRx(void) {
-  return BK4819_ReadRegister(BK4819_REG_6F) & 0x3F;
+  return BK4819_ReadRegister(BK4819_REG_6F) & 0xFF;
 }
 
 uint8_t BK4819_GetSignalPower(void) {
@@ -1169,8 +1191,6 @@ int16_t BK4819_GetAFCValue() {
 }
 
 uint8_t BK4819_GetSNR(void) { return BK4819_ReadRegister(0x61) & 0xFF; }
-
-uint16_t BK4819_GetVoiceAmplitude(void) { return BK4819_ReadRegister(0x64); }
 
 // ============================================================================
 // Frequency Scanning
