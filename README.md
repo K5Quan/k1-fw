@@ -26,4 +26,5 @@ g++ k5prog.c -o k5prog
 
 [DualTachyon](https://github.com/DualTachyon) - father of UV-K5 codebase
 
+ClaudeAI, Grok, Perplexity - for great ideas and implementations
 
