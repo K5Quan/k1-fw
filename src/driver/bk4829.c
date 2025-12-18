@@ -833,14 +833,13 @@ void BK4819_PlaySequence(const uint16_t *sequence) {
 // TX/RX Control
 // ============================================================================
 
-void BK4819_EnterTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0xBB20); }
+void BK4819_EnterTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0xBB18); }
 
-void BK4819_ExitTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0x3B20); }
+void BK4819_ExitTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0x3B18); }
 
 void BK4819_RX_TurnOn(void) {
-  // BK4819_WriteRegister(BK4819_REG_36, 0x0000);
   BK4819_WriteRegister(BK4819_REG_37, 0x9F1F);
-  BK4819_WriteRegister(BK4819_REG_30, 0x0000);
+  BK4819_Idle();
   BK4819_WriteRegister(BK4819_REG_30, 0xBFF1);
 }
 
@@ -856,12 +855,11 @@ void BK4819_EnableTXLink(void) {
 
 void BK4819_PrepareTransmit(void) {
   BK4819_ExitBypass();
-  BK4819_ExitTxMute();
+  // BK4819_ExitTxMute();
   BK4819_TxOn_Beep();
 }
 
 void BK4819_TxOn_Beep(void) {
-  // BK4819_WriteRegister(BK4819_REG_37, 0x1D0F);
   BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
   BK4819_WriteRegister(BK4819_REG_52, 0x028F);
   BK4819_Idle();
@@ -929,11 +927,16 @@ void BK4819_EnableScramble(uint8_t type) {
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_31);
   BK4819_WriteRegister(BK4819_REG_31, reg | 2);
   BK4819_WriteRegister(BK4819_REG_71, (type * 0x0408) + 0x68DC);
+
+  reg = BK4819_ReadRegister(BK4819_REG_2B);
+  BK4819_WriteRegister(BK4819_REG_2B, reg | 1);
 }
 
 void BK4819_DisableScramble(void) {
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_31);
   BK4819_WriteRegister(BK4819_REG_31, reg & 0xFFFD);
+  BK4819_WriteRegister(BK4819_REG_2B,
+                       0); // TODO: check if needed 0 only first bit
 }
 
 void BK4819_SetScrambler(uint8_t type) {
