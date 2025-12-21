@@ -64,7 +64,7 @@ static void appRender() {
 }
 
 static void systemUpdate() {
-  // BATTERY_GetReadings();
+  BATTERY_UpdateBatteryInfo();
   // BACKLIGHT_Update();
 }
 
@@ -146,7 +146,7 @@ void initDisplay() {
 
 void SYS_Main() {
 
-  // BATTERY_GetReadings();
+  BATTERY_UpdateBatteryInfo();
   printf("kbd init\n");
   keyboard_init(onKey);
   printf("kbd init ok\n");
@@ -159,7 +159,7 @@ void SYS_Main() {
     APPS_run(APP_RESET);
   } else {
     loadSettingsOrReset();
-    // BATTERY_GetReadings();
+    BATTERY_UpdateBatteryInfo();
 
     initDisplay();
 

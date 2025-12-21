@@ -319,10 +319,10 @@ static void renderExtraInfo(uint8_t BASE) {
   uint32_t rxF = RADIO_GetParam(ctx, PARAM_FREQUENCY);
   bool isTxFDifferent = (txF != rxF);
 
-  int16_t afcVal = BK4819_GetAFCValue();
+  /* int16_t afcVal = BK4819_GetAFCValue();
   if (afcVal != 0) {
     PrintSmallEx(14, 21, POS_L, C_FILL, "%+d", BK4819_GetAFCValue() * 10);
-  }
+  } */
 
   if (isTxFDifferent) {
     PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "TX: %s",
@@ -360,7 +360,7 @@ static void renderMonitorMode(uint8_t BASE) {
   SPECTRUM_Y = BASE + 2;
   SPECTRUM_H = LCD_HEIGHT - SPECTRUM_Y;
 
-  if (false && gSettings.showLevelInVFO) {
+  if (gSettings.showLevelInVFO) {
     static char *graphMeasurementNames[] = {
         [GRAPH_RSSI] = "RSSI",
         [GRAPH_NOISE] = "Noise",
@@ -390,7 +390,6 @@ static void renderMonitorMode(uint8_t BASE) {
 }
 
 void VFO1_render(void) {
-  // return;
   const uint8_t BASE = 40;
 
   renderStatusLine();

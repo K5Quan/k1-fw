@@ -2,6 +2,7 @@
 #include "../apps/apps.h"
 #include "../driver/battery.h"
 #include "../driver/eeprom.h"
+#include "../driver/si473x.h"
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
 #include "../helper/bands.h"
@@ -78,7 +79,7 @@ void STATUSLINE_render(void) {
       break;
     case BAT_VOLTAGE:
       PrintSmallEx(LCD_WIDTH - 1, BASE_Y, POS_R, C_FILL, "%u.%02uV",
-                   gBatteryVoltageAverage / 100, gBatteryVoltageAverage % 100);
+                   gBatteryVoltage / 100, gBatteryVoltage % 100);
       break;
     }
   }
@@ -98,7 +99,7 @@ void STATUSLINE_render(void) {
     icons[idx++] = SYM_MONITOR;
   }
 
-  if (ctx->radio_type == RADIO_BK1080) {
+  if (ctx->radio_type == RADIO_BK1080 || isSi4732On) {
     icons[idx++] = SYM_BROADCAST;
   }
 

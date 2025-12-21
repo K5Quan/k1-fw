@@ -317,7 +317,7 @@ static TXStatus checkTX(VFOContext *ctx) {
   if (gBatteryPercent == 0) {
     return TX_BAT_LOW;
   }
-  if (gChargingWithTypeC || gBatteryVoltageAverage > 880) {
+  if (gChargingWithTypeC || gBatteryVoltage > 880) {
     return TX_VOL_HIGH;
   }
   return TX_ON;
@@ -753,25 +753,20 @@ static void RADIO_UpdateCurrentBand(VFOContext *ctx) {
 
   switch (ctx->radio_type) {
   case RADIO_BK4819:
-    LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] BAND: BK4819");
     band = &bk4819_bands[0];
     break;
   case RADIO_SI4732:
     // Выбираем диапазон на основе частоты и модуляции
     if (ctx->frequency >= SI47XX_FM_F_MIN &&
         ctx->frequency <= SI47XX_FM_F_MAX) {
-      LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] BAND: SI FM");
       band = &si4732_bands[2]; // FM
     } else if (ctx->modulation == SI47XX_LSB || ctx->modulation == SI47XX_USB) {
-      LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] BAND: SI SSB");
       band = &si4732_bands[1]; // SSB
     } else {
-      LogC(LOG_C_BG_BRIGHT_YELLOW, "[RADIO] BAND: SI AM");
       band = &si4732_bands[0]; // AM
     }
     break;
   case RADIO_BK1080:
-    LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] BAND: BK1080 FM");
     band = &bk4819_bands[0]; // TODO: добавить свой диапазон
     break;
   default:

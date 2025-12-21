@@ -308,8 +308,8 @@ void SCAN_Check() {
     RADIO_CheckAndSaveVFO(gRadioState);
     if (Now() - radioTimer >= SQL_DELAY) {
       RADIO_UpdateSquelch(gRadioState);
-      /* Log("SQL? %u RNG %u %u %u", vfo->msm.open, vfo->msm.rssi, vfo->msm.noise,
-          vfo->msm.glitch); */
+      /* Log("SQL? %u RNG %u %u %u", vfo->msm.open, vfo->msm.rssi,
+         vfo->msm.noise, vfo->msm.glitch); */
       SP_ShiftGraph(-1);
       SP_AddGraphPoint(&vfo->msm);
       radioTimer = Now();
@@ -329,6 +329,7 @@ void SCAN_Check() {
 
   // Проверка на "думание" о squelch
   if (vfo->msm.open && !vfo->is_open) {
+    LogC(LOG_C_YELLOW, "MSM OPEN at %u, thinking", vfo->msm.f);
     scan.thinking = true;
     scan.wasThinkingEarlier = true;
     SYSTICK_DelayMs(SQL_DELAY);
