@@ -27,15 +27,23 @@ typedef enum {
   KEY_SIDE2,
   KEY_PTT,
   KEY_COUNT
-} key_code_t;
+} KEY_Code_t;
 
 // События кнопок
 typedef enum {
   KEY_EVENT_PRESS,   // Кнопка нажата (после debounce)
   KEY_EVENT_RELEASE, // Кнопка отпущена
   KEY_EVENT_HOLD, // Кнопка удерживается (первое срабатывание)
-  KEY_EVENT_REPEAT // Повторное срабатывание при удержании
-} key_event_t;
+  KEY_EVENT_REPEAT, // Повторное срабатывание при удержании
+
+  KEY_PRESSED = KEY_EVENT_PRESS,
+  KEY_RELEASED = KEY_EVENT_RELEASE,
+  KEY_LONG_PRESSED = KEY_EVENT_HOLD,
+  KEY_LONG_PRESSED_CONT = KEY_EVENT_REPEAT,
+} KEY_State_t;
+
+/// @deprecated
+typedef KEY_State_t Key_State_t;
 
 // Конфигурация таймингов
 typedef struct {
@@ -46,7 +54,7 @@ typedef struct {
 } key_timing_config_t;
 
 // Callback для обработки событий
-typedef void (*key_event_callback_t)(key_code_t key, key_event_t event);
+typedef void (*key_event_callback_t)(KEY_Code_t key, KEY_State_t event);
 
 // Инициализация клавиатуры
 void keyboard_init(key_event_callback_t callback);
@@ -61,6 +69,6 @@ key_timing_config_t keyboard_get_default_timing(void);
 void keyboard_tick_1ms(void);
 
 // Получить текущее состояние кнопки (нажата/не нажата)
-bool keyboard_is_pressed(key_code_t key);
+bool keyboard_is_pressed(KEY_Code_t key);
 
 #endif // KEYBOARD_H

@@ -1,4 +1,5 @@
 #include "misc.h"
+#include "driver/bk4829.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
 
@@ -38,6 +39,6 @@ void mhzToS(char *buf, uint32_t f) {
   sprintf(buf, "%u.%05u", f / MHZ, f % MHZ);
 }
 
-/* void bkAttToS(char *buf, uint8_t v) {
+void bkAttToS(char *buf, uint8_t v) {
   sprintf(buf, v == 0 ? "Auto" : "%udB", GAIN_TABLE[v].gainDb);
-} */
+}

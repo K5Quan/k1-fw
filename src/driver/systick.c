@@ -36,3 +36,9 @@ void SysTick_Handler(void) { gGlobalSysTickCounter++; }
 uint32_t Now() { return gGlobalSysTickCounter; }
 
 void SYSTICK_DelayMs(uint32_t ms) { SYSTICK_DelayUs(ms * 1000); }
+
+void SetTimeout(uint32_t *v, uint32_t t) {
+  *v = t == UINT32_MAX ? UINT32_MAX : Now() + t;
+}
+
+bool CheckTimeout(uint32_t *v) { return Now() >= *v; }

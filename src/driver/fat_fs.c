@@ -125,7 +125,7 @@ void FAT_Format(void) {
   // 2. Create and write Boot Sector
   fat_boot_sector_t bs;
   FAT_CreateBootSector(&bs);
-  PY25Q16_WriteBuffer(0, &bs, sizeof(fat_boot_sector_t));
+  PY25Q16_WriteBuffer(0, &bs, sizeof(fat_boot_sector_t), false);
 
   // 3. Create and write FAT tables (now 2, identical)
   FAT_CreateFATTable(buf);
@@ -133,27 +133,27 @@ void FAT_Format(void) {
   for (int fat_num = 0; fat_num < FAT_NUM_FATS; fat_num++) {
     uint32_t fat_addr =
         (FAT_TABLE_SECTOR + fat_num * FAT_SECTORS_PER_FAT) * FAT_SECTOR_SIZE;
-    PY25Q16_WriteBuffer(fat_addr, buf, FAT_SECTOR_SIZE);
+    PY25Q16_WriteBuffer(fat_addr, buf, FAT_SECTOR_SIZE, false);
 
     // Remaining FAT sectors = zeros
     memset(buf, 0, FAT_SECTOR_SIZE);
     for (int i = 1; i < FAT_SECTORS_PER_FAT; i++) {
       uint32_t addr = (FAT_TABLE_SECTOR + fat_num * FAT_SECTORS_PER_FAT + i) *
                       FAT_SECTOR_SIZE;
-      PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE);
+      PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE, false);
     }
   }
 
   // 4. Create and write Root Directory
   FAT_CreateRootDir(buf);
   uint32_t root_addr = FAT_ROOT_DIR_SECTOR * FAT_SECTOR_SIZE;
-  PY25Q16_WriteBuffer(root_addr, buf, FAT_SECTOR_SIZE);
+  PY25Q16_WriteBuffer(root_addr, buf, FAT_SECTOR_SIZE, false);
 
   // Remaining root sectors = zeros
   memset(buf, 0, FAT_SECTOR_SIZE);
   for (int i = 1; i < FAT_ROOT_DIR_SECTORS; i++) {
     uint32_t addr = (FAT_ROOT_DIR_SECTOR + i) * FAT_SECTOR_SIZE;
-    PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE);
+    PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE, false);
   }
 
   fs_formatted = true;
@@ -172,5 +172,5 @@ void FAT_WriteBlock(uint32_t lba, const uint8_t *buf) {
     PY25Q16_SectorErase(addr);
   } */
 
-  PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE);
+  PY25Q16_WriteBuffer(addr, buf, FAT_SECTOR_SIZE, false);
 }

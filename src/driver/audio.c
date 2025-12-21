@@ -14,7 +14,6 @@
 
 BEEP_Type_t gBeepToPlay = BEEP_NONE;
 
-
 #ifdef ENABLE_VOICE
 
 uint16_t gVoiceBuf[VOICE_BUF_CAP][VOICE_BUF_LEN];
@@ -304,3 +303,11 @@ void AUDIO_PlayQueuedVoice(void) {
 }
 
 #endif
+
+void AUDIO_ToggleSpeaker(bool on) {
+  if (on) {
+    AUDIO_AudioPathOn();
+  } else {
+    AUDIO_AudioPathOff();
+  }
+}

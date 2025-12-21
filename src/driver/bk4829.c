@@ -1,5 +1,6 @@
 #include "bk4829.h"
 
+#include "bk4819-regs.h"
 #include "gpio.h"
 #include "systick.h"
 #include <stdint.h>
@@ -309,7 +310,7 @@ int8_t BK4819_GetAgcIndex() {
 }
 
 uint8_t BK4819_GetAttenuation() {
-  BK4819_REGISTER_t reg;
+  BK4819_REGISTER_t reg = BK4819_REG_13;
   switch (BK4819_GetAgcIndex()) {
   case 0:
     reg = BK4819_REG_10;

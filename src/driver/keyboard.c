@@ -41,7 +41,7 @@ static key_timing_config_t g_timing;
 #define PIN_MASK_ROW(n) (1u << (15 - (n)))
 
 // Матрица клавиатуры
-static const key_code_t g_keymap[5][4] = {
+static const KEY_Code_t g_keymap[5][4] = {
     {KEY_SIDE1, KEY_SIDE2, KEY_NONE, KEY_NONE},
     {KEY_MENU, KEY_1, KEY_4, KEY_7},
     {KEY_UP, KEY_2, KEY_5, KEY_8},
@@ -56,7 +56,7 @@ static inline uint32_t read_rows(void) {
   return PIN_MASK_ROWS & LL_GPIO_ReadInputPort(GPIOx);
 }
 
-static key_code_t scan_matrix(void) {
+static KEY_Code_t scan_matrix(void) {
   for (uint8_t col = 0; col < 5; col++) {
     // Установить все колонки в HIGH
     GPIO_SetOutputPin(PIN_COLS);
@@ -104,7 +104,7 @@ static bool scan_ptt(void) { return GPIO_IsPttPressed(); }
 // FSM обработка
 // ============================================================================
 
-static void process_key_fsm(key_code_t key, bool is_pressed) {
+static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
   key_context_t *ctx = &g_keys[key];
 
   switch (ctx->state) {
@@ -214,10 +214,12 @@ void keyboard_init(key_event_callback_t callback) {
 }
 
 key_timing_config_t keyboard_get_default_timing(void) {
-  key_timing_config_t config = {.debounce_ms = 20,
-                                .hold_delay_ms = 500,
-                                .repeat_delay_ms = 100,
-                                .repeat_enabled = true};
+  key_timing_config_t config = {
+      .debounce_ms = 1,
+      .hold_delay_ms = 500,
+      .repeat_delay_ms = 100,
+      .repeat_enabled = true,
+  };
   return config;
 }
 
@@ -227,12 +229,12 @@ void keyboard_set_timing(const key_timing_config_t *config) {
 
 void keyboard_tick_1ms(void) {
   // Сканировать матрицу
-  key_code_t matrix_key = scan_matrix();
+  KEY_Code_t matrix_key = scan_matrix();
 
   // Обработать все клавиши матрицы
   for (uint8_t col = 0; col < 5; col++) {
     for (uint8_t row = 0; row < 4; row++) {
-      key_code_t key = g_keymap[col][row];
+      KEY_Code_t key = g_keymap[col][row];
       if (key != KEY_NONE) {
         bool is_pressed = (key == matrix_key);
         process_key_fsm(key, is_pressed);
@@ -245,7 +247,7 @@ void keyboard_tick_1ms(void) {
   process_key_fsm(KEY_PTT, ptt_pressed);
 }
 
-bool keyboard_is_pressed(key_code_t key) {
+bool keyboard_is_pressed(KEY_Code_t key) {
   if (key >= KEY_COUNT) {
     return false;
   }

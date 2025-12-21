@@ -1,9 +1,11 @@
 #include "uart.h"
+#include "../external/printf/printf.h"
 #include "py32f071_ll_bus.h"
 #include "py32f071_ll_dma.h"
 #include "py32f071_ll_gpio.h"
 #include "py32f071_ll_system.h"
 #include "py32f071_ll_usart.h"
+#include "systick.h"
 #include <stdbool.h>
 #include <string.h>
 
@@ -94,8 +96,29 @@ void UART_Send(const void *pBuffer, uint32_t Size) {
   }
 }
 
-void UART_LogSend(const void *pBuffer, uint32_t Size) {
-  if (UART_IsLogEnabled) {
-    UART_Send(pBuffer, Size);
-  }
+void LogUart(const char *const str) { UART_Send(str, strlen(str)); }
+
+void UART_printf(const char *str, ...) {
+  char text[128];
+  va_list va;
+  va_start(va, str);
+  UART_Send(text, vsnprintf(text, sizeof(text), str, va));
+  va_end(va);
+}
+
+void Log(const char *pattern, ...) {
+  char text[128];
+  va_list args;
+  va_start(args, pattern);
+  vsnprintf(text, sizeof(text), pattern, args);
+  va_end(args);
+  UART_printf("%+10u %s\n", Now(), text);
+}
+void LogC(LogColor c, const char *pattern, ...) {
+  char text[128];
+  va_list args;
+  va_start(args, pattern);
+  vsnprintf(text, sizeof(text), pattern, args);
+  va_end(args);
+  UART_printf("%+10u \033[%um%s\033[%um\n", Now(), c, text, LOG_C_RESET);
 }

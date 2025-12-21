@@ -1,0 +1,95 @@
+#include "chscan.h"
+
+#include "../driver/systick.h"
+#include "../driver/uart.h"
+#include "../helper/channels.h"
+#include "../helper/lootlist.h"
+#include "../helper/scan.h"
+#include "../radio.h"
+#include "../ui/components.h"
+#include "../ui/graphics.h"
+#include "apps.h"
+
+CH activeCh;
+
+static uint32_t lastSqCheck;
+static uint32_t timeout = 0;
+static bool lastListenState;
+static bool isWaiting;
+
+static void nextWithTimeout() {
+  if (lastListenState != vfo->is_open) {
+    lastListenState = vfo->is_open;
+    if (vfo->is_open) {
+      CHANNELS_LoadCurrentScanlistCH();
+      isWaiting = true;
+    }
+    SetTimeout(&timeout, vfo->is_open
+                             ? SCAN_TIMEOUTS[gSettings.sqOpenedTimeout]
+                             : SCAN_TIMEOUTS[gSettings.sqClosedTimeout]);
+  }
+
+  if (CheckTimeout(&timeout)) {
+    CHANNELS_Next(true);
+    gRedrawScreen = true;
+    isWaiting = false;
+    SetTimeout(&timeout, 0);
+    return;
+  }
+}
+
+void CHSCAN_init(void) {
+  CHANNELS_LoadScanlist(TYPE_FILTER_CH, gSettings.currentScanlist);
+  SCAN_SetMode(SCAN_MODE_CHANNEL);
+  // SCAN_Init(false);
+}
+
+void CHSCAN_deinit(void) {}
+
+void CHSCAN_update(void) {}
+
+bool CHSCAN_key(KEY_Code_t key, Key_State_t state) {
+  bool longHeld = state == KEY_LONG_PRESSED;
+  bool simpleKeypress = state == KEY_RELEASED;
+  if ((longHeld || simpleKeypress) && (key > KEY_0 && key < KEY_9)) {
+    CHANNELS_SelectScanlistByKey(key, longHeld && !simpleKeypress);
+    CHSCAN_init();
+    isWaiting = false;
+    return true;
+  }
+  if (state == KEY_RELEASED) {
+    switch (key) {
+    case KEY_UP:
+    case KEY_DOWN:
+      nextWithTimeout();
+      return true;
+    case KEY_SIDE1:
+      LOOT_BlacklistLast();
+      nextWithTimeout();
+      return true;
+    case KEY_SIDE2:
+      LOOT_WhitelistLast();
+      nextWithTimeout();
+      return true;
+    case KEY_STAR:
+      APPS_run(APP_LOOT_LIST);
+      return true;
+    default:
+      break;
+    }
+  }
+  return false;
+}
+
+void CHSCAN_render(void) {
+  if (gScanlistSize) {
+    if (vfo->is_open) {
+      PrintMediumBoldEx(LCD_XCENTER, 18, POS_C, C_FILL, "%s", activeCh.name);
+    } else {
+      PrintMediumEx(LCD_XCENTER, 18, POS_C, C_FILL,
+                    isWaiting ? "Waiting..." : "Scanning...");
+    }
+  }
+
+  UI_RenderScanScreen();
+}

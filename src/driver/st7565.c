@@ -1,11 +1,13 @@
 #include <stdint.h>
 #include <stdio.h> // NULL
 
+#include "../misc.h"
 #include "gpio.h"
 #include "py32f071_ll_bus.h"
 #include "py32f071_ll_gpio.h"
 #include "py32f071_ll_spi.h"
 #include "st7565.h"
+#include "systick.h"
 
 #define SPIx SPI1
 
@@ -13,6 +15,8 @@
 #define PIN_A0 GPIO_MAKE_PIN(GPIOA, LL_GPIO_PIN_6)
 
 uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
+static uint32_t gLastRender;
+bool gRedrawScreen = true;
 
 static void SPI_Init() {
   LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_SPI1);
@@ -89,7 +93,7 @@ void ST7565_DrawLine(const unsigned int Column, const unsigned int Line,
   CS_Release();
 }
 
-void ST7565_BlitFullScreen(void) {
+void ST7565_Blit(void) {
   CS_Assert();
   ST7565_WriteByte(0x40);
   for (unsigned line = 0; line < FRAME_LINES; line++) {

@@ -1,5 +1,7 @@
 #include "board.h"
 #include "driver/backlight.h"
+#include "driver/bk4819-regs.h"
+#include "driver/bk4829.h"
 #include "driver/gpio.h"
 #include "driver/py25q16.h"
 #include "driver/st7565.h"
@@ -123,3 +125,5 @@ void BOARD_Init(void) {
 }
 
 void BOARD_FlashlightToggle() { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }
+void BOARD_ToggleRed(bool on) { BK4819_ToggleGpioOut(BK4819_RED, on); }
+void BOARD_ToggleGreen(bool on) { BK4819_ToggleGpioOut(BK4819_GREEN, on); }

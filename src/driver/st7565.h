@@ -4,15 +4,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LCD_WIDTH       128
-#define LCD_HEIGHT       64
 #define FRAME_LINES 8
 
-extern uint8_t gStatusLine[LCD_WIDTH];
-extern uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
+#define LCD_WIDTH 128
+#define LCD_HEIGHT 64
+#define LCD_XCENTER 64
+#define LCD_YCENTER 32
 
-void ST7565_DrawLine(const unsigned int Column, const unsigned int Line, const uint8_t *pBitmap, const unsigned int Size);
-void ST7565_BlitFullScreen(void);
+extern uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
+static uint32_t gLastRender;
+extern bool gRedrawScreen;
+
+void ST7565_DrawLine(const unsigned int Column, const unsigned int Line,
+                     const uint8_t *pBitmap, const unsigned int Size);
+void ST7565_Blit(void);
 void ST7565_BlitLine(unsigned line);
 void ST7565_BlitStatusLine(void);
 void ST7565_FillScreen(uint8_t Value);
