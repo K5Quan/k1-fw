@@ -840,7 +840,6 @@ void RADIO_Init(VFOContext *ctx, Radio radio_type) {
 
 // Проверка параметра для текущего диапазона
 bool RADIO_IsParamValid(VFOContext *ctx, ParamType param, uint32_t value) {
-  return true;
   const FreqBand *band = ctx->current_band;
   if (!band)
     return false;

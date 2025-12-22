@@ -298,7 +298,7 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
     break;
   case SETTING_CONTRAST:
     gSettings.contrast = v;
-    ST7565_Init();
+    ST7565_SetContrast(v);
     break;
   case SETTING_MAINAPP:
     gSettings.mainApp = v;

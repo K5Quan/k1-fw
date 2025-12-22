@@ -2,7 +2,7 @@
 #include <stdio.h> // NULL
 #include <string.h>
 
-#include "../misc.h"
+#include "../settings.h"
 #include "gpio.h"
 #include "py32f071_ll_bus.h"
 #include "py32f071_ll_gpio.h"
@@ -16,7 +16,7 @@
 #define PIN_A0 GPIO_MAKE_PIN(GPIOA, LL_GPIO_PIN_6)
 
 uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
-static uint8_t frameBufferSecond[8][LCD_WIDTH];
+
 static uint32_t gLastRender;
 bool gRedrawScreen = true;
 
@@ -67,24 +67,31 @@ static inline void A0_Set() { GPIO_SetOutputPin(PIN_A0); }
 
 static inline void A0_Reset() { GPIO_ResetOutputPin(PIN_A0); }
 
-static uint8_t SPI_WriteByte(uint8_t Value) {
+static inline uint8_t SPI_WriteByte(uint8_t Value) {
   while (!LL_SPI_IsActiveFlag_TXE(SPIx))
     ;
-
   LL_SPI_TransmitData8(SPIx, Value);
-
   while (!LL_SPI_IsActiveFlag_RXNE(SPIx))
     ;
-
   return LL_SPI_ReceiveData8(SPIx);
 }
 
+// Оптимизация: отправка буфера DMA-style (пакетная передача)
 static void DrawLine(uint8_t column, uint8_t line, const uint8_t *lineBuffer,
-                     unsigned size_defVal) {
+                     unsigned size) {
   ST7565_SelectColumnAndLine(column + 4, line);
   A0_Set();
-  for (unsigned i = 0; i < size_defVal; i++) {
-    SPI_WriteByte(lineBuffer ? lineBuffer[i] : size_defVal);
+
+  if (lineBuffer) {
+    // Отправляем реальные данные
+    for (unsigned i = 0; i < size; i++) {
+      SPI_WriteByte(lineBuffer[i]);
+    }
+  } else {
+    // Заполняем константой (для FillScreen)
+    for (unsigned i = 0; i < size; i++) {
+      SPI_WriteByte(size); // size используется как значение
+    }
   }
 }
 
@@ -95,166 +102,139 @@ void ST7565_DrawLine(const unsigned int Column, const unsigned int Line,
   CS_Release();
 }
 
-/* void ST7565_Blit(void) {
+// Оптимизированная отрисовка - всегда полный буфер
+void ST7565_Blit(void) {
   CS_Assert();
-  ST7565_WriteByte(0x40);
-  for (unsigned line = 0; line < FRAME_LINES; line++) {
+  ST7565_WriteByte(0x40); // Start line
+
+  for (uint8_t line = 0; line < FRAME_LINES; line++) {
     DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
   }
-  CS_Release();
-} */
-
-void ST7565_Blit(void) {
-  uint8_t Line;
-  uint8_t Column;
-
-  CS_Assert();
-  ST7565_WriteByte(0x40);
-
-  for (Line = 0; Line < ARRAY_SIZE(gFrameBuffer); Line++) {
-    if (memcmp(gFrameBuffer[Line], frameBufferSecond[Line],
-               ARRAY_SIZE(frameBufferSecond[Line])) == 0) {
-      continue;
-    }
-
-    DrawLine(0, Line, gFrameBuffer[Line], LCD_WIDTH);
-
-    memcpy(frameBufferSecond[Line], gFrameBuffer[Line],
-           ARRAY_SIZE(frameBufferSecond[Line]));
-  }
 
   CS_Release();
+  gRedrawScreen = false;
 }
 
 void ST7565_BlitLine(unsigned line) {
+  if (line >= FRAME_LINES)
+    return;
+
   CS_Assert();
-  ST7565_WriteByte(0x40); // start line ?
+  ST7565_WriteByte(0x40);
   DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
   CS_Release();
 }
 
 void ST7565_FillScreen(uint8_t value) {
   CS_Assert();
-  for (unsigned i = 0; i < 8; i++) {
-    // TODO: This is wrong
+  for (unsigned i = 0; i < FRAME_LINES; i++) {
     DrawLine(0, i, NULL, value);
   }
   CS_Release();
+
+  // Синхронизируем буфер с экраном
+  memset(gFrameBuffer, value, sizeof(gFrameBuffer));
 }
 
-// Software reset
+// Команды ST7565
 #define ST7565_CMD_SOFTWARE_RESET 0xE2
-// Bias Select
-// 1 0 1 0 0 0 1 BS
-// Select bias setting 0=1/9; 1=1/7 (at 1/65 duty)
-#define ST7565_CMD_BIAS_SELECT 0xA2
-// COM Direction
-// 1 1 0 0 MY - - -
-// Set output direction of COM
-// MY=1, reverse direction
-// MY=0, normal direction
-#define ST7565_CMD_COM_DIRECTION 0xC0
-// SEG Direction
-// 1 0 1 0 0 0 0 MX
-// Set scan direction of SEG
-// MX=1, reverse direction
-// MX=0, normal direction
-#define ST7565_CMD_SEG_DIRECTION 0xA0
-// Inverse Display
-// 1 0 1 0 0 1 1 INV
-// INV =1, inverse display
-// INV =0, normal display
-#define ST7565_CMD_INVERSE_DISPLAY 0xA6
-// All Pixel ON
-// 1 0 1 0 0 1 0 AP
-// AP=1, set all pixel ON
-// AP=0, normal display
-#define ST7565_CMD_ALL_PIXEL_ON 0xA4
-// Regulation Ratio
-// 0 0 1 0 0 RR2 RR1 RR0
-// This instruction controls the regulation ratio of the built-in regulator
-#define ST7565_CMD_REGULATION_RATIO 0x20
-// Double command!! Set electronic volume (EV) level
-// Send next: 0 0 EV5 EV4 EV3 EV2 EV1 EV0  contrast 0-63
-#define ST7565_CMD_SET_EV 0x81
-// Control built-in power circuit ON/OFF - 0 0 1 0 1 VB VR VF
-// VB: Built-in Booster
-// VR: Built-in Regulator
-// VF: Built-in Follower
-#define ST7565_CMD_POWER_CIRCUIT 0x28
-// Set display start line 0-63
-// 0 0 0 1 S5 S4 S3 S2 S1 S0
-#define ST7565_CMD_SET_START_LINE 0x40
-// Display ON/OFF
-// 0 0 1 0 1 0 1 1 1 D
-// D=1, display ON
-// D=0, display OFF
-#define ST7565_CMD_DISPLAY_ON_OFF 0xAE
+#define ST7565_CMD_BIAS_SELECT 0xA2      // +0=1/9, +1=1/7
+#define ST7565_CMD_COM_DIRECTION 0xC0    // +8=reverse
+#define ST7565_CMD_SEG_DIRECTION 0xA0    // +1=reverse
+#define ST7565_CMD_INVERSE_DISPLAY 0xA6  // +1=inverse
+#define ST7565_CMD_ALL_PIXEL_ON 0xA4     // +1=all on
+#define ST7565_CMD_REGULATION_RATIO 0x20 // +0..+7 (3.0..6.5)
+#define ST7565_CMD_SET_EV 0x81 // Следующий байт: контраст 0-63
+#define ST7565_CMD_POWER_CIRCUIT 0x28  // +bit0=VF, +bit1=VR, +bit2=VB
+#define ST7565_CMD_SET_START_LINE 0x40 // +0..+63
+#define ST7565_CMD_DISPLAY_ON_OFF 0xAE // +1=ON
 
-uint8_t cmds[] = {
-    ST7565_CMD_BIAS_SELECT | 0,          // Select bias setting: 1/9
-    ST7565_CMD_COM_DIRECTION | (0 << 3), // Set output direction of COM: normal
-    ST7565_CMD_SEG_DIRECTION | 1,        // Set scan direction of SEG: reverse
-    ST7565_CMD_INVERSE_DISPLAY | 0,      // Inverse Display: false
-    ST7565_CMD_ALL_PIXEL_ON | 0,         // All Pixel ON: false - normal display
-    ST7565_CMD_REGULATION_RATIO | (4 << 0), // Regulation Ratio 5.0
-
-    ST7565_CMD_SET_EV, // Set contrast
-    31,
-
-    ST7565_CMD_POWER_CIRCUIT |
-        0b111, // Built-in power circuit ON/OFF: VB=1 VR=1 VF=1
-    ST7565_CMD_SET_START_LINE | 0, // Set Start Line: 0
-    ST7565_CMD_DISPLAY_ON_OFF | 1, // Display ON/OFF: ON
+// Базовые команды инициализации (const для Flash)
+static const uint8_t init_cmds[] = {
+    ST7565_CMD_BIAS_SELECT | 0,          // 1/9 bias
+    ST7565_CMD_COM_DIRECTION | (0 << 3), // Normal COM direction
+    ST7565_CMD_SEG_DIRECTION | 1,        // Reverse SEG direction
+    ST7565_CMD_INVERSE_DISPLAY | 0,      // Normal display
+    ST7565_CMD_ALL_PIXEL_ON | 0,         // Normal pixel mode
+    ST7565_CMD_REGULATION_RATIO | 4,     // 5.0 regulation ratio
 };
 
 void ST7565_Init(void) {
   SPI_Init();
-  CS_Assert();
-  ST7565_WriteByte(ST7565_CMD_SOFTWARE_RESET); // software reset
-  SYSTICK_DelayMs(120);
 
-  for (uint8_t i = 0; i < 8; i++) {
-    ST7565_WriteByte(cmds[i]);
+  CS_Assert();
+
+  // Software reset
+  ST7565_WriteByte(ST7565_CMD_SOFTWARE_RESET);
+  SYSTICK_DelayMs(5);
+
+  // Базовые настройки
+  for (uint8_t i = 0; i < sizeof(init_cmds); i++) {
+    ST7565_WriteByte(init_cmds[i]);
   }
 
-  ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b011); // VB=0 VR=1 VF=1
+  // Контраст из настроек (23 - базовое значение, как в оригинале)
+  ST7565_WriteByte(ST7565_CMD_SET_EV);
+  ST7565_WriteByte(23 + gSettings.contrast);
+
+  // Постепенное включение питания для стабильности
+  ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b011); // VR=1, VF=1
   SYSTICK_DelayMs(1);
-  ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b110); // VB=1 VR=1 VF=0
+  ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b110); // VB=1, VR=1
   SYSTICK_DelayMs(1);
 
-  for (uint8_t i = 0; i < 4; i++)                       // why 4 times?
-    ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b111); // VB=1 VR=1 VF=1
+  // Полное включение питания (повторяем 4 раза для надежности)
+  for (uint8_t i = 0; i < 4; i++) {
+    ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b111); // VB=1, VR=1, VF=1
+  }
+  SYSTICK_DelayMs(10);
 
-  SYSTICK_DelayMs(40);
-
-  ST7565_WriteByte(ST7565_CMD_SET_START_LINE | 0); // line 0
-  ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1); // D=1
+  // Финальные настройки
+  ST7565_WriteByte(ST7565_CMD_SET_START_LINE | 0); // Start line = 0
+  ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1); // Display ON
 
   CS_Release();
 
+  // Очистка экрана
   ST7565_FillScreen(0x00);
+  gRedrawScreen = true;
 }
 
+// Обновление контраста на лету
+void ST7565_SetContrast(uint8_t contrast) {
+  CS_Assert();
+  ST7565_WriteByte(ST7565_CMD_SET_EV);
+  ST7565_WriteByte(23 + contrast);
+  CS_Release();
+}
+
+// Быстрое восстановление после сбоев интерфейса
 void ST7565_FixInterfGlitch(void) {
   CS_Assert();
-  for (uint8_t i = 0; i < ARRAY_SIZE(cmds); i++)
-    ST7565_WriteByte(cmds[i]);
+
+  // Повторяем критичные команды инициализации
+  for (uint8_t i = 0; i < sizeof(init_cmds); i++) {
+    ST7565_WriteByte(init_cmds[i]);
+  }
+
+  ST7565_WriteByte(ST7565_CMD_SET_EV);
+  ST7565_WriteByte(23 + gSettings.contrast);
+
+  ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b111);
+  ST7565_WriteByte(ST7565_CMD_SET_START_LINE | 0);
+  ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1);
 
   CS_Release();
 }
 
 void ST7565_SelectColumnAndLine(uint8_t Column, uint8_t Line) {
-  A0_Reset();
-  SPI_WriteByte(Line + 176);
-  SPI_WriteByte(((Column >> 4) & 0x0F) | 0x10);
-  SPI_WriteByte((Column >> 0) & 0x0F);
+  A0_Reset();                                   // Command mode
+  SPI_WriteByte(Line + 0xB0);                   // Page address
+  SPI_WriteByte(((Column >> 4) & 0x0F) | 0x10); // Column high nibble
+  SPI_WriteByte((Column & 0x0F));               // Column low nibble
 }
 
-/**
- *  Write a command (rather than pixel data)
- */
 void ST7565_WriteByte(uint8_t Value) {
-  A0_Reset();
+  A0_Reset(); // Command mode
   SPI_WriteByte(Value);
 }

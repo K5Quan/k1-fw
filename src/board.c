@@ -98,6 +98,8 @@ void BOARD_ADC_Init(void) {
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
                                 LL_ADC_SAMPLINGTIME_41CYCLES_5);
+  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
+                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
 
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))

@@ -123,6 +123,8 @@ INC_DIRS := -I./src/config \
 LDFLAGS  := $(COMMON_FLAGS) $(OPTIMIZATION) \
             -nostartfiles \
             -Tfirmware.ld \
+			--specs=nano.specs \
+            -lc -lnosys -lm \
             -Wl,--gc-sections \
             -Wl,--build-id=none \
             -Wl,--print-memory-usage \
