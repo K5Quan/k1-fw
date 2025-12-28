@@ -18,13 +18,10 @@ void BACKLIGHT_TurnOn(void) {
   backlightOn = true;
 
   BACKLIGHT_SetBrightness(255);
-
-  gBacklightCountdown_500ms = 2 * 30;
 }
 
 void BACKLIGHT_TurnOff() {
   BACKLIGHT_SetBrightness(0);
-  gBacklightCountdown_500ms = 0;
   backlightOn = false;
 }
 
@@ -47,3 +44,4 @@ void BACKLIGHT_SetBrightness(uint8_t brigtness) {
 }
 
 uint8_t BACKLIGHT_GetBrightness(void) { return currentBrightness; }
+void BACKLIGHT_UpdateTimer(void) {}

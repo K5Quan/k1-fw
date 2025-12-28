@@ -247,7 +247,7 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
     break;
   case SETTING_BACKLIGHT:
     gSettings.backlight = v;
-    BACKLIGHT_InitHardware();
+    BACKLIGHT_SetBrightness(v);
     break;
   case SETTING_TXTIME:
     gSettings.txTime = v;
@@ -291,7 +291,7 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
     break;
   case SETTING_BRIGHTNESS_H:
     gSettings.brightness = v;
-    BACKLIGHT_InitHardware();
+    BACKLIGHT_SetBrightness(v);
     break;
   case SETTING_BRIGHTNESS_L:
     gSettings.brightnessLow = v;

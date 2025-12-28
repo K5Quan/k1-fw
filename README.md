@@ -17,7 +17,7 @@ g++ k5prog.c -o k5prog
 ## Flash
 
 ```sh 
-./k5prog/k5prog -F -YYYYY -b ./bin/firmware.bin
+python3 flash.py ./bin/firmware.bin -p /dev/ttyUSB0    
 ```
 
 ## Credits

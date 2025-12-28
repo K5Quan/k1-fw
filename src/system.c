@@ -140,7 +140,7 @@ void initDisplay() {
   LogC(LOG_C_BRIGHT_WHITE, "DISPLAY");
   ST7565_Init();
   LogC(LOG_C_BRIGHT_WHITE, "BACKLIGHT");
-  BACKLIGHT_InitHardware();
+  // BACKLIGHT_InitHardware();
   BACKLIGHT_TurnOn();
 }
 
@@ -190,6 +190,7 @@ void SYS_Main() {
 
     // common: render 2 times per second minimum
     if (Now() - gLastRender >= 500) {
+      BACKLIGHT_UpdateTimer();
       gRedrawScreen = true;
     }
 
