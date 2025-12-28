@@ -16,7 +16,6 @@ class Flasher:
     def __init__(self, port):
         self.ser = serial.Serial(port, BAUDRATE, timeout=5, write_timeout=5)
         self.buf = bytearray()
-        time.sleep(0.5)
 
     def xor(self, data, off, sz):
         for i in range(sz):
