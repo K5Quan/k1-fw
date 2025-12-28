@@ -104,6 +104,8 @@ static bool scan_ptt(void) { return GPIO_IsPttPressed(); }
 // FSM обработка
 // ============================================================================
 
+static bool gkeyWasLongPressed[KEY_COUNT];
+
 static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
   key_context_t *ctx = &g_keys[key];
 
@@ -138,6 +140,12 @@ static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
     if (!is_pressed) {
       ctx->state = STATE_RELEASE_DEBOUNCE;
       ctx->counter = 0;
+      break;
+    }
+    // Переход в holdwait
+    if (g_timing.hold_delay_ms > 0) {
+      ctx->state = STATE_HOLD_WAIT;
+      ctx->counter = 0;
     }
     break;
 
@@ -145,19 +153,35 @@ static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
     if (!is_pressed) {
       ctx->state = STATE_RELEASE_DEBOUNCE;
       ctx->counter = 0;
-    } else if (++ctx->counter >= g_timing.hold_delay_ms) {
-      // Кнопка удерживается достаточно долго
+      break;
+    }
+    if (ctx->counter >= g_timing.hold_delay_ms) {
       ctx->state = STATE_HOLD;
       ctx->counter = 0;
-      if (g_callback) {
+      gkeyWasLongPressed[key] = true;
+      if (g_callback)
         g_callback(key, KEY_EVENT_HOLD);
-      }
-
-      // Если включен автоповтор
-      if (g_timing.repeat_enabled) {
+      if (g_timing.repeat_enabled)
         ctx->state = STATE_REPEAT;
-      }
+      break;
     }
+    ctx->counter++;
+    break;
+
+  case STATE_RELEASE_DEBOUNCE:
+    if (is_pressed) {
+      ctx->state = STATE_PRESSED; // повторное нажатие
+      break;
+    }
+    if (ctx->counter >= g_timing.debounce_ms) {
+      ctx->state = STATE_IDLE;
+      ctx->counter = 0;
+      if (g_callback && !(gkeyWasLongPressed[key])) {
+        g_callback(key, KEY_EVENT_RELEASE);
+      }
+      gkeyWasLongPressed[key] = false;
+    }
+    ctx->counter++;
     break;
 
   case STATE_HOLD:
@@ -175,20 +199,6 @@ static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
       ctx->counter = 0;
       if (g_callback) {
         g_callback(key, KEY_EVENT_REPEAT);
-      }
-    }
-    break;
-
-  case STATE_RELEASE_DEBOUNCE:
-    if (is_pressed) {
-      // Кнопка снова нажата до окончания дребезга
-      ctx->state = STATE_PRESSED;
-    } else if (++ctx->counter >= g_timing.debounce_ms) {
-      // Кнопка действительно отпущена
-      ctx->state = STATE_IDLE;
-      ctx->counter = 0;
-      if (g_callback) {
-        g_callback(key, KEY_EVENT_RELEASE);
       }
     }
     break;
