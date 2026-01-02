@@ -77,12 +77,12 @@ static bool resetNeeded() {
 
 static void loadSettingsOrReset() {
   SETTINGS_Load();
-  if (gSettings.batteryCalibration > 2154 ||
+  /* if (gSettings.batteryCalibration > 2154 ||
       gSettings.batteryCalibration < 1900) {
     gSettings.batteryCalibration = 0;
     EEPROM_WriteBuffer(0, DEAD_BUF, 2);
     NVIC_SystemReset();
-  }
+  } */
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {

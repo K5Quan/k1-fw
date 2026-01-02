@@ -5,7 +5,7 @@ static uint32_t gTickMultiplier;
 static volatile uint32_t gGlobalSysTickCounter;
 
 void SYSTICK_Init(void) {
-  SysTick_Config(48000);
+  SysTick_Config(480000);
   gTickMultiplier = 48;
 
   NVIC_SetPriority(SysTick_IRQn, 0);
