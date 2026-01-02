@@ -116,20 +116,40 @@ void usb_fs_init(void) {
   cached_sector = 0xFFFFFFFF;
   cache_dirty = false;
 
-  // Инициализация FAT (первые два entry зарезервированы)
+  // Проверяем, инициализирована ли уже флешка
+  uint8_t check[4];
+  PY25Q16_ReadBuffer(FLASH_FAT_OFFSET, check, 4);
+  
+  // Если уже инициализирована (первые байты FAT правильные), не трогаем
+  if (check[0] == BPB_MEDIA && check[1] == 0xff && 
+      check[2] == 0xff && check[3] == 0xff) {
+    return; // Уже инициализирована
+  }
+
+  // Полная инициализация
   memset(sector_cache, 0, SECTOR_SIZE);
+  
+  // FAT1: Инициализация первых entry
   sector_cache[0] = BPB_MEDIA;
   sector_cache[1] = 0xff;
   sector_cache[2] = 0xff;
   sector_cache[3] = 0xff;
 
-  // Стираем первый 4KB блок FAT
   PY25Q16_SectorErase(FLASH_FAT_OFFSET);
   PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, true);
 
-  // Копируем FAT2 (тоже в первом 4KB блоке)
+  // FAT2: копия FAT1
+  PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
   PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE, 
                       sector_cache, SECTOR_SIZE, true);
+
+  // Root Directory: создаём пустой (все нули = нет файлов)
+  memset(sector_cache, 0, SECTOR_SIZE);
+  PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
+  for (int i = 0; i < ROOT_SECTORS; i++) {
+    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, 
+                       sector_cache, SECTOR_SIZE, true);
+  }
 }
 
 // Прочитать FAT entry
@@ -285,34 +305,39 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size) {
 
   if (idx != -1) {
     // Удалить старые кластеры
-    free_clusters(entry.first_clusterLO);
+    if (entry.first_clusterLO >= 2) {
+      free_clusters(entry.first_clusterLO);
+    }
   }
 
   // Выделить новые кластеры
-  uint16_t first_cluster = allocate_clusters(size);
-  if (first_cluster == 0 && size > 0) {
-    return -1;
-  }
+  uint16_t first_cluster = 0;
+  if (size > 0) {
+    first_cluster = allocate_clusters(size);
+    if (first_cluster == 0) {
+      return -1; // Нет места
+    }
 
-  // Записать данные по кластерам (каждый кластер = 4KB = размер стирания)
-  uint16_t cluster = first_cluster;
-  uint32_t written = 0;
+    // Записать данные по кластерам (каждый кластер = 4KB = размер стирания)
+    uint16_t cluster = first_cluster;
+    uint32_t written = 0;
 
-  while (written < size && cluster >= 2 && cluster < 0xFFF8) {
-    uint32_t flash_addr = FLASH_DATA_OFFSET + 
-                         (cluster - 2) * SECTORS_PER_CLUSTER * SECTOR_SIZE;
+    while (written < size && cluster >= 2 && cluster < 0xFFF8) {
+      uint32_t flash_addr = FLASH_DATA_OFFSET + 
+                           (cluster - 2) * SECTORS_PER_CLUSTER * SECTOR_SIZE;
 
-    uint32_t to_write = (size - written) > (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                            ? (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                            : (size - written);
+      uint32_t to_write = (size - written) > (SECTORS_PER_CLUSTER * SECTOR_SIZE)
+                              ? (SECTORS_PER_CLUSTER * SECTOR_SIZE)
+                              : (size - written);
 
-    // Стираем весь кластер (4KB)
-    PY25Q16_SectorErase(flash_addr);
-    // Записываем данные
-    PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
+      // Стираем весь кластер (4KB)
+      PY25Q16_SectorErase(flash_addr);
+      // Записываем данные
+      PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
 
-    written += to_write;
-    cluster = read_fat_entry(cluster);
+      written += to_write;
+      cluster = read_fat_entry(cluster);
+    }
   }
 
   // Обновить directory entry
@@ -453,6 +478,41 @@ uint32_t usb_fs_get_free_space(void) {
 
 uint32_t usb_fs_get_total_space(void) { 
   return DATA_SECTORS * SECTOR_SIZE; 
+}
+
+// Форматирование файловой системы
+void usb_fs_format(void) {
+  cached_sector = 0xFFFFFFFF;
+  cache_dirty = false;
+
+  memset(sector_cache, 0, SECTOR_SIZE);
+  
+  // FAT1: Инициализация первых entry
+  sector_cache[0] = BPB_MEDIA;
+  sector_cache[1] = 0xff;
+  sector_cache[2] = 0xff;
+  sector_cache[3] = 0xff;
+
+  PY25Q16_SectorErase(FLASH_FAT_OFFSET);
+  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, true);
+
+  // FAT2: копия FAT1
+  PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
+  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE, 
+                      sector_cache, SECTOR_SIZE, true);
+
+  // Root Directory: очистка
+  memset(sector_cache, 0, SECTOR_SIZE);
+  PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
+  for (int i = 0; i < ROOT_SECTORS; i++) {
+    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, 
+                       sector_cache, SECTOR_SIZE, true);
+  }
+  
+  // Очистка первых нескольких блоков данных (опционально)
+  for (int i = 0; i < 4; i++) {
+    PY25Q16_SectorErase(FLASH_DATA_OFFSET + i * FLASH_ERASE_SIZE);
+  }
 }
 
 // USB callbacks

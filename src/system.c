@@ -3,6 +3,7 @@
 #include "driver/backlight.h"
 #include "driver/battery.h"
 #include "driver/eeprom.h"
+#include "driver/fat.h"
 #include "driver/keyboard.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
@@ -14,6 +15,7 @@
 #include "helper/scan.h"
 #include "radio.h"
 #include "settings.h"
+#include "settings_ini.h"
 #include "ui/graphics.h"
 #include "ui/spectrum.h"
 #include "ui/statusline.h"
@@ -76,7 +78,7 @@ static bool resetNeeded() {
 }
 
 static void loadSettingsOrReset() {
-  SETTINGS_Load();
+  SETTINGS_LoadFromINI(&gSettings, "settings.ini");
   /* if (gSettings.batteryCalibration > 2154 ||
       gSettings.batteryCalibration < 1900) {
     gSettings.batteryCalibration = 0;
@@ -157,6 +159,14 @@ void SYS_Main() {
     gSettings.batteryCalibration = 2000;
     gSettings.backlight = 5;
     APPS_run(APP_RESET);
+  } else if (keyboard_is_pressed(KEY_0)) {
+    usb_fs_format();
+    SETTINGS_Export("settings.ini");
+    while (keyboard_is_pressed(KEY_0)) {
+      keyboard_tick_1ms();
+      SYSTICK_DelayMs(1);
+    }
+    NVIC_SystemReset();
   } else {
     loadSettingsOrReset();
     BATTERY_UpdateBatteryInfo();
