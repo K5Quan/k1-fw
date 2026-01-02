@@ -14,7 +14,6 @@
 #include "files.h"
 #include "finput.h"
 #include "lootlist.h"
-#include "reset.h"
 #include "scaner.h"
 #include "settings.h"
 #include "textinput.h"
@@ -62,7 +61,6 @@ const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_SCANER,    //
     APP_CH_SCAN,   //
     APP_BAND_SCAN, //
-    APP_RESET,     //
     APP_FILES,     //
     APP_ABOUT,     //
 };
@@ -77,8 +75,6 @@ const App apps[APPS_COUNT] = {
                       SETTINGS_key, SETTINGS_deinit},
     [APP_APPS_LIST] = {"Run app", APPSLIST_init, NULL, APPSLIST_render,
                        APPSLIST_key, NULL},
-    [APP_RESET] = {"Reset", RESET_Init, RESET_Update, RESET_Render, RESET_key,
-                   NULL},
     [APP_CH_CFG] = {"CH cfg", CHCFG_init, NULL, CHCFG_render, CHCFG_key,
                     CHCFG_deinit},
     [APP_CH_LIST] = {"Channels", CHLIST_init, NULL, CHLIST_render, CHLIST_key,

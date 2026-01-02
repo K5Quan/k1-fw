@@ -1,4 +1,5 @@
 #include "channels.h"
+#include "../channels_csv.h"
 #include "../driver/eeprom.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
@@ -32,15 +33,19 @@ static uint32_t GetChannelOffset(int16_t num) {
 }
 
 uint16_t CHANNELS_GetCountMax(void) {
-  uint16_t n = (getChannelsEnd() - CHANNELS_OFFSET) / CH_SIZE;
-  return n < SCANLIST_MAX ? n : SCANLIST_MAX;
+  return 1024;
+  /* uint16_t n = (getChannelsEnd() - CHANNELS_OFFSET) / CH_SIZE;
+  return n < SCANLIST_MAX ? n : SCANLIST_MAX; */
 }
 
 void CHANNELS_Load(int16_t num, CH *p) {
   if (num >= 0) {
-    EEPROM_ReadBuffer(GetChannelOffset(num), p, CH_SIZE);
-    /* Log(">> R CH%u '%s': f=%u, radio=%u, type=%s", num, p->name, p->rxF,
-        p->radio, CH_TYPE_NAMES[p->meta.type]); */
+    // EEPROM_ReadBuffer(GetChannelOffset(num), p, CH_SIZE);
+
+    CHANNEL_LoadCSV("CHANNELS.CSV", num, p);
+
+    Log(">> R CH%u '%s': f=%u, radio=%u, type=%s", num, p->name, p->rxF,
+        p->radio, CH_TYPE_NAMES[p->meta.type]);
   }
 }
 
@@ -48,7 +53,8 @@ void CHANNELS_Save(int16_t num, CH *p) {
   if (num >= 0) {
     Log(">> W CH%u OFS=%u '%s': f=%u, radio=%u", num, GetChannelOffset(num),
         p->name, p->rxF, p->radio);
-    EEPROM_WriteBuffer(GetChannelOffset(num), p, CH_SIZE);
+    // EEPROM_WriteBuffer(GetChannelOffset(num), p, CH_SIZE);
+    CHANNEL_SaveCSV("CHANNELS.CSV", num, p);
   }
 }
 

@@ -77,14 +77,22 @@ static bool resetNeeded() {
   return memcmp(buf, DEAD_BUF, 2) == 0;
 }
 
+static void reset() {
+  usb_fs_format();
+  SETTINGS_Export("settings.ini");
+  while (keyboard_is_pressed(KEY_0)) {
+    keyboard_tick_1ms();
+    SYSTICK_DelayMs(1);
+  }
+  NVIC_SystemReset();
+}
+
 static void loadSettingsOrReset() {
   SETTINGS_LoadFromINI(&gSettings, "settings.ini");
-  /* if (gSettings.batteryCalibration > 2154 ||
+  if (gSettings.batteryCalibration > 2154 ||
       gSettings.batteryCalibration < 1900) {
-    gSettings.batteryCalibration = 0;
-    EEPROM_WriteBuffer(0, DEAD_BUF, 2);
-    NVIC_SystemReset();
-  } */
+    reset();
+  }
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
@@ -154,19 +162,8 @@ void SYS_Main() {
   printf("kbd init ok\n");
 
   keyboard_tick_1ms();
-  if (/* resetNeeded() || */ keyboard_is_pressed(KEY_EXIT)) {
-    initDisplay();
-    gSettings.batteryCalibration = 2000;
-    gSettings.backlight = 5;
-    APPS_run(APP_RESET);
-  } else if (keyboard_is_pressed(KEY_0)) {
-    usb_fs_format();
-    SETTINGS_Export("settings.ini");
-    while (keyboard_is_pressed(KEY_0)) {
-      keyboard_tick_1ms();
-      SYSTICK_DelayMs(1);
-    }
-    NVIC_SystemReset();
+  if (keyboard_is_pressed(KEY_0)) {
+    reset();
   } else {
     loadSettingsOrReset();
     BATTERY_UpdateBatteryInfo();
@@ -188,9 +185,7 @@ void SYS_Main() {
 
     SETTINGS_UpdateSave();
 
-    if (gCurrentApp != APP_RESET) {
-      SCAN_Check();
-    }
+    SCAN_Check();
 
     APPS_update();
     if (Now() - appsKeyboardTimer >= 1) {

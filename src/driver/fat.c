@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define _VOLUME_CREATE_DATE FAT_MK_DATE(2025, 1, 2)
+#define _VOLUME_CREATE_DATE FAT_MK_DATE(2026, 1, 2)
 #define _VOLUME_CREATE_TIME FAT_MK_TIME(12, 0, 0)
 
 #define VOLUME_ID ((_VOLUME_CREATE_DATE) << 16) | (_VOLUME_CREATE_TIME)
@@ -18,11 +18,12 @@
 // Параметры файловой системы
 #define FLASH_SIZE (2 * 1024 * 1024)             // 2MB
 #define TOTAL_SECTORS (FLASH_SIZE / SECTOR_SIZE) // 4096 секторов
-#define SECTORS_PER_CLUSTER 8                    // 4KB кластеры = размер стирания!
+#define SECTORS_PER_CLUSTER 8 // 4KB кластеры = размер стирания!
 #define RESERVED_SECTORS 1
 #define FAT_COPIES 2
 #define ROOT_ENTRIES 512
 #define SECTORS_PER_FAT 16
+#define CLUSTER_SIZE (SECTORS_PER_CLUSTER * SECTOR_SIZE)
 
 // Вычисляемые значения
 #define FAT_START_SECTOR RESERVED_SECTORS
@@ -41,7 +42,8 @@
 static_assert((FLASH_FAT_OFFSET % FLASH_ERASE_SIZE) == 0, "FAT not aligned");
 static_assert((FLASH_ROOT_OFFSET % FLASH_ERASE_SIZE) == 0, "Root not aligned");
 static_assert((FLASH_DATA_OFFSET % FLASH_ERASE_SIZE) == 0, "Data not aligned");
-static_assert((SECTORS_PER_CLUSTER * SECTOR_SIZE) == FLASH_ERASE_SIZE, "Cluster size must match erase size");
+static_assert((SECTORS_PER_CLUSTER * SECTOR_SIZE) == FLASH_ERASE_SIZE,
+              "Cluster size must match erase size");
 
 // Кэш для одного сектора (экономия RAM)
 static uint8_t sector_cache[SECTOR_SIZE];
@@ -74,15 +76,19 @@ static void flush_cache(void) {
   if (cache_dirty && cached_sector != 0xFFFFFFFF) {
     uint32_t flash_addr = 0;
 
-    if (cached_sector >= FAT_START_SECTOR && cached_sector < ROOT_START_SECTOR) {
-      flash_addr = FLASH_FAT_OFFSET + (cached_sector - FAT_START_SECTOR) * SECTOR_SIZE;
-    } else if (cached_sector >= ROOT_START_SECTOR && cached_sector < DATA_START_SECTOR) {
-      flash_addr = FLASH_ROOT_OFFSET + (cached_sector - ROOT_START_SECTOR) * SECTOR_SIZE;
+    if (cached_sector >= FAT_START_SECTOR &&
+        cached_sector < ROOT_START_SECTOR) {
+      flash_addr =
+          FLASH_FAT_OFFSET + (cached_sector - FAT_START_SECTOR) * SECTOR_SIZE;
+    } else if (cached_sector >= ROOT_START_SECTOR &&
+               cached_sector < DATA_START_SECTOR) {
+      flash_addr =
+          FLASH_ROOT_OFFSET + (cached_sector - ROOT_START_SECTOR) * SECTOR_SIZE;
     } else if (cached_sector >= DATA_START_SECTOR) {
-      flash_addr = FLASH_DATA_OFFSET + (cached_sector - DATA_START_SECTOR) * SECTOR_SIZE;
+      flash_addr =
+          FLASH_DATA_OFFSET + (cached_sector - DATA_START_SECTOR) * SECTOR_SIZE;
     }
 
-    // ВАЖНО: Append=false чтобы использовать кэш в py25q16.c
     PY25Q16_WriteBuffer(flash_addr, sector_cache, SECTOR_SIZE, false);
     cache_dirty = false;
   }
@@ -119,16 +125,16 @@ void usb_fs_init(void) {
   // Проверяем, инициализирована ли уже флешка
   uint8_t check[4];
   PY25Q16_ReadBuffer(FLASH_FAT_OFFSET, check, 4);
-  
+
   // Если уже инициализирована (первые байты FAT правильные), не трогаем
-  if (check[0] == BPB_MEDIA && check[1] == 0xff && 
-      check[2] == 0xff && check[3] == 0xff) {
+  if (check[0] == BPB_MEDIA && check[1] == 0xff && check[2] == 0xff &&
+      check[3] == 0xff) {
     return; // Уже инициализирована
   }
 
   // Полная инициализация
   memset(sector_cache, 0, SECTOR_SIZE);
-  
+
   // FAT1: Инициализация первых entry
   sector_cache[0] = BPB_MEDIA;
   sector_cache[1] = 0xff;
@@ -140,15 +146,15 @@ void usb_fs_init(void) {
 
   // FAT2: копия FAT1
   PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE, 
+  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE,
                       sector_cache, SECTOR_SIZE, true);
 
   // Root Directory: создаём пустой (все нули = нет файлов)
   memset(sector_cache, 0, SECTOR_SIZE);
   PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
   for (int i = 0; i < ROOT_SECTORS; i++) {
-    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, 
-                       sector_cache, SECTOR_SIZE, true);
+    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, sector_cache,
+                        SECTOR_SIZE, true);
   }
 }
 
@@ -192,38 +198,50 @@ static uint16_t find_free_cluster(void) {
 }
 
 // Выделить кластеры для файла
-static uint16_t allocate_clusters(uint32_t size) {
-  uint32_t clusters_needed = (size + (SECTORS_PER_CLUSTER * SECTOR_SIZE) - 1) /
-                             (SECTORS_PER_CLUSTER * SECTOR_SIZE);
+static uint16_t allocate_clusters(uint16_t *first_cluster,
+                                  uint32_t additional_bytes) {
+  uint32_t current_size = 0; // If new file
+  uint16_t last_cluster = 0;
 
-  if (clusters_needed == 0)
-    clusters_needed = 1;
-
-  uint16_t first_cluster = 0;
-  uint16_t prev_cluster = 0;
-
-  for (uint32_t i = 0; i < clusters_needed; i++) {
-    uint16_t cluster = find_free_cluster();
-    if (cluster == 0) {
-      return 0; // Нет места
+  if (*first_cluster != 0) {
+    // Calculate current size from FAT chain
+    uint16_t cluster = *first_cluster;
+    while (cluster >= 2 && cluster < 0xFFF8) {
+      current_size += CLUSTER_SIZE;
+      last_cluster = cluster;
+      cluster = read_fat_entry(cluster);
     }
-
-    if (first_cluster == 0) {
-      first_cluster = cluster;
-    }
-
-    if (prev_cluster != 0) {
-      write_fat_entry(prev_cluster, cluster);
-    }
-
-    prev_cluster = cluster;
+    if (last_cluster == 0)
+      last_cluster = *first_cluster;
   }
 
-  if (prev_cluster != 0) {
-    write_fat_entry(prev_cluster, 0xFFFF);
+  uint32_t new_size = current_size + additional_bytes;
+  uint32_t clusters_needed = (new_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
+  uint32_t current_clusters = (current_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
+
+  if (clusters_needed > current_clusters) {
+    uint16_t clusters_to_add = clusters_needed - current_clusters;
+
+    if (*first_cluster == 0) {
+      *first_cluster = find_free_cluster();
+      if (*first_cluster == 0)
+        return 0;
+      write_fat_entry(*first_cluster, 0xFFFF);
+      last_cluster = *first_cluster;
+      clusters_to_add--;
+    }
+
+    for (uint16_t i = 0; i < clusters_to_add; i++) {
+      uint16_t new_cluster = find_free_cluster();
+      if (new_cluster == 0)
+        return 0;
+      write_fat_entry(last_cluster, new_cluster);
+      write_fat_entry(new_cluster, 0xFFFF);
+      last_cluster = new_cluster;
+    }
   }
 
-  return first_cluster;
+  return last_cluster; // Return last cluster for convenience, or 0 if error
 }
 
 // Освободить кластеры
@@ -239,7 +257,8 @@ static void free_clusters(uint16_t first_cluster) {
 
 // Найти файл в root directory
 static int find_file_entry(const char *name, fat_dir_entry_t *entry) {
-  for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR; sector++) {
+  for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR;
+       sector++) {
     read_sector_to_cache(sector);
 
     for (int i = 0; i < (SECTOR_SIZE / 32); i++) {
@@ -269,7 +288,8 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
 
   if (idx == -1) {
     // Найти свободную запись
-    for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR; sector++) {
+    for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR;
+         sector++) {
       read_sector_to_cache(sector);
 
       for (int i = 0; i < (SECTOR_SIZE / 32); i++) {
@@ -299,43 +319,63 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
 }
 
 // Записать файл
-int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size) {
+int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
+                      bool append) {
   fat_dir_entry_t entry;
   int idx = find_file_entry(name, &entry);
+  bool existed = (idx != -1);
 
-  if (idx != -1) {
-    // Удалить старые кластеры
-    if (entry.first_clusterLO >= 2) {
-      free_clusters(entry.first_clusterLO);
+  uint32_t old_size = existed ? entry.file_size : 0;
+  uint16_t first_cluster = existed ? entry.first_clusterLO : 0;
+  uint32_t new_size = append ? old_size + size : size;
+
+  if (!append && existed) {
+    if (first_cluster >= 2) {
+      free_clusters(first_cluster);
     }
+    first_cluster = 0;
   }
 
-  // Выделить новые кластеры
-  uint16_t first_cluster = 0;
-  if (size > 0) {
-    first_cluster = allocate_clusters(size);
-    if (first_cluster == 0) {
+  if (new_size > 0) {
+    if (allocate_clusters(&first_cluster, new_size - old_size) == 0) {
       return -1; // Нет места
     }
 
-    // Записать данные по кластерам (каждый кластер = 4KB = размер стирания)
+    // Теперь пишем данные
+    uint32_t start_offset = append ? old_size : 0;
+    uint32_t position = start_offset;
     uint16_t cluster = first_cluster;
     uint32_t written = 0;
 
+    // Переходим к начальному кластеру для записи
+    while (position >= CLUSTER_SIZE) {
+      cluster = read_fat_entry(cluster);
+      position -= CLUSTER_SIZE;
+    }
+
+    uint32_t offset_in_cluster = position;
+
     while (written < size && cluster >= 2 && cluster < 0xFFF8) {
-      uint32_t flash_addr = FLASH_DATA_OFFSET + 
-                           (cluster - 2) * SECTORS_PER_CLUSTER * SECTOR_SIZE;
+      uint32_t flash_addr =
+          FLASH_DATA_OFFSET + (cluster - 2) * CLUSTER_SIZE + offset_in_cluster;
 
-      uint32_t to_write = (size - written) > (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                              ? (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                              : (size - written);
+      uint32_t to_write = size - written;
+      if (to_write > CLUSTER_SIZE - offset_in_cluster) {
+        to_write = CLUSTER_SIZE - offset_in_cluster;
+      }
 
-      // Стираем весь кластер (4KB)
-      PY25Q16_SectorErase(flash_addr);
-      // Записываем данные
-      PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
+      bool new_cluster = (offset_in_cluster == 0 &&
+                          (append ? (old_size % CLUSTER_SIZE == 0) : true));
+
+      if (new_cluster) {
+        PY25Q16_SectorErase(flash_addr);
+        PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
+      } else {
+        PY25Q16_WriteBuffer(flash_addr, data + written, to_write, false);
+      }
 
       written += to_write;
+      offset_in_cluster = 0;
       cluster = read_fat_entry(cluster);
     }
   }
@@ -345,7 +385,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size) {
   memcpy(entry.name, name, 11);
   entry.attr = 0x20; // Archive
   entry.first_clusterLO = first_cluster;
-  entry.file_size = size;
+  entry.file_size = new_size;
   entry.create_date = _VOLUME_CREATE_DATE;
   entry.create_time = _VOLUME_CREATE_TIME;
   entry.write_date = _VOLUME_CREATE_DATE;
@@ -354,36 +394,85 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size) {
   return update_file_entry(name, &entry);
 }
 
-// Прочитать файл
-int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size) {
+// Открыть файл для чтения
+int usb_fs_open(const char *name, usb_fs_handle_t *handle) {
   fat_dir_entry_t entry;
 
   if (find_file_entry(name, &entry) == -1) {
     return -1;
   }
 
-  if (*size < entry.file_size) {
+  handle->first_cluster = entry.first_clusterLO;
+  handle->file_size = entry.file_size;
+  handle->position = 0;
+  handle->current_cluster = entry.first_clusterLO;
+  handle->current_position_in_cluster = 0;
+
+  return 0;
+}
+
+// Прочитать байты из файла
+size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len) {
+  size_t read = 0;
+
+  while (len > 0 && handle->position < handle->file_size) {
+    if (handle->current_cluster < 2 || handle->current_cluster >= 0xFFF8) {
+      break;
+    }
+
+    uint32_t remaining_in_cluster =
+        CLUSTER_SIZE - handle->current_position_in_cluster;
+    if (remaining_in_cluster == 0) {
+      handle->current_cluster = read_fat_entry(handle->current_cluster);
+      handle->current_position_in_cluster = 0;
+      remaining_in_cluster = CLUSTER_SIZE;
+      continue;
+    }
+
+    uint32_t to_read_this =
+        remaining_in_cluster < len ? remaining_in_cluster : len;
+    to_read_this = to_read_this < (handle->file_size - handle->position)
+                       ? to_read_this
+                       : (handle->file_size - handle->position);
+
+    uint32_t flash_addr = FLASH_DATA_OFFSET +
+                          (handle->current_cluster - 2) * CLUSTER_SIZE +
+                          handle->current_position_in_cluster;
+
+    PY25Q16_ReadBuffer(flash_addr, buf + read, to_read_this);
+
+    read += to_read_this;
+    len -= to_read_this;
+    handle->position += to_read_this;
+    handle->current_position_in_cluster += to_read_this;
+  }
+
+  return read;
+}
+
+// Прочитать файл (старый API)
+int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size) {
+  usb_fs_handle_t handle;
+  if (usb_fs_open(name, &handle) != 0) {
     return -1;
   }
 
-  uint16_t cluster = entry.first_clusterLO;
-  uint32_t read_bytes = 0;
+  uint32_t max_read = *size;
+  *size = 0;
 
-  while (read_bytes < entry.file_size && cluster >= 2 && cluster < 0xFFF8) {
-    uint32_t flash_addr = FLASH_DATA_OFFSET + 
-                         (cluster - 2) * SECTORS_PER_CLUSTER * SECTOR_SIZE;
-
-    uint32_t to_read = (entry.file_size - read_bytes) > (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                          ? (SECTORS_PER_CLUSTER * SECTOR_SIZE)
-                          : (entry.file_size - read_bytes);
-
-    PY25Q16_ReadBuffer(flash_addr, data + read_bytes, to_read);
-
-    read_bytes += to_read;
-    cluster = read_fat_entry(cluster);
+  uint8_t *ptr = data;
+  while (*size < handle.file_size && *size < max_read) {
+    size_t chunk = usb_fs_read_bytes(&handle, ptr, max_read - *size);
+    if (chunk == 0)
+      break;
+    ptr += chunk;
+    *size += chunk;
   }
 
-  *size = entry.file_size;
+  if (*size < handle.file_size) {
+    return -1; // Buffer too small
+  }
+
   return 0;
 }
 
@@ -444,7 +533,8 @@ int usb_fs_list_files(file_info_t *list, int max_count) {
 int usb_fs_get_file_count(void) {
   int count = 0;
 
-  for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR; sector++) {
+  for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR;
+       sector++) {
     read_sector_to_cache(sector);
 
     for (int i = 0; i < (SECTOR_SIZE / 32); i++) {
@@ -476,9 +566,7 @@ uint32_t usb_fs_get_free_space(void) {
   return free_clusters * SECTORS_PER_CLUSTER * SECTOR_SIZE;
 }
 
-uint32_t usb_fs_get_total_space(void) { 
-  return DATA_SECTORS * SECTOR_SIZE; 
-}
+uint32_t usb_fs_get_total_space(void) { return DATA_SECTORS * SECTOR_SIZE; }
 
 // Форматирование файловой системы
 void usb_fs_format(void) {
@@ -486,7 +574,7 @@ void usb_fs_format(void) {
   cache_dirty = false;
 
   memset(sector_cache, 0, SECTOR_SIZE);
-  
+
   // FAT1: Инициализация первых entry
   sector_cache[0] = BPB_MEDIA;
   sector_cache[1] = 0xff;
@@ -498,17 +586,17 @@ void usb_fs_format(void) {
 
   // FAT2: копия FAT1
   PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE, 
+  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE,
                       sector_cache, SECTOR_SIZE, true);
 
   // Root Directory: очистка
   memset(sector_cache, 0, SECTOR_SIZE);
   PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
   for (int i = 0; i < ROOT_SECTORS; i++) {
-    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, 
-                       sector_cache, SECTOR_SIZE, true);
+    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, sector_cache,
+                        SECTOR_SIZE, true);
   }
-  
+
   // Очистка первых нескольких блоков данных (опционально)
   for (int i = 0; i < 4; i++) {
     PY25Q16_SectorErase(FLASH_DATA_OFFSET + i * FLASH_ERASE_SIZE);
@@ -516,9 +604,7 @@ void usb_fs_format(void) {
 }
 
 // USB callbacks
-void usb_fs_configure_done(void) { 
-  BOARD_ToggleRed(true); 
-}
+void usb_fs_configure_done(void) { BOARD_ToggleRed(true); }
 
 void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size) {
   *sector_num = TOTAL_SECTORS;
@@ -543,8 +629,8 @@ int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
     memcpy(buf, sector_cache, SECTOR_SIZE);
   } else if (sector >= DATA_START_SECTOR && sector < TOTAL_SECTORS) {
     // Data область
-    uint32_t flash_addr = FLASH_DATA_OFFSET + 
-                         (sector - DATA_START_SECTOR) * SECTOR_SIZE;
+    uint32_t flash_addr =
+        FLASH_DATA_OFFSET + (sector - DATA_START_SECTOR) * SECTOR_SIZE;
     PY25Q16_ReadBuffer(flash_addr, buf, SECTOR_SIZE);
   }
 
@@ -564,8 +650,8 @@ int usb_fs_sector_write(uint32_t sector, const uint8_t *buf, uint32_t size) {
     flush_cache();
   } else if (sector >= DATA_START_SECTOR && sector < TOTAL_SECTORS) {
     // Data область - пишем напрямую (py25q16.c сам обработает)
-    uint32_t flash_addr = FLASH_DATA_OFFSET + 
-                         (sector - DATA_START_SECTOR) * SECTOR_SIZE;
+    uint32_t flash_addr =
+        FLASH_DATA_OFFSET + (sector - DATA_START_SECTOR) * SECTOR_SIZE;
     PY25Q16_WriteBuffer(flash_addr, buf, SECTOR_SIZE, false);
   }
 

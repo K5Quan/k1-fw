@@ -206,7 +206,7 @@ int SETTINGS_SaveToINI(const Settings *settings, const char *filename) {
   append_line("");
 
   // Записать в файл
-  return usb_fs_write_file(fat_name, (uint8_t *)ini_buffer, ini_size);
+  return usb_fs_write_file(fat_name, (uint8_t *)ini_buffer, ini_size, false);
 }
 
 // Загрузить настройки из INI файла

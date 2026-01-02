@@ -106,11 +106,11 @@ const uint16_t PAGE_SIZES[6] = {
 };
 
 void SETTINGS_Save(void) {
-  EEPROM_WriteBuffer(SETTINGS_OFFSET, &gSettings, SETTINGS_SIZE);
+  // EEPROM_WriteBuffer(SETTINGS_OFFSET, &gSettings, SETTINGS_SIZE);
 }
 
 void SETTINGS_Load(void) {
-  EEPROM_ReadBuffer(SETTINGS_OFFSET, &gSettings, SETTINGS_SIZE);
+  // EEPROM_ReadBuffer(SETTINGS_OFFSET, &gSettings, SETTINGS_SIZE);
 }
 
 void SETTINGS_DelayedSave(void) { SETTINGS_Save(); }
