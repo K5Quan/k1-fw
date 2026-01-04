@@ -1,4 +1,5 @@
 #include "bands.h"
+#include "../channels_csv.h"
 #include "../driver/uart.h"
 #include "../external/printf/printf.h"
 #include "../radio.h"
@@ -91,13 +92,9 @@ static int16_t bandIndexByFreq(uint32_t f, bool preciseStep) {
 }
 
 void BANDS_Load(void) {
-  for (int16_t chNum = 0; chNum < CHANNELS_GetCountMax() - 2; ++chNum) {
-    if (CHANNELS_GetMeta(chNum).type != TYPE_BAND) {
-      continue;
-    }
-
+  for (int16_t chNum = 0; chNum < BANDS_COUNT_MAX; ++chNum) {
     CH ch;
-    CHANNELS_Load(chNum, &ch);
+    CHANNEL_LoadCSV("BANDS.CSV", chNum, &ch);
     allBands[allBandsSize] = (DBand){
         .mr = chNum,
         .s = ch.rxF,
@@ -130,7 +127,7 @@ void BANDS_SetRadioParamsFromCurrentBand() {
 
 // Set gCurrentBand, sets internal cursor in SL
 void BANDS_Select(int16_t num, bool copyToVfo) {
-  CHANNELS_Load(num, &gCurrentBand);
+  CHANNEL_LoadCSV("BANDS.CSV", num, &gCurrentBand);
   Log("Select Band %s", gCurrentBand.name);
   for (int16_t i = 0; i < gScanlistSize; ++i) {
     if (gScanlist[i] == num) {
@@ -167,7 +164,7 @@ Band BANDS_ByFrequency(uint32_t f) {
   int16_t index = bandIndexByFreq(f, false);
   if (index >= 0) {
     Band b;
-    CHANNELS_Load(allBands[index].mr, &b);
+    CHANNEL_LoadCSV("BANDS.CSV", allBands[index].mr, &b);
     return b;
   }
   return defaultBand;
@@ -206,7 +203,7 @@ bool BANDS_SelectBandRelativeByScanlist(bool next) {
 void BANDS_SaveCurrent(void) {
   // Log("BAND save i=%u, mr=%u", allBandIndex, allBands[allBandIndex].mr);
   if (allBandIndex >= 0 && gCurrentBand.meta.type == TYPE_BAND) {
-    CHANNELS_Save(allBands[allBandIndex].mr, &gCurrentBand);
+    CHANNEL_SaveCSV("BANDS.CSV", allBands[allBandIndex].mr, &gCurrentBand);
   }
 }
 

@@ -1,5 +1,6 @@
 #include "radio.h"
 #include "board.h"
+#include "channels_csv.h"
 #include "dcs.h"
 #include "driver/audio.h"
 #include "driver/backlight.h"
@@ -1408,7 +1409,7 @@ void RADIO_CheckAndSaveVFO(RadioState *state) {
       VFO ch;
 
       RADIO_SaveVFOToStorage(state, i, &ch);
-      CHANNELS_Save(num, &ch);
+      CHANNEL_SaveCSV("VFO.CSV", i, &ch);
 
       ctx->save_to_eeprom = false;
     }
@@ -1595,7 +1596,7 @@ bool RADIO_SaveCurrentVFO(RadioState *state) {
   VFO storage;
 
   RADIO_SaveVFOToStorage(state, current, &storage);
-  CHANNELS_Save(state->vfos[current].vfo_ch_index, &storage);
+  CHANNEL_SaveCSV("VFO.CSV", current, &storage);
 
   return true;
 }
@@ -1612,7 +1613,7 @@ void RADIO_LoadChannelToVFO(RadioState *state, uint8_t vfo_index,
   ExtendedVFOContext *vfo = &state->vfos[vfo_index];
   VFOContext *ctx = &vfo->context;
   CH channel;
-  CHANNELS_Load(channel_index, &channel);
+  CHANNEL_LoadCSV("CHANNELS.CSV", channel_index, &channel);
 
   vfo->mode = MODE_CHANNEL;
   vfo->channel_index = channel_index;
@@ -1638,12 +1639,16 @@ bool RADIO_ToggleVFOMode(RadioState *state, uint8_t vfo_index) {
   // Определяем новый режим (инвертируем текущий)
   VFOMode new_mode = vfo->mode == MODE_CHANNEL ? MODE_VFO : MODE_CHANNEL;
   MR ch;
-  CHANNELS_Load(vfo->vfo_ch_index, &ch);
+  if (new_mode == MODE_CHANNEL) {
+    CHANNEL_LoadCSV("CHANNELS.CSV", vfo->vfo_ch_index, &ch);
+  } else {
+    CHANNEL_LoadCSV("VFO.CSV", vfo_index, &ch);
+  }
 
   ch.isChMode = new_mode == MODE_CHANNEL;
   LogC(LOG_C_BRIGHT_CYAN, "[RADIO] VFOMode = %s", ch.isChMode ? "MR" : "VFO");
 
-  CHANNELS_Save(vfo->vfo_ch_index, &ch);
+  CHANNEL_SaveCSV("VFO.CSV", vfo_index, &ch);
 
   if (new_mode == MODE_CHANNEL) {
     // TODO: if wrong CH num in VFO, load one from current SL
@@ -1826,18 +1831,11 @@ void RADIO_LoadVFOs(RadioState *state) {
   BK1080_Init(0, false);
 
   uint8_t vfoIdx = 0;
-  for (uint16_t i = 0; i < CHANNELS_GetCountMax(); ++i) {
-    CHMeta meta = CHANNELS_GetMeta(i);
-
-    bool isOurType = (TYPE_FILTER_VFO & (1 << meta.type)) != 0;
-    if (!isOurType) {
-      continue;
-    }
-
+  for (uint16_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
 
     MR ch;
-    CHANNELS_Load(i, &ch);
+    CHANNEL_LoadCSV("VFO.CSV", i, &ch);
     if (ch.isChMode) {
       RADIO_LoadChannelToVFO(state, vfoIdx, ch.channel);
     } else {
