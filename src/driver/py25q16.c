@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "../external/printf/printf.h"
+#include "flash_sync.h"
 #include "gpio.h"
 #include "py25q16.h"
 #include "py32f071_ll_bus.h"
@@ -9,7 +10,8 @@
 #include "py32f071_ll_system.h"
 #include "systick.h"
 
-#define DEBUG
+// ЗАКОММЕНТИРОВАТЬ ДЛЯ ПРОДУКШЕНА
+// #define DEBUG
 
 #define SPIx SPI2
 #define CHANNEL_RD LL_DMA_CHANNEL_4
@@ -24,6 +26,9 @@ static uint32_t SectorCacheAddr = 0x1000000;
 static uint8_t SectorCache[SECTOR_SIZE];
 static uint8_t BlackHole[1];
 static volatile bool TC_Flag;
+
+static uint32_t last_operation_time = 0;
+static uint32_t operation_count = 0;
 
 static inline void CS_Assert() { GPIO_ResetOutputPin(CS_PIN); }
 
@@ -77,12 +82,15 @@ static void SPI_Init() {
   LL_SPI_Enable(SPIx);
 }
 
+// УПРОЩЕННАЯ функция SPI_ReadBuf без таймаута в основном цикле
 static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size) {
   LL_SPI_Disable(SPIx);
   LL_DMA_DisableChannel(DMA1, CHANNEL_RD);
   LL_DMA_DisableChannel(DMA1, CHANNEL_WR);
 
   LL_DMA_ClearFlag_GI4(DMA1);
+  LL_DMA_ClearFlag_TC4(DMA1);
+  LL_DMA_ClearFlag_TE4(DMA1);
 
   LL_DMA_ConfigTransfer(DMA1, CHANNEL_RD,                 //
                         LL_DMA_DIRECTION_PERIPH_TO_MEMORY //
@@ -91,7 +99,7 @@ static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size) {
                             | LL_DMA_MEMORY_INCREMENT     //
                             | LL_DMA_PDATAALIGN_BYTE      //
                             | LL_DMA_MDATAALIGN_BYTE      //
-                            | LL_DMA_PRIORITY_MEDIUM      //
+                            | LL_DMA_PRIORITY_HIGH        //
   );
 
   LL_DMA_ConfigTransfer(DMA1, CHANNEL_WR,                 //
@@ -101,7 +109,7 @@ static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size) {
                             | LL_DMA_MEMORY_NOINCREMENT   //
                             | LL_DMA_PDATAALIGN_BYTE      //
                             | LL_DMA_MDATAALIGN_BYTE      //
-                            | LL_DMA_PRIORITY_MEDIUM      //
+                            | LL_DMA_PRIORITY_HIGH        //
   );
 
   LL_DMA_SetMemoryAddress(DMA1, CHANNEL_RD, (uint32_t)Buf);
@@ -120,17 +128,17 @@ static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size) {
   LL_SPI_EnableDMAReq_RX(SPIx);
   LL_SPI_Enable(SPIx);
   LL_SPI_EnableDMAReq_TX(SPIx);
-
-  while (!TC_Flag)
-    ;
 }
 
+// УПРОЩЕННАЯ функция SPI_WriteBuf без таймаута в основном цикле
 static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size) {
   LL_SPI_Disable(SPIx);
   LL_DMA_DisableChannel(DMA1, CHANNEL_RD);
   LL_DMA_DisableChannel(DMA1, CHANNEL_WR);
 
   LL_DMA_ClearFlag_GI4(DMA1);
+  LL_DMA_ClearFlag_TC4(DMA1);
+  LL_DMA_ClearFlag_TE4(DMA1);
 
   LL_DMA_ConfigTransfer(DMA1, CHANNEL_RD,                 //
                         LL_DMA_DIRECTION_PERIPH_TO_MEMORY //
@@ -139,7 +147,7 @@ static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size) {
                             | LL_DMA_MEMORY_NOINCREMENT   //
                             | LL_DMA_PDATAALIGN_BYTE      //
                             | LL_DMA_MDATAALIGN_BYTE      //
-                            | LL_DMA_PRIORITY_LOW         //
+                            | LL_DMA_PRIORITY_HIGH        //
   );
 
   LL_DMA_ConfigTransfer(DMA1, CHANNEL_WR,                 //
@@ -149,7 +157,7 @@ static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size) {
                             | LL_DMA_MEMORY_INCREMENT     //
                             | LL_DMA_PDATAALIGN_BYTE      //
                             | LL_DMA_MDATAALIGN_BYTE      //
-                            | LL_DMA_PRIORITY_LOW         //
+                            | LL_DMA_PRIORITY_HIGH        //
   );
 
   LL_DMA_SetMemoryAddress(DMA1, CHANNEL_RD, (uint32_t)BlackHole);
@@ -168,9 +176,23 @@ static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size) {
   LL_SPI_EnableDMAReq_RX(SPIx);
   LL_SPI_Enable(SPIx);
   LL_SPI_EnableDMAReq_TX(SPIx);
+}
 
-  while (!TC_Flag)
-    ;
+// ОЖИДАНИЕ DMA с таймаутом и защитой
+static bool wait_for_dma_complete(uint32_t max_wait_ms) {
+  uint32_t start = Now();
+
+  while (!TC_Flag) {
+    if (Now() - start > max_wait_ms) {
+      // Таймаут - останавливаем DMA
+      LL_DMA_DisableChannel(DMA1, CHANNEL_RD);
+      LL_DMA_DisableChannel(DMA1, CHANNEL_WR);
+      LL_SPI_DisableDMAReq_TX(SPIx);
+      LL_SPI_DisableDMAReq_RX(SPIx);
+      return false;
+    }
+  }
+  return true;
 }
 
 static uint8_t SPI_WriteByte(uint8_t Value) {
@@ -182,83 +204,7 @@ static uint8_t SPI_WriteByte(uint8_t Value) {
   return LL_SPI_ReceiveData8(SPIx);
 }
 
-static void WriteAddr(uint32_t Addr);
-static uint8_t ReadStatusReg(uint32_t Which);
-static void WaitWIP();
-static void WriteEnable();
-static void SectorErase(uint32_t Addr);
-static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size);
-static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size);
-
-void PY25Q16_Init() {
-  CS_Release();
-  SPI_Init();
-}
-
-void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
-  /* #ifdef DEBUG
-      printf("spi flash read: %06x %ld\n", Address, Size);
-  #endif */
-  CS_Assert();
-
-  SPI_WriteByte(0x03); // Fast read
-  WriteAddr(Address);
-
-  if (Size >= 16) {
-    SPI_ReadBuf((uint8_t *)pBuffer, Size);
-  } else {
-    for (uint32_t i = 0; i < Size; i++) {
-      ((uint8_t *)(pBuffer))[i] = SPI_WriteByte(0xff);
-    }
-  }
-
-  CS_Release();
-}
-
-void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
-                         bool Append) {
-#ifdef DEBUG
-  printf("spi flash write: %06lx %lu %d\n", Address, Size, Append);
-#endif
-
-  // Защита от слишком быстрых операций записи
-  static uint32_t last_write_time = 0;
-  uint32_t current_time = Now(); // Нужна функция получения времени
-
-  // Если с последней записи прошло менее 10мс, ждем
-  if (current_time - last_write_time < 10) {
-    SYSTICK_DelayMs(10 - (current_time - last_write_time));
-  }
-
-  const uint8_t *ptr = (const uint8_t *)pBuffer;
-  uint32_t written = 0;
-
-  while (written < Size) {
-    uint32_t page_addr = Address + written;
-    uint32_t page_offset = page_addr % PAGE_SIZE;
-    uint32_t to_write = PAGE_SIZE - page_offset;
-
-    if (to_write > Size - written) {
-      to_write = Size - written;
-    }
-
-    PageProgram(page_addr, ptr + written, to_write);
-    written += to_write;
-
-    // Обновляем время последней записи
-    last_write_time = Now();
-  }
-}
-
-void PY25Q16_SectorErase(uint32_t Address) {
-  Address -= (Address % SECTOR_SIZE);
-  SectorErase(Address);
-  if (SectorCacheAddr == Address) {
-    memset(SectorCache, 0xff, SECTOR_SIZE);
-  }
-}
-
-static inline void WriteAddr(uint32_t Addr) {
+static void WriteAddr(uint32_t Addr) {
   SPI_WriteByte(0xff & (Addr >> 16));
   SPI_WriteByte(0xff & (Addr >> 8));
   SPI_WriteByte(0xff & Addr);
@@ -288,69 +234,55 @@ static uint8_t ReadStatusReg(uint32_t Which) {
   return Value;
 }
 
-static void WaitWIP() {
-  uint32_t timeout = 5000000; // Увеличиваем до 5 секунд
+// УПРОЩЕННАЯ функция WaitWIP
+static bool WaitWIP(uint32_t timeout_ms) {
+  uint32_t start = Now();
 
-  printf("WaitWIP: ");
-
-  for (uint32_t i = 0; i < timeout; i++) {
+  while (1) {
     uint8_t Status = ReadStatusReg(0);
 
     if ((Status & 0x01) == 0) { // WIP бит очищен
-      printf("OK (iterations: %lu)\n", i);
-      return;
+      return true;
     }
 
-    // Периодически выводим точку
-    if (i % 50000 == 0) {
-      printf(".");
+    if (Now() - start > timeout_ms) {
+      return false; // Таймаут
     }
 
-    SYSTICK_DelayUs(10); // Увеличиваем задержку
-
-    // Если долго ждем, пробуем сбросить флешку
-    if (i == 1000000) { // Через 1 секунду ожидания
-      printf("\n  Attempting flash reset...\n");
-
-      CS_Assert();
-      SPI_WriteByte(0x66); // Enable Reset
-      CS_Release();
-
-      SYSTICK_DelayMs(1);
-
-      CS_Assert();
-      SPI_WriteByte(0x99); // Reset
-      CS_Release();
-
-      SYSTICK_DelayMs(10); // Даем время на сброс
-
-      printf("  Flash reset complete, continuing wait...\n");
+    // Короткая задержка
+    for (volatile int i = 0; i < 1000; i++) {
+      __NOP();
     }
   }
-
-  printf("\nFATAL: WaitWIP timeout after 5 seconds!\n");
-
-  // Критическая ошибка - перезагрузка системы
-  printf("System reset required\n");
-  for (int i = 0; i < 10000000; i++)
-    __NOP();
-  NVIC_SystemReset();
 }
 
-static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
-#ifdef DEBUG
-  printf("spi flash page program: %06lx %lu\n", Addr, Size);
-#endif
+static void WriteEnable(void) {
+  CS_Assert();
+  SPI_WriteByte(0x06);
+  CS_Release();
 
+  // Короткая задержка после команды
+  for (volatile int i = 0; i < 50; i++) {
+    __NOP();
+  }
+}
+
+// УПРОЩЕННАЯ PageProgram без DMA (только байтовая запись)
+static bool PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
   // Проверка на переполнение страницы
   if (Size > PAGE_SIZE) {
     Size = PAGE_SIZE;
   }
 
+  // Не пытаемся записать 0 байт
+  if (Size == 0) {
+    return true;
+  }
+
   WriteEnable();
 
   // Задержка перед началом операции
-  for (int i = 0; i < 100; i++) {
+  for (volatile int i = 0; i < 50; i++) {
     __NOP();
   }
 
@@ -358,72 +290,145 @@ static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
   SPI_WriteByte(0x02); // Page Program command
   WriteAddr(Addr);
 
-  // Простая запись без DMA
+  // Простая байтовая запись
   for (uint32_t i = 0; i < Size; i++) {
     SPI_WriteByte(Buf[i]);
   }
 
   CS_Release();
 
-  // Задержка после команды
-  for (int i = 0; i < 100; i++) {
-    __NOP();
-  }
-
-  WaitWIP();
+  return WaitWIP(100); // 100ms таймаут
 }
 
-static void WriteEnable() {
-  CS_Assert();
-  SPI_WriteByte(0x6);
+void PY25Q16_Init() {
   CS_Release();
+  SPI_Init();
 }
 
-static void SectorErase(uint32_t Addr) {
+void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
+  if (flash_is_locked() && flash_get_lock_type() == FLASH_LOCK_USB) {
+    // USB читает - разрешаем без блокировки
+  } else {
+    if (!flash_lock_fs(100)) {
+      printf("ERROR: Cannot lock flash for read\n");
+      return;
+    }
+  }
 #ifdef DEBUG
-  printf("spi flash sector erase: %06lx (starting)\n", Addr);
+  printf("ReadBuffer: 0x%06lx, %lu bytes\n", Address, Size);
 #endif
 
-  WriteEnable();
+  CS_Assert();
 
-  // Проверяем статус перед стиранием
-  uint8_t status_before = ReadStatusReg(0);
-  printf("Status before erase: 0x%02X\n", status_before);
+  SPI_WriteByte(0x03); // Fast read
+  WriteAddr(Address);
+
+  if (Size >= 64) {
+    // Используем DMA для больших блоков
+    SPI_ReadBuf((uint8_t *)pBuffer, Size);
+    if (!wait_for_dma_complete(100)) {
+      // Таймаут DMA
+#ifdef DEBUG
+      printf("ReadBuffer DMA timeout!\n");
+#endif
+    }
+  } else {
+    // Для маленьких блоков используем байтовое чтение
+    for (uint32_t i = 0; i < Size; i++) {
+      ((uint8_t *)(pBuffer))[i] = SPI_WriteByte(0xff);
+    }
+  }
+
+  CS_Release();
+  if (flash_is_locked() && flash_get_lock_type() == FLASH_LOCK_FS) {
+    flash_unlock();
+  }
+}
+
+// УПРОЩЕННАЯ WriteBuffer с улучшенной обработкой ошибок
+void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
+                         bool Append) {
+  if (!flash_lock_fs(1000)) {
+    printf("ERROR: Cannot lock flash for write (timeout)\n");
+    return;
+  }
+#ifdef DEBUG
+  printf("WriteBuffer: 0x%06lx, %lu bytes\n", Address, Size);
+#endif
+
+  // Защита от слишком частых операций
+  uint32_t now = Now();
+  if (now - last_operation_time < 20) { // Минимум 20мс между операциями
+    uint32_t delay = 20 - (now - last_operation_time);
+    SYSTICK_DelayMs(delay);
+  }
+
+  const uint8_t *ptr = (const uint8_t *)pBuffer;
+  uint32_t written = 0;
+
+  while (written < Size) {
+    uint32_t page_addr = Address + written;
+    uint32_t page_offset = page_addr % PAGE_SIZE;
+    uint32_t to_write = PAGE_SIZE - page_offset;
+
+    if (to_write > Size - written) {
+      to_write = Size - written;
+    }
+
+    if (!PageProgram(page_addr, ptr + written, to_write)) {
+#ifdef DEBUG
+      printf("PageProgram failed at 0x%06lx\n", page_addr);
+#endif
+      break;
+    }
+
+    written += to_write;
+
+    // Небольшая задержка между страницами
+    if (written < Size) {
+      for (volatile int i = 0; i < 1000; i++) {
+        __NOP();
+      }
+    }
+  }
+
+  last_operation_time = Now();
+
+  flash_unlock();
+}
+
+void PY25Q16_SectorErase(uint32_t Address) {
+  if (!flash_lock_fs(2000)) {
+    printf("ERROR: Cannot lock flash for erase (timeout)\n");
+    return;
+  }
+  Address -= (Address % SECTOR_SIZE);
+
+#ifdef DEBUG
+  printf("SectorErase: 0x%06lx\n", Address);
+#endif
+
+  // Защита от слишком частых стираний
+  uint32_t now = Now();
+  if (now - last_operation_time < 100) { // Минимум 100мс между операциями
+    uint32_t delay = 100 - (now - last_operation_time);
+    SYSTICK_DelayMs(delay);
+  }
+
+  operation_count++;
+
+  // Выполняем стирание
+  WriteEnable();
 
   CS_Assert();
   SPI_WriteByte(0x20); // Sector Erase (4KB)
-  WriteAddr(Addr);
+  WriteAddr(Address);
   CS_Release();
 
-  printf("Erase command sent, waiting...\n");
+  WaitWIP(500); // 500ms таймаут для стирания
 
-  WaitWIP();
-
-  // Проверяем статус после стирания
-  uint8_t status_after = ReadStatusReg(0);
-  printf("Status after erase: 0x%02X\n", status_after);
-
-#ifdef DEBUG
-  printf("spi flash sector erase: %06lx (done)\n", Addr);
-#endif
-}
-
-static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
-  uint32_t Size1 = PAGE_SIZE - (Addr % PAGE_SIZE);
-
-  while (Size) {
-    if (Size < Size1) {
-      Size1 = Size;
-    }
-
-    PageProgram(Addr, Buf, Size1);
-
-    Addr += Size1;
-    Buf += Size1;
-    Size -= Size1;
-
-    Size1 = PAGE_SIZE;
-  }
+  last_operation_time = Now();
+  flash_unlock();
 }
 
 void DMA1_Channel4_5_6_7_IRQHandler() {
@@ -432,6 +437,7 @@ void DMA1_Channel4_5_6_7_IRQHandler() {
     LL_DMA_DisableIT_TC(DMA1, CHANNEL_RD);
     LL_DMA_ClearFlag_TC4(DMA1);
 
+    // Очищаем флаги SPI
     while (LL_SPI_TX_FIFO_EMPTY != LL_SPI_GetTxFIFOLevel(SPIx))
       ;
     while (LL_SPI_IsActiveFlag_BSY(SPIx))
@@ -446,45 +452,52 @@ void DMA1_Channel4_5_6_7_IRQHandler() {
   }
 }
 
-void test_flash_basic(void) {
-  printf("\n=== Flash Basic Test ===\n");
+// Простой тест записи/чтения
+bool test_flash_simple(void) {
+  printf("\n=== Flash Simple Test ===\n");
 
-  // 1. Читаем ID флешки
-  printf("Reading flash ID...\n");
-  CS_Assert();
-  SPI_WriteByte(0x9F); // Read ID command
-  uint8_t id1 = SPI_WriteByte(0xFF);
-  uint8_t id2 = SPI_WriteByte(0xFF);
-  uint8_t id3 = SPI_WriteByte(0xFF);
-  CS_Release();
-  printf("Flash ID: %02X %02X %02X\n", id1, id2, id3);
+  // Тест 1: Запись и чтение 1024 байт
+  printf("Test 1KB write/read...\n");
 
-  // 2. Тест чтения
-  printf("Test read...\n");
-  uint8_t read_buf[16];
-  PY25Q16_ReadBuffer(0x1000, read_buf, 16);
-  printf("Read from 0x1000: ");
-  for (int i = 0; i < 16; i++)
-    printf("%02X ", read_buf[i]);
-  printf("\n");
+  uint8_t write_data[1024];
+  uint8_t read_data[1024];
 
-  // 3. Тест записи (маленький)
-  printf("Test write 4 bytes...\n");
-  uint8_t test_data[] = {0xAA, 0x55, 0xAA, 0x55};
+  // Заполняем тестовыми данными
+  for (int i = 0; i < 1024; i++) {
+    write_data[i] = i % 256;
+  }
 
-  // Стираем сектор сначала
-  PY25Q16_SectorErase(0x1000);
+  // Стираем сектор
+  printf("  Erasing sector at 0x00A000...\n");
+  PY25Q16_SectorErase(0x00A000);
 
   // Записываем
-  PY25Q16_WriteBuffer(0x1000, test_data, 4, false);
+  printf("  Writing 1024 bytes...\n");
+  uint32_t start = Now();
+  PY25Q16_WriteBuffer(0x00A000, write_data, 1024, false);
+  uint32_t write_time = Now() - start;
+  printf("  Write time: %lu ms\n", write_time);
 
   // Читаем обратно
-  memset(read_buf, 0, 16);
-  PY25Q16_ReadBuffer(0x1000, read_buf, 16);
-  printf("Read back: ");
-  for (int i = 0; i < 16; i++)
-    printf("%02X ", read_buf[i]);
-  printf("\n");
+  printf("  Reading back...\n");
+  start = Now();
+  PY25Q16_ReadBuffer(0x00A000, read_data, 1024);
+  uint32_t read_time = Now() - start;
+  printf("  Read time: %lu ms\n", read_time);
 
+  // Проверяем
+  bool ok = true;
+  for (int i = 0; i < 1024; i++) {
+    if (write_data[i] != read_data[i]) {
+      printf("  Mismatch at %d: 0x%02X != 0x%02X\n", i, write_data[i],
+             read_data[i]);
+      ok = false;
+      break;
+    }
+  }
+
+  printf("  Result: %s\n", ok ? "PASS" : "FAIL");
   printf("=== Test Complete ===\n\n");
+
+  return ok;
 }

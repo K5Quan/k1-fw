@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void ProcessCSVLine(const char *line, bool skip_headers, CHType type);
+
 // Определим заголовки для каждого типа
 static const char *GetCSVHeaders(CHType type) {
   switch (type) {
@@ -159,10 +161,28 @@ static void ParseCSV(const char *filename, usb_fs_handle_t *handle,
                      CHType type) {
   char line_buf[MAX_LINE_LEN * 2];
   size_t line_pos = 0;
-  uint8_t byte;
+  uint8_t buffer[256]; // Буфер для чтения
+  size_t bytes_read = 0;
+  size_t buffer_pos = 0;
   bool skip_headers = true; // Пропустить первую строку
 
-  while (usb_fs_read_bytes(handle, &byte, 1) == 1) {
+  while (1) {
+    // Если буфер пуст, читаем следующую порцию данных
+    if (buffer_pos >= bytes_read) {
+      bytes_read = usb_fs_read_bytes(handle, buffer, sizeof(buffer));
+      if (bytes_read == 0) {
+        // Обрабатываем последнюю строку, если она не завершена
+        if (line_pos > 0) {
+          line_buf[line_pos] = '\0';
+          ProcessCSVLine(line_buf, skip_headers, type);
+        }
+        break; // Конец файла
+      }
+      buffer_pos = 0;
+    }
+
+    uint8_t byte = buffer[buffer_pos++];
+
     if (byte == '\n' || line_pos >= sizeof(line_buf) - 1) {
       line_buf[line_pos] = '\0';
       line_pos = 0;
@@ -172,94 +192,101 @@ static void ParseCSV(const char *filename, usb_fs_handle_t *handle,
         continue;
       }
 
-      // Парсинг строки
-      char *fields[30]; // Достаточно для всех полей
-      ParseCSVLine(line_buf, fields, 30);
-
-      int16_t num = atoi(fields[0]);
-      // Проверяем тип и заполняем структуру
-      union {
-        CH ch;
-        VFO vfo;
-        Band band;
-      } entry;
-      memset(&entry, 0, sizeof(entry));
-
-      // Общие поля (индексы:
-      // 1=name,2=rxF,3=ppm,4=txF,5=offsetDir,6=allowTx,7=step,8=modulation,9=bw,10=radio,11=power,12=scrambler,13=squelch_value,14=squelch_type,15=code_rx_value,16=code_rx_type,17=code_tx_value,18=code_tx_type,19=fixedBoundsMode,20=gainIndex,21=scanlists
-      if (fields[1])
-        strncpy(entry.ch.name, fields[1], 10);
-      if (fields[2])
-        entry.ch.rxF = atol(fields[2]);
-      if (fields[3])
-        entry.ch.ppm = atol(fields[3]);
-      if (fields[4])
-        entry.ch.txF = atol(fields[4]);
-      if (fields[5])
-        entry.ch.offsetDir = atoi(fields[5]);
-      if (fields[6])
-        entry.ch.allowTx = atoi(fields[6]);
-      if (fields[7])
-        entry.ch.step = atoi(fields[7]);
-      if (fields[8])
-        entry.ch.modulation = atoi(fields[8]);
-      if (fields[9])
-        entry.ch.bw = atoi(fields[9]);
-      if (fields[10])
-        entry.ch.radio = atoi(fields[10]);
-      if (fields[11])
-        entry.ch.power = atoi(fields[11]);
-      if (fields[12])
-        entry.ch.scrambler = atoi(fields[12]);
-      if (fields[13])
-        entry.ch.squelch.value = atoi(fields[13]);
-      if (fields[14])
-        entry.ch.squelch.type = atoi(fields[14]);
-      if (fields[15])
-        entry.ch.code.rx.value = atoi(fields[15]);
-      if (fields[16])
-        entry.ch.code.rx.type = atoi(fields[16]);
-      if (fields[17])
-        entry.ch.code.tx.value = atoi(fields[17]);
-      if (fields[18])
-        entry.ch.code.tx.type = atoi(fields[18]);
-      if (fields[19])
-        entry.ch.fixedBoundsMode = atoi(fields[19]);
-      if (fields[20])
-        entry.ch.gainIndex = atoi(fields[20]);
-      if (fields[21])
-        entry.ch.scanlists = atoi(fields[21]);
-
-      // Для Band: дополнительные поля начиная с
-      // 22=bank,23=powCalib_s,24=m,25=e,26=lastUsedFreq
-      if (type == TYPE_BAND) {
-        if (fields[22])
-          entry.band.misc.bank = atoi(fields[22]);
-        if (fields[23])
-          entry.band.misc.powCalib.s = atoi(fields[23]);
-        if (fields[24])
-          entry.band.misc.powCalib.m = atoi(fields[24]);
-        if (fields[25])
-          entry.band.misc.powCalib.e = atoi(fields[25]);
-        if (fields[26])
-          entry.band.misc.lastUsedFreq = atol(fields[26]);
-      }
-
-      // Сохранить
-      switch (type) {
-      case TYPE_CH:
-        CHANNELS_Save(num, (CH *)&entry.ch);
-        break;
-      case TYPE_VFO:
-        CHANNELS_Save(num, (CH *)&entry.vfo);
-        break;
-      case TYPE_BAND:
-        CHANNELS_Save(num, (CH *)&entry.band);
-        break;
-      }
+      ProcessCSVLine(line_buf, skip_headers, type);
     } else {
       line_buf[line_pos++] = byte;
     }
+  }
+}
+
+// Обработка одной CSV строки
+static void ProcessCSVLine(const char *line, bool skip_headers, CHType type) {
+  if (skip_headers)
+    return;
+
+  char *fields[30]; // Достаточно для всех полей
+  ParseCSVLine(line, fields, 30);
+
+  int16_t num = atoi(fields[0]);
+  // Проверяем тип и заполняем структуру
+  union {
+    CH ch;
+    VFO vfo;
+    Band band;
+  } entry;
+  memset(&entry, 0, sizeof(entry));
+
+  // Общие поля (индексы:
+  // 1=name,2=rxF,3=ppm,4=txF,5=offsetDir,6=allowTx,7=step,8=modulation,9=bw,10=radio,11=power,12=scrambler,13=squelch_value,14=squelch_type,15=code_rx_value,16=code_rx_type,17=code_tx_value,18=code_tx_type,19=fixedBoundsMode,20=gainIndex,21=scanlists
+  if (fields[1])
+    strncpy(entry.ch.name, fields[1], 10);
+  if (fields[2])
+    entry.ch.rxF = atol(fields[2]);
+  if (fields[3])
+    entry.ch.ppm = atol(fields[3]);
+  if (fields[4])
+    entry.ch.txF = atol(fields[4]);
+  if (fields[5])
+    entry.ch.offsetDir = atoi(fields[5]);
+  if (fields[6])
+    entry.ch.allowTx = atoi(fields[6]);
+  if (fields[7])
+    entry.ch.step = atoi(fields[7]);
+  if (fields[8])
+    entry.ch.modulation = atoi(fields[8]);
+  if (fields[9])
+    entry.ch.bw = atoi(fields[9]);
+  if (fields[10])
+    entry.ch.radio = atoi(fields[10]);
+  if (fields[11])
+    entry.ch.power = atoi(fields[11]);
+  if (fields[12])
+    entry.ch.scrambler = atoi(fields[12]);
+  if (fields[13])
+    entry.ch.squelch.value = atoi(fields[13]);
+  if (fields[14])
+    entry.ch.squelch.type = atoi(fields[14]);
+  if (fields[15])
+    entry.ch.code.rx.value = atoi(fields[15]);
+  if (fields[16])
+    entry.ch.code.rx.type = atoi(fields[16]);
+  if (fields[17])
+    entry.ch.code.tx.value = atoi(fields[17]);
+  if (fields[18])
+    entry.ch.code.tx.type = atoi(fields[18]);
+  if (fields[19])
+    entry.ch.fixedBoundsMode = atoi(fields[19]);
+  if (fields[20])
+    entry.ch.gainIndex = atoi(fields[20]);
+  if (fields[21])
+    entry.ch.scanlists = atoi(fields[21]);
+
+  // Для Band: дополнительные поля начиная с
+  // 22=bank,23=powCalib_s,24=m,25=e,26=lastUsedFreq
+  if (type == TYPE_BAND) {
+    if (fields[22])
+      entry.band.misc.bank = atoi(fields[22]);
+    if (fields[23])
+      entry.band.misc.powCalib.s = atoi(fields[23]);
+    if (fields[24])
+      entry.band.misc.powCalib.m = atoi(fields[24]);
+    if (fields[25])
+      entry.band.misc.powCalib.e = atoi(fields[25]);
+    if (fields[26])
+      entry.band.misc.lastUsedFreq = atol(fields[26]);
+  }
+
+  // Сохранить
+  switch (type) {
+  case TYPE_CH:
+    CHANNELS_Save(num, (CH *)&entry.ch);
+    break;
+  case TYPE_VFO:
+    CHANNELS_Save(num, (CH *)&entry.vfo);
+    break;
+  case TYPE_BAND:
+    CHANNELS_Save(num, (CH *)&entry.band);
+    break;
   }
 }
 
@@ -275,6 +302,7 @@ void CHANNELS_ImportFromFile(CHType type) {
   }
 
   ParseCSV(filename, &handle, type);
+  // usb_fs_close(&handle);
 }
 
 // Вспомогательная: получить заголовки для типа (теперь по MR->meta.type)
@@ -340,6 +368,7 @@ void CHANNEL_SaveCSV(const char *filename, int16_t num, MR *mr) {
 int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
   if (!filename || !mr)
     return -1;
+  printf("LOAD CSV %s\n", filename);
 
   usb_fs_handle_t handle;
   if (usb_fs_open(filename, &handle) != 0) {
@@ -349,10 +378,24 @@ int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
 
   char line_buf[MAX_LINE_LEN * 2];
   size_t line_pos = 0;
-  uint8_t byte;
+  uint8_t buffer[256]; // Буфер для чтения
+  size_t bytes_read = 0;
+  size_t buffer_pos = 0;
   bool skip_headers = true;
+  bool found = false;
 
-  while (usb_fs_read_bytes(&handle, &byte, 1) == 1) {
+  while (!found) {
+    // Если буфер пуст, читаем следующую порцию данных
+    if (buffer_pos >= bytes_read) {
+      bytes_read = usb_fs_read_bytes(&handle, buffer, sizeof(buffer));
+      if (bytes_read == 0) {
+        break; // Конец файла
+      }
+      buffer_pos = 0;
+    }
+
+    uint8_t byte = buffer[buffer_pos++];
+
     if (byte == '\n' || line_pos >= sizeof(line_buf) - 1) {
       line_buf[line_pos] = '\0';
       line_pos = 0;
@@ -362,6 +405,7 @@ int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
         continue;
       }
 
+      // Парсинг строки и заполнение mr
       char *fields[30];
       ParseCSVLine(line_buf, fields, 30);
 
@@ -423,16 +467,21 @@ int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
         mr->misc.powCalib.m = atoi(fields[idx++]);
         mr->misc.powCalib.e = atoi(fields[idx++]);
         mr->misc.lastUsedFreq = atol(fields[idx++]);
-      } else {
-        // иначе CH/VFO — тип надо задать снаружи
-        // либо добавить параметр CHType type в функцию
       }
 
-      break; // читаем только одну запись
+      found = true; // Нашли запись
     } else {
       line_buf[line_pos++] = byte;
     }
   }
 
+  // usb_fs_close(&handle);
+
+  if (!found) {
+    printf("[err] no valid record found in %s\n", filename);
+    return -1;
+  }
+
+  printf("LOAD CSV %s OK\n", filename);
   return 0;
 }

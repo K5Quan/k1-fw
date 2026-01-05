@@ -14,5 +14,6 @@ static uint8_t PY25Q16_ReadStatus(void);
 static void PY25Q16_WaitBusy(void);
 
 void test_flash_basic(void);
+bool test_flash_simple(void);
 
 #endif

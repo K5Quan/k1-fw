@@ -125,6 +125,7 @@ LDFLAGS  := $(COMMON_FLAGS) $(OPTIMIZATION) \
             -Tfirmware.ld \
             -lc -lnosys -lm \
             -Wl,--gc-sections \
+			-specs=nosys.specs \
             -Wl,--build-id=none \
             -Wl,--print-memory-usage \
             -Wl,-Map=$(OBJ_DIR)/output.map

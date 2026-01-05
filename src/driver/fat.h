@@ -180,6 +180,7 @@ static void fat_unformat_name(const char *fat_name, char *output) {
 // Функции работы с открытыми файлами
 int usb_fs_open(const char *name, usb_fs_handle_t *handle);
 size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len);
+void usb_fs_close(usb_fs_handle_t *handle);
 
 void usb_fs_format_safe(void);
 void debug_file_structure(const char *name);
