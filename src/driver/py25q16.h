@@ -13,4 +13,6 @@ void PY25Q16_SectorErase(uint32_t Address);
 static uint8_t PY25Q16_ReadStatus(void);
 static void PY25Q16_WaitBusy(void);
 
+void test_flash_basic(void);
+
 #endif

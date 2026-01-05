@@ -131,9 +131,6 @@ static const char *find_value(const char *name) {
 
 // Сохранить настройки в INI файл
 int SETTINGS_SaveToINI(const Settings *settings, const char *filename) {
-  char fat_name[12];
-  fat_format_name(filename, fat_name);
-
   // Очистить буфер
   memset(ini_buffer, 0, INI_BUFFER_SIZE);
   ini_size = 0;
@@ -206,18 +203,22 @@ int SETTINGS_SaveToINI(const Settings *settings, const char *filename) {
   append_line("");
 
   // Записать в файл
-  return usb_fs_write_file(fat_name, (uint8_t *)ini_buffer, ini_size, false);
+  return usb_fs_write_file(filename, (uint8_t *)ini_buffer, ini_size, false);
 }
 
 // Загрузить настройки из INI файла
 int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
-  char fat_name[12];
-  fat_format_name(filename, fat_name);
-
-  // Прочитать файл
   ini_size = INI_BUFFER_SIZE;
-  if (usb_fs_read_file(fat_name, (uint8_t *)ini_buffer, &ini_size) != 0) {
-    return -1; // Файл не найден
+
+  // Пробуем прочитать как есть
+  if (usb_fs_read_file(filename, (uint8_t *)ini_buffer, &ini_size) != 0) {
+    // Пробуем с отформатированным именем
+    char fat_name[12];
+    fat_format_name(filename, fat_name);
+    ini_size = INI_BUFFER_SIZE;
+    if (usb_fs_read_file(fat_name, (uint8_t *)ini_buffer, &ini_size) != 0) {
+      return -1; // Файл не найден
+    }
   }
 
   ini_buffer[ini_size] = '\0';
@@ -279,7 +280,9 @@ int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
 
 // Экспортировать текущие настройки
 int SETTINGS_Export(const char *filename) {
+  printf("================ %s START ==============\n", filename);
   return SETTINGS_SaveToINI(&gSettings, filename);
+  printf("================ %s END   ==============\n", filename);
 }
 
 // Импортировать настройки

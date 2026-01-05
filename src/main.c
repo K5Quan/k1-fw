@@ -1,10 +1,12 @@
 #include "board.h"
 #include "driver/fat.h"
 #include "driver/gpio.h"
+#include "driver/py25q16.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
 #include "system.h"
+#include <assert.h>
 #include <stdbool.h>
 
 int main(void) {
@@ -18,12 +20,10 @@ int main(void) {
   int count = usb_fs_list_files(list, 20);
   printf("Files count: %d\n", count);
   for (int i = 0; i < count; i++) {
-    printf("File: '%s' size=%u\n", list[i].name, list[i].size);
+    printf("File: '%.12s' size=%u\n", list[i].name, list[i].size);
   }
 
   printf("Hawk\n");
-
-  GPIO_EnableAudioPath();
 
   SYS_Main();
 }

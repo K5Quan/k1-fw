@@ -154,27 +154,35 @@ static inline void fat_format_name(const char *filename, char *fat_name) {
 }
 
 // Преобразует "TEST    TXT" в "TEST.TXT"
-static inline void fat_unformat_name(const char *fat_name, char *filename) {
-  int i, j = 0;
+static void fat_unformat_name(const char *fat_name, char *output) {
+  int i;
 
-  // Копирование имени
-  for (i = 0; i < 8 && fat_name[i] != ' '; i++) {
-    filename[j++] = fat_name[i];
-  }
-
-  // Добавление точки и расширения
-  if (fat_name[8] != ' ') {
-    filename[j++] = '.';
-    for (i = 8; i < 11 && fat_name[i] != ' '; i++) {
-      filename[j++] = fat_name[i];
+  // Копируем имя (первые 8 символов, пропускаем пробелы)
+  for (i = 0; i < 8; i++) {
+    if (fat_name[i] != ' ') {
+      *output++ = fat_name[i];
     }
   }
 
-  filename[j] = '\0';
+  // Копируем расширение (символы 8-10)
+  if (fat_name[8] != ' ') {
+    *output++ = '.';
+    for (i = 8; i < 11; i++) {
+      if (fat_name[i] != ' ') {
+        *output++ = fat_name[i];
+      }
+    }
+  }
+
+  *output = '\0'; // Всегда завершаем нулевым символом
 }
 
 // Функции работы с открытыми файлами
 int usb_fs_open(const char *name, usb_fs_handle_t *handle);
 size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len);
+
+void usb_fs_format_safe(void);
+void debug_file_structure(const char *name);
+void debug_fat_table(uint16_t start_cluster, uint16_t count);
 
 #endif // USB_FS_H

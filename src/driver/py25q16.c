@@ -218,56 +218,36 @@ void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
 void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
                          bool Append) {
 #ifdef DEBUG
-  printf("spi flash write: %06x %ld %d\n", Address, Size, Append);
+  printf("spi flash write: %06lx %lu %d\n", Address, Size, Append);
 #endif
-  uint32_t SecIndex = Address / SECTOR_SIZE;
-  uint32_t SecAddr = SecIndex * SECTOR_SIZE;
-  uint32_t SecOffset = Address % SECTOR_SIZE;
-  uint32_t SecSize = SECTOR_SIZE - SecOffset;
 
-  while (Size) {
-    if (Size < SecSize) {
-      SecSize = Size;
+  // Защита от слишком быстрых операций записи
+  static uint32_t last_write_time = 0;
+  uint32_t current_time = Now(); // Нужна функция получения времени
+
+  // Если с последней записи прошло менее 10мс, ждем
+  if (current_time - last_write_time < 10) {
+    SYSTICK_DelayMs(10 - (current_time - last_write_time));
+  }
+
+  const uint8_t *ptr = (const uint8_t *)pBuffer;
+  uint32_t written = 0;
+
+  while (written < Size) {
+    uint32_t page_addr = Address + written;
+    uint32_t page_offset = page_addr % PAGE_SIZE;
+    uint32_t to_write = PAGE_SIZE - page_offset;
+
+    if (to_write > Size - written) {
+      to_write = Size - written;
     }
 
-    if (SecAddr != SectorCacheAddr) {
-      PY25Q16_ReadBuffer(SecAddr, SectorCache, SECTOR_SIZE);
-      SectorCacheAddr = SecAddr;
-    }
+    PageProgram(page_addr, ptr + written, to_write);
+    written += to_write;
 
-    if (0 != memcmp(pBuffer, (char *)SectorCache + SecOffset, SecSize)) {
-      bool Erase = false;
-      for (uint32_t i = 0; i < SecSize; i++) {
-        if (0xff != SectorCache[SecOffset + i]) {
-          Erase = true;
-          break;
-        }
-      }
-
-      memcpy(SectorCache + SecOffset, pBuffer, SecSize);
-
-      if (Erase) {
-        SectorErase(SecAddr);
-        if (Append) {
-          SectorProgram(SecAddr, SectorCache, SecOffset + SecSize);
-          memset(SectorCache + SecOffset + SecSize, 0xff,
-                 SECTOR_SIZE - SecOffset - SecSize);
-        } else {
-          SectorProgram(SecAddr, SectorCache, SECTOR_SIZE);
-        }
-      } else {
-        SectorProgram(Address, pBuffer, SecSize);
-      }
-    }
-
-    Address += SecSize;
-    pBuffer += SecSize;
-    Size -= SecSize;
-
-    SecAddr += SECTOR_SIZE;
-    SecOffset = 0;
-    SecSize = SECTOR_SIZE;
-  } // while
+    // Обновляем время последней записи
+    last_write_time = Now();
+  }
 }
 
 void PY25Q16_SectorErase(uint32_t Address) {
@@ -309,15 +289,88 @@ static uint8_t ReadStatusReg(uint32_t Which) {
 }
 
 static void WaitWIP() {
-  for (int i = 0; i < 1000000; i++) {
+  uint32_t timeout = 5000000; // Увеличиваем до 5 секунд
+
+  printf("WaitWIP: ");
+
+  for (uint32_t i = 0; i < timeout; i++) {
     uint8_t Status = ReadStatusReg(0);
-    if (1 & Status) // WIP
-    {
-      SYSTICK_DelayUs(10);
-      continue;
+
+    if ((Status & 0x01) == 0) { // WIP бит очищен
+      printf("OK (iterations: %lu)\n", i);
+      return;
     }
-    break;
+
+    // Периодически выводим точку
+    if (i % 50000 == 0) {
+      printf(".");
+    }
+
+    SYSTICK_DelayUs(10); // Увеличиваем задержку
+
+    // Если долго ждем, пробуем сбросить флешку
+    if (i == 1000000) { // Через 1 секунду ожидания
+      printf("\n  Attempting flash reset...\n");
+
+      CS_Assert();
+      SPI_WriteByte(0x66); // Enable Reset
+      CS_Release();
+
+      SYSTICK_DelayMs(1);
+
+      CS_Assert();
+      SPI_WriteByte(0x99); // Reset
+      CS_Release();
+
+      SYSTICK_DelayMs(10); // Даем время на сброс
+
+      printf("  Flash reset complete, continuing wait...\n");
+    }
   }
+
+  printf("\nFATAL: WaitWIP timeout after 5 seconds!\n");
+
+  // Критическая ошибка - перезагрузка системы
+  printf("System reset required\n");
+  for (int i = 0; i < 10000000; i++)
+    __NOP();
+  NVIC_SystemReset();
+}
+
+static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
+#ifdef DEBUG
+  printf("spi flash page program: %06lx %lu\n", Addr, Size);
+#endif
+
+  // Проверка на переполнение страницы
+  if (Size > PAGE_SIZE) {
+    Size = PAGE_SIZE;
+  }
+
+  WriteEnable();
+
+  // Задержка перед началом операции
+  for (int i = 0; i < 100; i++) {
+    __NOP();
+  }
+
+  CS_Assert();
+  SPI_WriteByte(0x02); // Page Program command
+  WriteAddr(Addr);
+
+  // Простая запись без DMA
+  for (uint32_t i = 0; i < Size; i++) {
+    SPI_WriteByte(Buf[i]);
+  }
+
+  CS_Release();
+
+  // Задержка после команды
+  for (int i = 0; i < 100; i++) {
+    __NOP();
+  }
+
+  WaitWIP();
 }
 
 static void WriteEnable() {
@@ -328,17 +381,31 @@ static void WriteEnable() {
 
 static void SectorErase(uint32_t Addr) {
 #ifdef DEBUG
-  printf("spi flash sector erase: %06x\n", Addr);
+  printf("spi flash sector erase: %06lx (starting)\n", Addr);
 #endif
+
   WriteEnable();
-  WaitWIP();
+
+  // Проверяем статус перед стиранием
+  uint8_t status_before = ReadStatusReg(0);
+  printf("Status before erase: 0x%02X\n", status_before);
 
   CS_Assert();
-  SPI_WriteByte(0x20);
+  SPI_WriteByte(0x20); // Sector Erase (4KB)
   WriteAddr(Addr);
   CS_Release();
 
+  printf("Erase command sent, waiting...\n");
+
   WaitWIP();
+
+  // Проверяем статус после стирания
+  uint8_t status_after = ReadStatusReg(0);
+  printf("Status after erase: 0x%02X\n", status_after);
+
+#ifdef DEBUG
+  printf("spi flash sector erase: %06lx (done)\n", Addr);
+#endif
 }
 
 static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
@@ -359,32 +426,6 @@ static void SectorProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
   }
 }
 
-static void PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
-#ifdef DEBUG
-  printf("spi flash page program: %06x %ld\n", Addr, Size);
-#endif
-
-  WriteEnable();
-  // WaitWIP();
-
-  CS_Assert();
-
-  SPI_WriteByte(0x2);
-  WriteAddr(Addr);
-
-  if (Size >= 16) {
-    SPI_WriteBuf(Buf, Size);
-  } else {
-    for (uint32_t i = 0; i < Size; i++) {
-      SPI_WriteByte(Buf[i]);
-    }
-  }
-
-  CS_Release();
-
-  WaitWIP();
-}
-
 void DMA1_Channel4_5_6_7_IRQHandler() {
   if (LL_DMA_IsActiveFlag_TC4(DMA1) &&
       LL_DMA_IsEnabledIT_TC(DMA1, CHANNEL_RD)) {
@@ -403,4 +444,47 @@ void DMA1_Channel4_5_6_7_IRQHandler() {
 
     TC_Flag = true;
   }
+}
+
+void test_flash_basic(void) {
+  printf("\n=== Flash Basic Test ===\n");
+
+  // 1. Читаем ID флешки
+  printf("Reading flash ID...\n");
+  CS_Assert();
+  SPI_WriteByte(0x9F); // Read ID command
+  uint8_t id1 = SPI_WriteByte(0xFF);
+  uint8_t id2 = SPI_WriteByte(0xFF);
+  uint8_t id3 = SPI_WriteByte(0xFF);
+  CS_Release();
+  printf("Flash ID: %02X %02X %02X\n", id1, id2, id3);
+
+  // 2. Тест чтения
+  printf("Test read...\n");
+  uint8_t read_buf[16];
+  PY25Q16_ReadBuffer(0x1000, read_buf, 16);
+  printf("Read from 0x1000: ");
+  for (int i = 0; i < 16; i++)
+    printf("%02X ", read_buf[i]);
+  printf("\n");
+
+  // 3. Тест записи (маленький)
+  printf("Test write 4 bytes...\n");
+  uint8_t test_data[] = {0xAA, 0x55, 0xAA, 0x55};
+
+  // Стираем сектор сначала
+  PY25Q16_SectorErase(0x1000);
+
+  // Записываем
+  PY25Q16_WriteBuffer(0x1000, test_data, 4, false);
+
+  // Читаем обратно
+  memset(read_buf, 0, 16);
+  PY25Q16_ReadBuffer(0x1000, read_buf, 16);
+  printf("Read back: ");
+  for (int i = 0; i < 16; i++)
+    printf("%02X ", read_buf[i]);
+  printf("\n");
+
+  printf("=== Test Complete ===\n\n");
 }

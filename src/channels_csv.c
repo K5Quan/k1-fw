@@ -340,11 +340,9 @@ void CHANNEL_SaveCSV(const char *filename, int16_t num, MR *mr) {
 int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
   if (!filename || !mr)
     return -1;
-  char fat_name[12];
-  fat_format_name(filename, fat_name); // Станет "CHANNELS CSV"
 
   usb_fs_handle_t handle;
-  if (usb_fs_open(fat_name, &handle) != 0) {
+  if (usb_fs_open(filename, &handle) != 0) {
     printf("[err] cannot open %s\n", filename);
     return -1;
   }
