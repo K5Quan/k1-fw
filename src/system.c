@@ -80,38 +80,8 @@ static bool resetNeeded() {
 }
 
 static void reset() {
-  printf("\n=== PHASE 1: FORMATTING ===\n");
   usb_fs_format_safe();
-  SYSTICK_DelayMs(1000);
-
   SETTINGS_Export("SETTINGS.INI");
-
-  SYSTICK_DelayMs(1000);
-
-  CH ch = {0};
-
-  ch.modulation = MOD_FM;
-  ch.bw = BK4819_FILTER_BW_12k;
-
-  ch.meta.type = TYPE_CH;
-  ch.rxF = 43312500;
-  strcpy(ch.name, "Test CH");
-  CHANNEL_SaveCSV("CHANNELS.CSV", 0, &ch);
-
-  ch.meta.type = TYPE_VFO;
-  ch.rxF = 43392500;
-  strcpy(ch.name, "VFO A");
-  CHANNEL_SaveCSV("VFO.CSV", 0, &ch);
-
-  ch.meta.type = TYPE_BAND;
-  ch.rxF = 43307500;
-  ch.txF = 43477500;
-  strcpy(ch.name, "LPD");
-  CHANNEL_SaveCSV("BANDS.CSV", 0, &ch);
-
-  // Подсчет файлов
-  int file_count = usb_fs_get_file_count();
-  printf("Total files in root: %d\n", file_count);
 
   keyboard_tick_1ms();
   while (keyboard_is_pressed(KEY_0)) {

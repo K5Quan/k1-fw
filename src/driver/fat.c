@@ -134,7 +134,8 @@ static void smart_write_sector(uint32_t sector, uint8_t *new_data) {
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
   } else {
     // Нужно стереть сектор
-    // printf("  Erasing and writing sector %lu at 0x%06lx\n", sector, flash_addr);
+    // printf("  Erasing and writing sector %lu at 0x%06lx\n", sector,
+    // flash_addr);
     PY25Q16_SectorErase(flash_addr);
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
   }
@@ -1061,7 +1062,7 @@ void usb_fs_format(void) {
 }
 
 // USB callbacks
-void usb_fs_configure_done(void) { BOARD_ToggleRed(true); }
+void usb_fs_configure_done(void) { Log("[USB] MSC Configure done"); }
 
 void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size) {
   *sector_num = TOTAL_SECTORS;
