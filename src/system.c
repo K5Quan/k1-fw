@@ -122,10 +122,48 @@ static void reset() {
 }
 
 static void loadSettingsOrReset() {
-  SETTINGS_LoadFromINI(&gSettings, "SETTINGS.INI");
-  if (gSettings.batteryCalibration > 2154 ||
-      gSettings.batteryCalibration < 1900) {
+  if (!usb_fs_file_exists("SETTINGS.INI")) {
     reset();
+  }
+  SETTINGS_LoadFromINI(&gSettings, "SETTINGS.INI");
+
+  CH ch = {0};
+  ch.bw = BK4819_FILTER_BW_12k;
+  ch.modulation = MOD_FM;
+  ch.step = STEP_25_0kHz;
+  ch.squelch.type = SQUELCH_RSSI_NOISE_GLITCH;
+  ch.squelch.value = 4;
+
+  if (!usb_fs_file_exists("VFO.CSV")) {
+    ch.meta.type = TYPE_VFO;
+
+    sprintf(ch.name, "VFO A");
+    ch.rxF = 43392500;
+    CHANNEL_SaveCSV("VFO.CSV", 0, &ch);
+
+    sprintf(ch.name, "VFO B");
+    ch.rxF = 25355000;
+    CHANNEL_SaveCSV("VFO.CSV", 1, &ch);
+  }
+
+  if (!usb_fs_file_exists("CHANNELS.CSV")) {
+    ch.meta.type = TYPE_CH;
+
+    sprintf(ch.name, "Workers");
+    ch.rxF = 43312500;
+    CHANNEL_SaveCSV("CHANNELS.CSV", 0, &ch);
+
+    sprintf(ch.name, "DMR");
+    ch.rxF = 17230000;
+    CHANNEL_SaveCSV("CHANNELS.CSV", 1, &ch);
+  }
+
+  if (!usb_fs_file_exists("BANDS.CSV")) {
+    ch.meta.type = TYPE_BAND;
+    ch.rxF = 43307500;
+    ch.txF = 43477500;
+    sprintf(ch.name, "LPD");
+    CHANNEL_SaveCSV("BANDS.CSV", 0, &ch);
   }
 }
 
@@ -180,45 +218,37 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
   // }
 }
 
-void initDisplay() {
-  LogC(LOG_C_BRIGHT_WHITE, "DISPLAY");
-  ST7565_Init();
-  LogC(LOG_C_BRIGHT_WHITE, "BACKLIGHT");
-  // BACKLIGHT_InitHardware();
-  BACKLIGHT_TurnOn();
-}
-
 void SYS_Main() {
-
-  BATTERY_UpdateBatteryInfo();
-  printf("kbd init\n");
+  LogC(LOG_C_BRIGHT_WHITE, "Keyboard init");
   keyboard_init(onKey);
-  printf("kbd init ok\n");
 
   keyboard_tick_1ms();
   if (keyboard_is_pressed(KEY_0)) {
     reset();
   } else {
     loadSettingsOrReset();
-    BATTERY_UpdateBatteryInfo();
 
-    initDisplay();
+    LogC(LOG_C_BRIGHT_WHITE, "Bat init");
+    BATTERY_UpdateBatteryInfo();
 
     // better UX
     STATUSLINE_render();
     ST7565_Blit();
 
-    LogC(LOG_C_BRIGHT_WHITE, "LOAD BANDS");
+    LogC(LOG_C_BRIGHT_WHITE, "Load bands");
     BANDS_Load();
 
-    LogC(LOG_C_BRIGHT_WHITE, "RUN DEFAULT APP");
-    APPS_run(APP_VFO1);
+    LogC(LOG_C_BRIGHT_WHITE, "Run default app: %s",
+         apps[gSettings.mainApp].name);
+    APPS_run(gSettings.mainApp);
   }
 
+  LogC(LOG_C_BRIGHT_WHITE, "USB MSC init");
   BOARD_USBInit();
 
-  for (;;) {
+  LogC(LOG_C_BRIGHT_WHITE, "System initialized");
 
+  for (;;) {
     SETTINGS_UpdateSave();
 
     SCAN_Check();

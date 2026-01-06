@@ -5,6 +5,7 @@
 #include "driver/gpio.h"
 #include "driver/py25q16.h"
 #include "driver/st7565.h"
+#include "driver/uart.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_adc.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_bus.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dac.h"
@@ -169,16 +170,23 @@ void BOARD_USBInit() {
 
 void BOARD_Init(void) {
   BOARD_GPIO_Init();
-  BOARD_ADC_Init();
-  BOARD_DAC_Init();
 
   UART_Init();
 
+  LogC(LOG_C_BRIGHT_WHITE, "Init start");
+
+  BOARD_ADC_Init();
+  BOARD_DAC_Init();
+
+  LogC(LOG_C_BRIGHT_WHITE, "Flash init");
   PY25Q16_Init();
+  LogC(LOG_C_BRIGHT_WHITE, "File system init");
   usb_fs_init();
 
-  BACKLIGHT_InitHardware();
+  LogC(LOG_C_BRIGHT_WHITE, "Display init");
   ST7565_Init();
+  LogC(LOG_C_BRIGHT_WHITE, "Backlight init");
+  BACKLIGHT_InitHardware();
 }
 
 void BOARD_FlashlightToggle() { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }

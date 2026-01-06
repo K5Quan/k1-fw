@@ -3,6 +3,7 @@
 #include "../external/printf/printf.h"
 #include "py25q16.h"
 #include "systick.h"
+#include "uart.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
@@ -128,12 +129,12 @@ static void smart_write_sector(uint32_t sector, uint8_t *new_data) {
 
   if (can_write_without_erase) {
     // Можно записать без стирания
-    printf("  Writing sector %lu at 0x%06lx (no erase needed)\n", sector,
-           flash_addr);
+    /* printf("  Writing sector %lu at 0x%06lx (no erase needed)\n", sector,
+           flash_addr); */
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
   } else {
     // Нужно стереть сектор
-    printf("  Erasing and writing sector %lu at 0x%06lx\n", sector, flash_addr);
+    // printf("  Erasing and writing sector %lu at 0x%06lx\n", sector, flash_addr);
     PY25Q16_SectorErase(flash_addr);
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
   }
@@ -145,8 +146,8 @@ static void flush_cache(void) {
     uint32_t flash_addr = cached_sector * SECTOR_SIZE;
 
     operation_counter++;
-    printf("flush_cache [%lu]: sector=%lu, addr=0x%06lx\n", operation_counter,
-           cached_sector, flash_addr);
+    /* printf("flush_cache [%lu]: sector=%lu, addr=0x%06lx\n",
+       operation_counter, cached_sector, flash_addr); */
 
     // Используем умную запись с проверкой необходимости стирания
     smart_write_sector(cached_sector, sector_cache);
@@ -170,13 +171,13 @@ static void read_sector_to_cache(uint32_t sector) {
 }
 
 static void usb_fs_format_raw(void) {
-  printf("FAT FS: Formatting...\n");
+  Log("[FAT] Formatting...");
 
   cached_sector = 0xFFFFFFFF;
   cache_dirty = false;
 
   // 1. Boot Sector и Reserved Sectors (секторы 0-7)
-  printf("  Writing boot sector and reserved sectors (0x0000-0x0FFF)...\n");
+  Log("[FAT] Writing boot sector and reserved sectors (0x0000-0x0FFF)...");
 
   // Стираем весь первый блок 4KB (секторы 0-7)
   PY25Q16_SectorErase(0);
@@ -198,7 +199,7 @@ static void usb_fs_format_raw(void) {
   }
 
   // 2. FAT1 (секторы 8-23, 8KB = 2 блока по 4KB)
-  printf("  Initializing FAT1 (0x1000-0x2FFF)...\n");
+  Log("[FAT] Initializing FAT1 (0x1000-0x2FFF)...");
 
   // Стираем блоки FAT1
   PY25Q16_SectorErase(FLASH_FAT_OFFSET);          // Блок 0x1000-0x1FFF
@@ -221,7 +222,7 @@ static void usb_fs_format_raw(void) {
   }
 
   // 3. FAT2 (секторы 24-39) - копия FAT1
-  printf("  Copying FAT1 to FAT2 (0x3000-0x4FFF)...\n");
+  Log("[FAT] Copying FAT1 to FAT2 (0x3000-0x4FFF)...");
 
   // Стираем блоки FAT2
   PY25Q16_SectorErase(FLASH_FAT_OFFSET +
@@ -241,7 +242,7 @@ static void usb_fs_format_raw(void) {
   }
 
   // 4. Root Directory (секторы 40-71, 16KB = 4 блока по 4KB)
-  printf("  Clearing root directory (0x5000-0x8FFF)...\n");
+  Log("[FAT] Clearing root directory (0x5000-0x8FFF)...");
 
   // Стираем блоки root directory
   for (int block = 0; block < 4; block++) {
@@ -256,7 +257,7 @@ static void usb_fs_format_raw(void) {
     PY25Q16_WriteBuffer(addr, sector_cache, SECTOR_SIZE, false);
   }
 
-  printf("FAT FS: Format complete\n");
+  Log("[FAT] Format complete");
 }
 
 static void print_fat_layout(void) {
@@ -287,96 +288,14 @@ static void print_fat_layout(void) {
          (FLASH_DATA_OFFSET % FLASH_ERASE_SIZE == 0) ? "OK" : "FAIL");
 }
 
-static void usb_fs_repair(void) {
-  printf("FAT FS: Repairing filesystem...\n");
-
-  cached_sector = 0xFFFFFFFF;
-  cache_dirty = false;
-
-  // 1. Восстанавливаем FAT таблицу (обнуляем все кроме первых 2 entries)
-  printf("  Repairing FAT tables...\n");
-
-  // FAT1
-  memset(sector_cache, 0, SECTOR_SIZE);
-  sector_cache[0] = BPB_MEDIA;
-  sector_cache[1] = 0xFF;
-  sector_cache[2] = 0xFF;
-  sector_cache[3] = 0xFF;
-
-  // Стираем и записываем начало FAT1
-  PY25Q16_SectorErase(FLASH_FAT_OFFSET);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, false);
-
-  // Остальные секторы FAT1 заполняем нулями
-  memset(sector_cache, 0, SECTOR_SIZE);
-  for (int i = 1; i < SECTORS_PER_FAT; i++) {
-    uint32_t addr = FLASH_FAT_OFFSET + i * SECTOR_SIZE;
-    // Проверяем, нужно ли стирать
-    uint8_t check[4];
-    PY25Q16_ReadBuffer(addr, check, 4);
-    if (check[0] != 0 || check[1] != 0 || check[2] != 0 || check[3] != 0) {
-      PY25Q16_SectorErase(addr);
-    }
-    PY25Q16_WriteBuffer(addr, sector_cache, SECTOR_SIZE, false);
-  }
-
-  // 2. Копируем FAT1 в FAT2
-  printf("  Copying FAT1 to FAT2...\n");
-  for (int i = 0; i < SECTORS_PER_FAT; i++) {
-    uint32_t src_addr = FLASH_FAT_OFFSET + i * SECTOR_SIZE;
-    uint32_t dst_addr =
-        FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE + i * SECTOR_SIZE;
-
-    uint8_t buffer[SECTOR_SIZE];
-    PY25Q16_ReadBuffer(src_addr, buffer, SECTOR_SIZE);
-
-    // Проверяем, нужно ли стирать
-    uint8_t check[4];
-    PY25Q16_ReadBuffer(dst_addr, check, 4);
-    if (check[0] != buffer[0] || check[1] != buffer[1] ||
-        check[2] != buffer[2] || check[3] != buffer[3]) {
-      PY25Q16_SectorErase(dst_addr);
-    }
-
-    PY25Q16_WriteBuffer(dst_addr, buffer, SECTOR_SIZE, false);
-  }
-
-  // 3. Очищаем root directory (но сохраняем boot sector!)
-  printf("  Clearing root directory...\n");
-  memset(sector_cache, 0, SECTOR_SIZE);
-
-  // Очищаем только root directory, не трогая boot и FAT
-  for (int i = 0; i < ROOT_SECTORS; i++) {
-    uint32_t addr = FLASH_ROOT_OFFSET + i * SECTOR_SIZE;
-
-    // Проверяем, не пуст ли уже сектор
-    bool needs_erase = false;
-    uint8_t check[32];
-    PY25Q16_ReadBuffer(addr, check, 32);
-    for (int j = 0; j < 32; j++) {
-      if (check[j] != 0) {
-        needs_erase = true;
-        break;
-      }
-    }
-
-    if (needs_erase) {
-      PY25Q16_SectorErase(addr);
-      PY25Q16_WriteBuffer(addr, sector_cache, SECTOR_SIZE, false);
-    }
-  }
-
-  printf("FAT FS: Repair complete\n");
-}
-
 void usb_fs_format_safe(void) {
-  printf("FAT FS: Safe formatting...\n");
+  Log("[FAT] Safe formatting...");
 
   cached_sector = 0xFFFFFFFF;
   cache_dirty = false;
 
   // 1. Boot sector
-  printf("  Writing boot sector...\n");
+  Log("[FAT] Writing boot sector...");
   memset(sector_cache, 0, SECTOR_SIZE);
   memcpy(sector_cache, &BOOT_SECTOR_RECORD, sizeof(BOOT_SECTOR_RECORD));
   sector_cache[510] = 0x55;
@@ -386,7 +305,7 @@ void usb_fs_format_safe(void) {
   PY25Q16_WriteBuffer(0, sector_cache, SECTOR_SIZE, false);
 
   // 2. FAT1 (минимум 2 сектора для первых 256 кластеров)
-  printf("  Initializing FAT1...\n");
+  Log("[FAT] Init FAT1...");
 
   // Первый сектор FAT
   memset(sector_cache, 0, SECTOR_SIZE);
@@ -405,7 +324,7 @@ void usb_fs_format_safe(void) {
                       false);
 
   // 3. FAT2 - копия FAT1
-  printf("  Initializing FAT2...\n");
+  Log("[FAT] Init FAT2...");
 
   // Копируем первый сектор
   memset(sector_cache, 0, SECTOR_SIZE);
@@ -425,7 +344,7 @@ void usb_fs_format_safe(void) {
                       sector_cache, SECTOR_SIZE, false);
 
   // 4. Root directory - очищаем минимум 2 сектора
-  printf("  Clearing root directory...\n");
+  Log("[FAT] Clear root dir...");
   memset(sector_cache, 0, SECTOR_SIZE);
 
   PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
@@ -435,12 +354,11 @@ void usb_fs_format_safe(void) {
   PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + SECTOR_SIZE, sector_cache,
                       SECTOR_SIZE, false);
 
-  printf("FAT FS: Safe format complete\n");
-  printf("  Note: Basic structures initialized\n");
+  Log("[FAT] Format completed");
 }
 
 void usb_fs_init(void) {
-  printf("FAT FS: Initializing...\n");
+  Log("[FAT] Init");
 
   // Инициализация кэша
   cached_sector = 0xFFFFFFFF;
@@ -453,14 +371,13 @@ void usb_fs_init(void) {
   bool boot_valid = (boot_check[510] == 0x55 && boot_check[511] == 0xAA);
 
   if (!boot_valid) {
-    printf("FAT FS: Invalid boot sector, formatting...\n");
+    LogC(LOG_C_BRIGHT_YELLOW, "[FAT] Invalid boot sector, formatting...");
     usb_fs_format_safe();
   } else {
-    printf("FAT FS: Valid boot sector found\n");
+    Log("[FAT] Boot sector valid");
   }
 
-  // Всегда выводим информацию о layout
-  print_fat_layout();
+  // print_fat_layout();
 }
 
 // Прочитать FAT entry
@@ -593,7 +510,7 @@ static uint16_t allocate_clusters(uint16_t *first_cluster,
 }
 
 static int find_file_entry(const char *formatted_name, fat_dir_entry_t *entry) {
-  printf("find_file_entry: formatted_name='%.11s'\n", formatted_name);
+  // printf("find_file_entry: formatted_name='%.11s'\n", formatted_name);
 
   for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR;
        sector++) {
@@ -603,18 +520,17 @@ static int find_file_entry(const char *formatted_name, fat_dir_entry_t *entry) {
       fat_dir_entry_t *e = (fat_dir_entry_t *)(sector_cache + i * 32);
 
       if (e->name[0] == 0) {
-        printf("  End of directory at sector %lu, entry %d (0x%02X)\n", sector,
-               i, e->name[0]);
+        /* printf("  End of directory at sector %lu, entry %d (0x%02X)\n",
+           sector, i, e->name[0]); */
         return -1;
       }
 
       if (e->name[0] != 0xE5 && !(e->attr & 0x08)) {
-        // Добавим отладочный вывод
-        printf("  Checking sector %lu, entry %d: '%.11s' (attr=0x%02X)\n",
-               sector, i, e->name, e->attr);
+        /* printf("  Checking sector %lu, entry %d: '%.11s' (attr=0x%02X)\n",
+               sector, i, e->name, e->attr); */
 
         if (memcmp(e->name, formatted_name, 11) == 0) {
-          printf("  Found at sector %lu, entry %d\n", sector, i);
+          // printf("  Found at sector %lu, entry %d\n", sector, i);
           if (entry) {
             memcpy(entry, e, sizeof(fat_dir_entry_t));
           }
@@ -624,7 +540,7 @@ static int find_file_entry(const char *formatted_name, fat_dir_entry_t *entry) {
     }
   }
 
-  printf("  File not found in entire root directory\n");
+  // printf("  File not found in entire root directory\n");
   return -1;
 }
 
@@ -634,7 +550,7 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
 
   if (idx == -1) {
     // Найти свободную запись
-    printf("update_file_entry: Finding free entry for '%.11s'\n", name);
+    // printf("update_file_entry: Finding free entry for '%.11s'\n", name);
 
     for (uint32_t sector = ROOT_START_SECTOR; sector < DATA_START_SECTOR;
          sector++) {
@@ -644,8 +560,8 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
         fat_dir_entry_t *e = (fat_dir_entry_t *)(sector_cache + i * 32);
 
         if (e->name[0] == 0 || e->name[0] == 0xE5) {
-          printf("  Free entry found at sector %lu, entry %d (0x%02X)\n",
-                 sector, i, e->name[0]);
+          /* printf("  Free entry found at sector %lu, entry %d (0x%02X)\n",
+                 sector, i, e->name[0]); */
 
           memcpy(e, entry, sizeof(fat_dir_entry_t));
 
@@ -657,8 +573,8 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
               fat_dir_entry_t *next =
                   (fat_dir_entry_t *)(sector_cache + (i + 1) * 32);
               if (next->name[0] != 0) {
-                printf("  Setting next entry (%d) as end of directory\n",
-                       i + 1);
+                /* printf("  Setting next entry (%d) as end of directory\n",
+                       i + 1); */
                 next->name[0] = 0;
               }
             } else {
@@ -671,7 +587,7 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
 
           cache_dirty = true;
           flush_cache();
-          printf("  Entry written successfully\n");
+          // printf("  Entry written successfully\n");
           return 0;
         }
       }
@@ -681,7 +597,7 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
   }
 
   // Обновить существующую запись
-  printf("update_file_entry: Updating existing entry at idx %d\n", idx);
+  // printf("update_file_entry: Updating existing entry at idx %d\n", idx);
 
   uint32_t sector = ROOT_START_SECTOR + idx / (SECTOR_SIZE / 32);
   uint32_t offset = (idx % (SECTOR_SIZE / 32)) * 32;
@@ -696,21 +612,22 @@ static int update_file_entry(const char *name, const fat_dir_entry_t *entry) {
 
 int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
                       bool append) {
-  printf("usb_fs_write_file: '%s', size=%lu, append=%d\n", name, size, append);
+  // printf("usb_fs_write_file: '%s', size=%lu, append=%d\n", name, size,
+  // append);
 
   char formatted_name[12];
   fat_format_name(name, formatted_name);
-  printf("Formatted name: '%.11s'\n", formatted_name);
+  // printf("Formatted name: '%.11s'\n", formatted_name);
 
   // 1. Если файл уже существует и append=false, удаляем его
   fat_dir_entry_t entry;
   int idx = find_file_entry(formatted_name, &entry);
 
   if (idx != -1 && !append) {
-    printf("  File exists, deleting first...\n");
+    // printf("  File exists, deleting first...\n");
     int delete_result = usb_fs_delete_file(name);
     if (delete_result != 0) {
-      printf("  ERROR: Failed to delete existing file\n");
+      LogC(LOG_C_RED, "[FAT] Failed to delete existing file\n");
       return -1;
     }
     idx = -1;
@@ -723,12 +640,12 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
   if (existed) {
     old_size = entry.file_size;
     first_cluster = entry.first_clusterLO;
-    printf("  Appending to existing file: size=%lu, cluster=%u\n", old_size,
-           first_cluster);
+    /* printf("  Appending to existing file: size=%lu, cluster=%u\n", old_size,
+           first_cluster); */
   } else {
     old_size = 0;
     first_cluster = 0;
-    printf("  Creating new file\n");
+    // printf("  Creating new file\n");
   }
 
   uint32_t new_size = old_size + size;
@@ -753,9 +670,9 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
   uint32_t existing_clusters = (old_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
   uint32_t additional_clusters = total_clusters_needed - existing_clusters;
 
-  printf("  old_size=%lu, new_size=%lu, existing_clusters=%lu, "
+  /* printf("  old_size=%lu, new_size=%lu, existing_clusters=%lu, "
          "additional_clusters=%lu\n",
-         old_size, new_size, existing_clusters, additional_clusters);
+         old_size, new_size, existing_clusters, additional_clusters); */
 
   // Если нужно добавить кластеры
   if (additional_clusters > 0) {
@@ -763,10 +680,10 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
       // Новый файл - выделяем первый кластер
       first_cluster = find_free_cluster();
       if (first_cluster == 0) {
-        printf("  ERROR: No free cluster\n");
+        LogC(LOG_C_RED, "[FAT] No free cluster");
         return -1;
       }
-      printf("  Allocated cluster: %u\n", first_cluster);
+      // printf("  Allocated cluster: %u\n", first_cluster);
 
       // Устанавливаем EOF для первого кластера
       write_fat_entry(first_cluster, 0xFFFF);
@@ -778,7 +695,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
         uint16_t next = find_free_cluster();
         if (next == 0) {
           free_clusters(first_cluster);
-          printf("  ERROR: Out of space\n");
+          LogC(LOG_C_RED, "[FAT] Out of space");
           return -1;
         }
         write_fat_entry(current, next);
@@ -802,7 +719,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
       for (uint32_t i = 0; i < additional_clusters; i++) {
         next = find_free_cluster();
         if (next == 0) {
-          printf("  ERROR: Out of space while extending\n");
+          LogC(LOG_C_RED, "[FAT] Out of space while extending");
           return -1;
         }
         write_fat_entry(current, next);
@@ -812,15 +729,15 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     }
   }
 
-  printf("  File size: %lu bytes, clusters needed: %lu\n", new_size,
-         (new_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE);
+  /* printf("  File size: %lu bytes, clusters needed: %lu\n", new_size,
+         (new_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE); */
 
   if (first_cluster == 0) {
     printf("  ERROR: No cluster allocated!\n");
     return -1;
   }
 
-  printf("  First cluster: %u\n", first_cluster);
+  // printf("  First cluster: %u\n", first_cluster);
 
   // 4. Записываем данные
   uint32_t written = 0;
@@ -835,7 +752,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     while (remaining > CLUSTER_SIZE) {
       cluster = read_fat_entry(cluster);
       if (cluster >= 0xFFF8 || cluster < 2) {
-        printf("  ERROR: Corrupted FAT chain\n");
+        LogC(LOG_C_RED, "[FAT] Corrupted FAT chain");
         return -1;
       }
       remaining -= CLUSTER_SIZE;
@@ -843,8 +760,8 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     offset_in_cluster = remaining;
   }
 
-  printf("  Starting write at cluster=%u, offset=%lu\n", cluster,
-         offset_in_cluster);
+  /* printf("  Starting write at cluster=%u, offset=%lu\n", cluster,
+         offset_in_cluster); */
 
   while (written < size) {
     uint32_t flash_addr =
@@ -865,15 +782,15 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
       PY25Q16_ReadBuffer(flash_addr, &check_byte, 1);
 
       if (check_byte != 0xFF) {
-        printf("  Erasing cluster %u at 0x%06lx\n", cluster, flash_addr);
+        // printf("  Erasing cluster %u at 0x%06lx\n", cluster, flash_addr);
         PY25Q16_SectorErase(flash_addr);
       } else {
-        printf("  Cluster %u already erased\n", cluster);
+        // printf("  Cluster %u already erased\n", cluster);
       }
     }
 
-    printf("  Writing %lu bytes to cluster %u at 0x%06lx\n", to_write, cluster,
-           flash_addr);
+    /* printf("  Writing %lu bytes to cluster %u at 0x%06lx\n", to_write,
+       cluster, flash_addr); */
     PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
 
     written += to_write;
@@ -885,7 +802,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
       uint16_t next_cluster = read_fat_entry(cluster);
 
       if (next_cluster >= 0xFFF8 && written < size) {
-        printf("  ERROR: FAT chain ended prematurely\n");
+        LogC(LOG_C_RED, "[FAT] FAT chain ended prematurely");
         return -1;
       }
 
@@ -905,7 +822,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
   entry.write_time = _VOLUME_CREATE_TIME;
 
   int result = update_file_entry(formatted_name, &entry);
-  printf("  Directory update result: %d\n", result);
+  // printf("  Directory update result: %d\n", result);
 
   return result;
 }
@@ -926,15 +843,17 @@ int usb_fs_open(const char *name, usb_fs_handle_t *handle) {
   // Форматируем имя
   fat_format_name(name, formatted_name);
 
-  printf("usb_fs_open: name='%s', formatted='%.11s'\n", name, formatted_name);
+  // printf("usb_fs_open: name='%s', formatted='%.11s'\n", name,
+  // formatted_name);
 
   if (find_file_entry(formatted_name, &entry) == -1) {
-    printf("  File not found!\n");
+    // printf("  File not found!\n");
+    LogC(LOG_C_YELLOW, "[FAT] File '%s' not found", name);
     return -1;
   }
 
-  printf("  File found: cluster=%u, size=%lu\n", entry.first_clusterLO,
-         entry.file_size);
+  /* printf("  File found: cluster=%u, size=%lu\n", entry.first_clusterLO,
+         entry.file_size); */
 
   // ОБЯЗАТЕЛЬНО обнуляем handle перед использованием
   memset(handle, 0, sizeof(usb_fs_handle_t));
@@ -964,7 +883,7 @@ size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len) {
   while (len > 0 && handle->position < handle->file_size) {
     // ПРОВЕРКА: кластер должен быть валидным
     if (handle->current_cluster < 2 || handle->current_cluster >= 0xFFF8) {
-      printf("  ERROR: Invalid cluster %u\n", handle->current_cluster);
+      LogC(LOG_C_RED, "[FAT] Invalid cluster %u", handle->current_cluster);
       break;
     }
 
@@ -978,8 +897,8 @@ size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len) {
       // ПРОВЕРКА: следующий кластер должен быть валидным
       if (next_cluster < 2 || next_cluster >= 0xFFF8) {
         if (next_cluster < 0xFFF8) {
-          printf("  ERROR: Corrupted FAT chain at cluster %u -> %u\n",
-                 handle->current_cluster, next_cluster);
+          LogC(LOG_C_RED, "[FAT] Corrupted FAT chain at cluster %u -> %u\n",
+               handle->current_cluster, next_cluster);
         }
         break;
       }

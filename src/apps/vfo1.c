@@ -78,9 +78,10 @@ static bool handleFrequencyChange(KEY_Code_t key) {
     return false;
 
   if (vfo->mode == MODE_CHANNEL) {
-    CHANNELS_Next(key == KEY_UP);
+    CHANNELS_Next((key == KEY_UP) ^ gSettings.invertButtons);
   } else {
-    RADIO_IncDecParam(ctx, PARAM_FREQUENCY, key == KEY_UP, true);
+    RADIO_IncDecParam(ctx, PARAM_FREQUENCY,
+                      (key == KEY_UP) ^ gSettings.invertButtons, true);
   }
   updateBand();
   return true;

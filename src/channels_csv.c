@@ -1,5 +1,6 @@
 #include "channels_csv.h"
 #include "driver/fat.h"
+#include "driver/uart.h"
 #include "external/printf/printf.h"
 #include <stdlib.h>
 #include <string.h>
@@ -368,11 +369,11 @@ void CHANNEL_SaveCSV(const char *filename, int16_t num, MR *mr) {
 int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
   if (!filename || !mr)
     return -1;
-  printf("LOAD CSV %s\n", filename);
+  Log("[CSV] LOAD %s", filename);
 
   usb_fs_handle_t handle;
   if (usb_fs_open(filename, &handle) != 0) {
-    printf("[err] cannot open %s\n", filename);
+    // printf("[err] cannot open %s\n", filename);
     return -1;
   }
 
@@ -478,10 +479,10 @@ int CHANNEL_LoadCSV(const char *filename, int16_t num, MR *mr) {
   // usb_fs_close(&handle);
 
   if (!found) {
-    printf("[err] no valid record found in %s\n", filename);
+    LogC(LOG_C_RED, "[CSV] no valid record found in %s\n", filename);
     return -1;
   }
 
-  printf("LOAD CSV %s OK\n", filename);
+  // printf("LOAD CSV %s OK\n", filename);
   return 0;
 }

@@ -50,6 +50,7 @@ typedef enum {
   SETTING_FCTIME,
   SETTING_MULTIWATCH,
   SETTING_FREQ_CORRECTION,
+  SETTING_INVERT_BUTTONS,
 
   SETTING_COUNT,
 } Setting;
@@ -138,7 +139,8 @@ typedef struct {
   uint8_t txTime : 4;
 
   uint8_t fcTime : 2;
-  uint8_t reserved5 : 2;
+  bool invertButtons : 1;
+  uint8_t reserved5 : 1;
   uint8_t iAmPro : 1;
   uint8_t roger : 3;
 

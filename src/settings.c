@@ -222,6 +222,8 @@ uint32_t SETTINGS_GetValue(Setting s) {
     return gSettings.si4732PowerOff;
   case SETTING_TONELOCAL:
     return gSettings.toneLocal;
+  case SETTING_INVERT_BUTTONS:
+    return gSettings.invertButtons;
   }
   return 0;
 }
@@ -359,6 +361,9 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
   case SETTING_TONELOCAL:
     gSettings.toneLocal = v;
     break;
+  case SETTING_INVERT_BUTTONS:
+    gSettings.invertButtons = v;
+    break;
   case SETTING_COUNT:
     return;
   }
@@ -381,6 +386,7 @@ const char *SETTINGS_GetValueString(Setting s) {
   case SETTING_SKIPGARBAGEFREQUENCIES:
   case SETTING_DTMFDECODE:
   case SETTING_PTT_LOCK:
+  case SETTING_INVERT_BUTTONS:
     return YES_NO[v];
 
   case SETTING_BEEP:
@@ -481,6 +487,7 @@ void SETTINGS_IncDecValue(Setting s, bool inc) {
   case SETTING_KEYLOCK:
   case SETTING_PTT_LOCK:
   case SETTING_STE:
+  case SETTING_INVERT_BUTTONS:
     ma = 2;
     break;
   case SETTING_MULTIWATCH:

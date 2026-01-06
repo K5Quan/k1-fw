@@ -53,6 +53,7 @@ static const char *setting_names[SETTING_COUNT] = {
     [SETTING_FCTIME] = "fc_time",
     [SETTING_MULTIWATCH] = "multiwatch",
     [SETTING_FREQ_CORRECTION] = "freq_correction",
+    [SETTING_INVERT_BUTTONS] = "invert_buttons",
 };
 
 // Вспомогательные функции для работы с INI
@@ -200,6 +201,7 @@ int SETTINGS_SaveToINI(const Settings *settings, const char *filename) {
   append_setting("upconverter", settings->upconverter);
   append_setting("bound_240_280", settings->bound_240_280);
   append_setting("freq_correction", settings->freqCorrection);
+  append_setting("invert_buttons", settings->invertButtons);
   append_line("");
 
   // Записать в файл
@@ -272,6 +274,7 @@ int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
   READ_VALUE(upconverter, "upconverter");
   READ_VALUE(bound_240_280, "bound_240_280");
   READ_VALUE(freqCorrection, "freq_correction");
+  READ_VALUE(invertButtons, "invert_buttons");
 
 #undef READ_VALUE
 

@@ -14,7 +14,6 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
-  printf("Hawk\n");
 
   SYS_Main();
 }
