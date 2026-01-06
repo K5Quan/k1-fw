@@ -287,61 +287,6 @@ static void print_fat_layout(void) {
          (FLASH_DATA_OFFSET % FLASH_ERASE_SIZE == 0) ? "OK" : "FAIL");
 }
 
-static void usb_fs_format_minimal(void) {
-  printf("FAT FS: Minimal format...\n");
-
-  cached_sector = 0xFFFFFFFF;
-  cache_dirty = false;
-
-  // Только самое необходимое:
-
-  // 1. Boot sector (сектор 0)
-  printf("  Writing boot sector...\n");
-  memset(sector_cache, 0, SECTOR_SIZE);
-  memcpy(sector_cache, &BOOT_SECTOR_RECORD, sizeof(BOOT_SECTOR_RECORD));
-  sector_cache[510] = 0x55;
-  sector_cache[511] = 0xAA;
-
-  // Проверяем, нужно ли стирать сектор 0
-  uint8_t check[4];
-  PY25Q16_ReadBuffer(0, check, 4);
-  if (check[0] != 0xEB || check[1] != 0x3C || check[2] != 0x90) {
-    printf("  Erasing sector 0...\n");
-    PY25Q16_SectorErase(0);
-  }
-  PY25Q16_WriteBuffer(0, sector_cache, SECTOR_SIZE, false);
-
-  // 2. FAT1 (только первый сектор)
-  printf("  Writing FAT1 start...\n");
-  memset(sector_cache, 0, SECTOR_SIZE);
-  sector_cache[0] = BPB_MEDIA;
-  sector_cache[1] = 0xFF;
-  sector_cache[2] = 0xFF;
-  sector_cache[3] = 0xFF;
-
-  // Проверяем FAT1
-  PY25Q16_ReadBuffer(FLASH_FAT_OFFSET, check, 4);
-  if (check[0] != BPB_MEDIA) {
-    printf("  Erasing FAT1 start...\n");
-    PY25Q16_SectorErase(FLASH_FAT_OFFSET);
-  }
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, false);
-
-  // 3. Root directory (только первый сектор)
-  printf("  Clearing root start...\n");
-  memset(sector_cache, 0, SECTOR_SIZE);
-
-  // Проверяем root
-  PY25Q16_ReadBuffer(FLASH_ROOT_OFFSET, check, 4);
-  if (check[0] != 0 || check[1] != 0 || check[2] != 0 || check[3] != 0) {
-    printf("  Erasing root start...\n");
-    PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
-  }
-  PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET, sector_cache, SECTOR_SIZE, false);
-
-  printf("FAT FS: Minimal format complete\n");
-}
-
 static void usb_fs_repair(void) {
   printf("FAT FS: Repairing filesystem...\n");
 
@@ -517,47 +462,6 @@ void usb_fs_init(void) {
   // Всегда выводим информацию о layout
   print_fat_layout();
 }
-
-// Инициализация файловой системы
-/* void usb_fs_init(void) {
-  cached_sector = 0xFFFFFFFF;
-  cache_dirty = false;
-
-  // Проверяем, инициализирована ли уже флешка
-  uint8_t check[4];
-  PY25Q16_ReadBuffer(FLASH_FAT_OFFSET, check, 4);
-
-  // Если уже инициализирована (первые байты FAT правильные), не трогаем
-  if (check[0] == BPB_MEDIA && check[1] == 0xff && check[2] == 0xff &&
-      check[3] == 0xff) {
-    return; // Уже инициализирована
-  }
-
-  // Полная инициализация
-  memset(sector_cache, 0, SECTOR_SIZE);
-
-  // FAT1: Инициализация первых entry
-  sector_cache[0] = BPB_MEDIA;
-  sector_cache[1] = 0xff;
-  sector_cache[2] = 0xff;
-  sector_cache[3] = 0xff;
-
-  PY25Q16_SectorErase(FLASH_FAT_OFFSET);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, true);
-
-  // FAT2: копия FAT1
-  PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE,
-                      sector_cache, SECTOR_SIZE, true);
-
-  // Root Directory: создаём пустой (все нули = нет файлов)
-  memset(sector_cache, 0, SECTOR_SIZE);
-  PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
-  for (int i = 0; i < ROOT_SECTORS; i++) {
-    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, sector_cache,
-                        SECTOR_SIZE, true);
-  }
-} */
 
 // Прочитать FAT entry
 static uint16_t read_fat_entry(uint16_t cluster) {
@@ -1237,45 +1141,6 @@ void usb_fs_format(void) {
   usb_fs_format_raw();
 }
 
-// Форматирование файловой системы
-/* void usb_fs_format(void) {
-  cached_sector = 0xFFFFFFFF;
-  cache_dirty = false;
-
-  memset(sector_cache, 0, SECTOR_SIZE);
-
-  // FAT1: Инициализация первых entry
-  sector_cache[0] = BPB_MEDIA;
-  sector_cache[1] = 0xff;
-  sector_cache[2] = 0xff;
-  sector_cache[3] = 0xff;
-
-  PY25Q16_SectorErase(FLASH_FAT_OFFSET);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET, sector_cache, SECTOR_SIZE, true);
-
-  // FAT2: копия FAT1
-  PY25Q16_SectorErase(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE);
-  PY25Q16_WriteBuffer(FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE,
-                      sector_cache, SECTOR_SIZE, true);
-
-  // Root Directory: очистка
-  memset(sector_cache, 0, SECTOR_SIZE);
-  PY25Q16_SectorErase(FLASH_ROOT_OFFSET);
-  for (int i = 0; i < ROOT_SECTORS; i++) {
-    PY25Q16_WriteBuffer(FLASH_ROOT_OFFSET + i * SECTOR_SIZE, sector_cache,
-                        SECTOR_SIZE, true);
-  }
-
-  // Очистка первых нескольких блоков данных (опционально)
-  for (uint32_t i = 0; i < DATA_SECTORS / SECTORS_PER_CLUSTER; i++) {
-    PY25Q16_SectorErase(FLASH_DATA_OFFSET + i * FLASH_ERASE_SIZE);
-  }
-
-  for (uint16_t cl = 2; cl < DATA_SECTORS / SECTORS_PER_CLUSTER; ++cl) {
-    write_fat_entry(cl, 0);
-  }
-} */
-
 // USB callbacks
 void usb_fs_configure_done(void) { BOARD_ToggleRed(true); }
 
@@ -1285,23 +1150,24 @@ void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size) {
 }
 
 int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
-  if (size != SECTOR_SIZE || ((uint32_t)buf) % 4 != 0) {
+  // УБЕРИТЕ проверку выравнивания! Linux не гарантирует выравнивание
+  if (size != SECTOR_SIZE) {
     return 1;
   }
 
   if (sector == 0) {
-    // Boot sector
+    // Boot sector - генерируем на лету
     memcpy(buf, &BOOT_SECTOR_RECORD, sizeof(BOOT_SECTOR_RECORD));
     buf[510] = 0x55;
     buf[511] = 0xAA;
-    // Остальная часть сектора - нули
     memset(buf + sizeof(BOOT_SECTOR_RECORD), 0,
            SECTOR_SIZE - sizeof(BOOT_SECTOR_RECORD));
   } else if (sector < RESERVED_SECTORS) {
-    // Другие reserved sectors - нули
+    // Reserved sectors - нули
     memset(buf, 0, SECTOR_SIZE);
   } else {
-    // Все остальные секторы
+    // Чтение данных - БЕЗ блокировки для скорости
+    // (чтение не конфликтует с другими операциями во флеш-памяти)
     uint32_t flash_addr = sector * SECTOR_SIZE;
     PY25Q16_ReadBuffer(flash_addr, buf, SECTOR_SIZE);
   }
@@ -1309,16 +1175,53 @@ int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
   return 0;
 }
 
-int usb_fs_sector_write(uint32_t sector, const uint8_t *buf, uint32_t size) {
-  if (size != SECTOR_SIZE || ((uint32_t)buf) % 4 != 0) {
+int usb_fs_sector_write(uint32_t sector, uint8_t *buf, uint32_t size) {
+  if (size != SECTOR_SIZE) {
     return 1;
   }
 
   if (sector == 0) {
-    return 1; // Boot sector защищен от записи
+    // ВАЖНО: Linux пытается обновить boot sector при монтировании
+    // Разрешаем запись, но только определенных полей
+    // printf("USB: Write to boot sector (sector %lu)\n", sector);
+
+    // Проверяем, что пытается записать Linux
+    // Обычно он обновляет только:
+    // 1. Метку времени (смещение 0x24-0x27) - Volume ID
+    // 2. Сигнатуру (0x55AA на конце) - уже установлена
+
+    // Читаем текущий boot sector
+    uint8_t current[512];
+    PY25Q16_ReadBuffer(0, current, 512);
+
+    // Разрешаем обновление только Volume ID (смещение 0x24-0x27)
+    // и Volume Label (смещение 0x2B-0x35)
+    for (int i = 0; i < 512; i++) {
+      // Разрешаем запись в поля Volume ID и Volume Label
+      if ((i >= 0x24 && i <= 0x27) || (i >= 0x2B && i <= 0x35)) {
+        // Пропускаем - разрешаем Linux обновить
+        continue;
+      }
+      // Защищаем остальные поля
+      if (buf[i] != current[i]) {
+        printf("USB: Blocked write to protected boot sector area at 0x%02X\n",
+               i);
+        // Восстанавливаем оригинальное значение
+        buf[i] = current[i];
+      }
+    }
+
+    // Обязательно сохраняем сигнатуру 55AA
+    buf[510] = 0x55;
+    buf[511] = 0xAA;
+
+    // Разрешаем запись обновленного boot sector
+    uint32_t flash_addr = sector * SECTOR_SIZE;
+    PY25Q16_WriteBuffer(flash_addr, buf, SECTOR_SIZE, false);
+    return 0;
   }
 
-  // Все остальные секторы пишем напрямую
+  // Для остальных секторов - разрешаем запись
   uint32_t flash_addr = sector * SECTOR_SIZE;
   PY25Q16_WriteBuffer(flash_addr, buf, SECTOR_SIZE, false);
 

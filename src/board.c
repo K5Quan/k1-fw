@@ -156,7 +156,7 @@ void BOARD_DAC_SetValue(uint16_t value) {
   LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
 }
 
-static void BOARD_USBInit() {
+void BOARD_USBInit() {
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USBD);
   // LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA);
 
@@ -169,12 +169,16 @@ static void BOARD_USBInit() {
 
 void BOARD_Init(void) {
   BOARD_GPIO_Init();
-  BACKLIGHT_InitHardware();
   BOARD_ADC_Init();
   BOARD_DAC_Init();
+
+  UART_Init();
+
   PY25Q16_Init();
+  usb_fs_init();
+
+  BACKLIGHT_InitHardware();
   ST7565_Init();
-  BOARD_USBInit();
 }
 
 void BOARD_FlashlightToggle() { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }

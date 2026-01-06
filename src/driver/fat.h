@@ -116,7 +116,7 @@ void usb_fs_format(void);
 void usb_fs_configure_done(void);
 void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size);
 int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size);
-int usb_fs_sector_write(uint32_t sector, const uint8_t *buf, uint32_t size);
+int usb_fs_sector_write(uint32_t sector, uint8_t *buf, uint32_t size);
 
 // Callback для проверки защиты от записи (должен возвращать false)
 static inline bool usb_fs_is_write_protected(void) {

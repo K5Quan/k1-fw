@@ -1,5 +1,6 @@
 #include "system.h"
 #include "apps/apps.h"
+#include "board.h"
 #include "channels_csv.h"
 #include "driver/backlight.h"
 #include "driver/battery.h"
@@ -16,11 +17,9 @@
 #include "helper/channels.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
-#include "radio.h"
 #include "settings.h"
 #include "settings_ini.h"
 #include "ui/graphics.h"
-#include "ui/spectrum.h"
 #include "ui/statusline.h"
 #include <string.h>
 
@@ -215,6 +214,8 @@ void SYS_Main() {
     LogC(LOG_C_BRIGHT_WHITE, "RUN DEFAULT APP");
     APPS_run(APP_VFO1);
   }
+
+  BOARD_USBInit();
 
   for (;;) {
 

@@ -1,4 +1,5 @@
 #include "usb_msc.h"
+#include "../external/printf/printf.h"
 #include "flash_sync.h"
 #include "usbd_core.h"
 #include "usbd_msc.h"
@@ -28,20 +29,20 @@ const uint8_t msc_flash_descriptor[] = {
     ///////////////////////////////////////
     0x0C,                       /* bLength */
     USB_DESCRIPTOR_TYPE_STRING, /* bDescriptorType */
-    'M', 0x00,                  /* wcChar0 */
-    'U', 0x00,                  /* wcChar1 */
-    'Z', 0x00,                  /* wcChar2 */
-    'K', 0x00,                  /* wcChar3 */
-    'R', 0x00,                  /* wcChar4 */
+    'F', 0x00,                  /* wcChar0 */
+    'A', 0x00,                  /* wcChar1 */
+    'G', 0x00,                  /* wcChar2 */
+    'C', 0x00,                  /* wcChar3 */
+    'I', 0x00,                  /* wcChar4 */
     ///////////////////////////////////////
     /// string2 descriptor
     ///////////////////////////////////////
     0x0A,                       /* bLength */
     USB_DESCRIPTOR_TYPE_STRING, /* bDescriptorType */
-    'I', 0x00,                  /* wcChar0 */
-    'C', 0x00,                  /* wcChar1 */
-    'H', 0x00,                  /* wcChar2 */
-    'I', 0x00,                  /* wcChar3 */
+    'H', 0x00,                  /* wcChar0 */
+    'A', 0x00,                  /* wcChar1 */
+    'W', 0x00,                  /* wcChar2 */
+    'K', 0x00,                  /* wcChar3 */
     ///////////////////////////////////////
     /// string3 descriptor
     ///////////////////////////////////////
@@ -60,33 +61,28 @@ const uint8_t msc_flash_descriptor[] = {
 #endif
     0x00};
 
-void usbd_configure_done_callback(void) { usb_fs_configure_done(); }
+void usbd_configure_done_callback(void) {
+  // printf("CFG OK\n");
+  usb_fs_configure_done();
+}
 
 void usbd_msc_get_cap(uint8_t lun, uint32_t *block_num, uint16_t *block_size) {
+  // printf("GET CAP\n");
   usb_fs_get_cap(block_num, block_size);
 }
 
 int usbd_msc_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
-  // USB пытается получить блокировку на короткое время
-  if (!flash_lock_usb(50)) {
-    // Если не получилось, возвращаем ошибку - хост повторит
-    return -1;
-  }
-
-  int result = usb_fs_sector_read(sector, buf, size);
-
-  flash_unlock();
-  return result;
+  // printf("SECT R %u %u\n", sector, size);
+  return usb_fs_sector_read(sector, buf, size);
 }
 
 int usbd_msc_sector_write(uint32_t sector, uint8_t *buf, uint32_t size) {
-  if (!flash_lock_usb(100)) {
-    return -1;
-  }
+  // printf("SECT W %u %u\n", sector, size);
+  // flash_lock();
 
   int result = usb_fs_sector_write(sector, buf, size);
 
-  flash_unlock();
+  // flash_unlock();
   return result;
 }
 

@@ -10,7 +10,6 @@
 #include "py32f071_ll_system.h"
 #include "systick.h"
 
-// ЗАКОММЕНТИРОВАТЬ ДЛЯ ПРОДУКШЕНА
 // #define DEBUG
 
 #define SPIx SPI2
@@ -306,52 +305,26 @@ void PY25Q16_Init() {
 }
 
 void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
-  if (flash_is_locked() && flash_get_lock_type() == FLASH_LOCK_USB) {
-    // USB читает - разрешаем без блокировки
-  } else {
-    if (!flash_lock_fs(100)) {
-      printf("ERROR: Cannot lock flash for read\n");
-      return;
-    }
-  }
-#ifdef DEBUG
-  printf("ReadBuffer: 0x%06lx, %lu bytes\n", Address, Size);
-#endif
-
   CS_Assert();
 
-  SPI_WriteByte(0x03); // Fast read
-  WriteAddr(Address);
+  // Команда быстрого чтения с dummy byte
+  SPI_WriteByte(0x0B); // Fast Read
+  SPI_WriteByte(Address >> 16);
+  SPI_WriteByte(Address >> 8);
+  SPI_WriteByte(Address);
+  SPI_WriteByte(0xFF); // Dummy byte для fast read
 
-  if (Size >= 64) {
-    // Используем DMA для больших блоков
-    SPI_ReadBuf((uint8_t *)pBuffer, Size);
-    if (!wait_for_dma_complete(100)) {
-      // Таймаут DMA
-#ifdef DEBUG
-      printf("ReadBuffer DMA timeout!\n");
-#endif
-    }
-  } else {
-    // Для маленьких блоков используем байтовое чтение
-    for (uint32_t i = 0; i < Size; i++) {
-      ((uint8_t *)(pBuffer))[i] = SPI_WriteByte(0xff);
-    }
+  // Чтение данных
+  for (uint32_t i = 0; i < Size; i++) {
+    ((uint8_t *)pBuffer)[i] = SPI_WriteByte(0xFF);
   }
 
   CS_Release();
-  if (flash_is_locked() && flash_get_lock_type() == FLASH_LOCK_FS) {
-    flash_unlock();
-  }
 }
 
-// УПРОЩЕННАЯ WriteBuffer с улучшенной обработкой ошибок
 void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
                          bool Append) {
-  if (!flash_lock_fs(1000)) {
-    printf("ERROR: Cannot lock flash for write (timeout)\n");
-    return;
-  }
+  flash_lock();
 #ifdef DEBUG
   printf("WriteBuffer: 0x%06lx, %lu bytes\n", Address, Size);
 #endif
@@ -398,10 +371,7 @@ void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
 }
 
 void PY25Q16_SectorErase(uint32_t Address) {
-  if (!flash_lock_fs(2000)) {
-    printf("ERROR: Cannot lock flash for erase (timeout)\n");
-    return;
-  }
+  flash_lock();
   Address -= (Address % SECTOR_SIZE);
 
 #ifdef DEBUG
