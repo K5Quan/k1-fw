@@ -185,5 +185,6 @@ void usb_fs_close(usb_fs_handle_t *handle);
 void usb_fs_format_safe(void);
 void debug_file_structure(const char *name);
 void debug_fat_table(uint16_t start_cluster, uint16_t count);
+void check_fat_consistency(void);
 
 #endif // USB_FS_H

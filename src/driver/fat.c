@@ -52,7 +52,6 @@ static_assert((SECTORS_PER_CLUSTER * SECTOR_SIZE) == FLASH_ERASE_SIZE,
               "Cluster size must match erase size");
 
 // Кэш для одного сектора (экономия RAM)
-static uint8_t sector_cache[SECTOR_SIZE];
 static uint32_t cached_sector = 0xFFFFFFFF;
 static bool cache_dirty = false;
 
@@ -88,6 +87,13 @@ static uint32_t last_erase_time = 0;
 static uint32_t operation_counter = 0;
 static bool needs_erase_check = false;
 
+static void invalidate_cache_for_sector(uint32_t sector) {
+  if (cached_sector == sector) {
+    cached_sector = 0xFFFFFFFF;
+    cache_dirty = false;
+  }
+}
+
 // Функция для проверки необходимости стирания
 static bool needs_erase(uint32_t sector, uint8_t *new_data) {
   uint8_t current_data[SECTOR_SIZE];
@@ -109,35 +115,39 @@ static bool needs_erase(uint32_t sector, uint8_t *new_data) {
   return false;
 }
 
+#define ERASE_BLOCK_SIZE 4096
+
+static uint8_t
+    current_sector_data[SECTOR_SIZE]; // Reuse as global to save stack
+
 static void smart_write_sector(uint32_t sector, uint8_t *new_data) {
   uint32_t flash_addr = sector * SECTOR_SIZE;
+  uint32_t block_addr = flash_addr & ~(ERASE_BLOCK_SIZE - 1);
+  uint32_t offset_in_block = flash_addr - block_addr;
 
-  // Читаем текущие данные
-  uint8_t current_data[SECTOR_SIZE];
-  PY25Q16_ReadBuffer(flash_addr, current_data, SECTOR_SIZE);
+  // Read current
+  PY25Q16_ReadBuffer(flash_addr, current_sector_data, SECTOR_SIZE);
 
-  // Проверяем, можно ли записать без стирания
-  bool can_write_without_erase = true;
+  // Check if erase needed
+  bool needs_erase = false;
   for (int i = 0; i < SECTOR_SIZE; i++) {
-    // Для флеш-памяти: можно менять биты с 1 на 0 без стирания
-    // Но нельзя менять с 0 на 1
-    if ((current_data[i] & new_data[i]) != new_data[i]) {
-      can_write_without_erase = false;
+    if ((current_sector_data[i] & new_data[i]) != new_data[i]) {
+      needs_erase = true;
       break;
     }
   }
 
-  if (can_write_without_erase) {
-    // Можно записать без стирания
-    /* printf("  Writing sector %lu at 0x%06lx (no erase needed)\n", sector,
-           flash_addr); */
+  if (!needs_erase) {
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
   } else {
-    // Нужно стереть сектор
-    // printf("  Erasing and writing sector %lu at 0x%06lx\n", sector,
-    // flash_addr);
-    PY25Q16_SectorErase(flash_addr);
+    // Erase the block and write the new sector (no save - compromise for RAM)
+    PY25Q16_SectorErase(block_addr);
     PY25Q16_WriteBuffer(flash_addr, new_data, SECTOR_SIZE, false);
+    // Invalidate cache if affected
+    for (uint32_t s = block_addr / SECTOR_SIZE;
+         s < (block_addr + ERASE_BLOCK_SIZE) / SECTOR_SIZE; s++) {
+      invalidate_cache_for_sector(s);
+    }
   }
 }
 
@@ -158,13 +168,23 @@ static void flush_cache(void) {
 }
 
 static void read_sector_to_cache(uint32_t sector) {
-  if (cached_sector == sector) {
-    return; // Уже в кэше
+  if (cached_sector == sector && !cache_dirty) {
+    return; // Уже в кэше и данные актуальны
   }
 
   flush_cache(); // Сохранить старый кэш
 
-  uint32_t flash_addr = sector * SECTOR_SIZE; // Простое вычисление!
+  uint32_t flash_addr = sector * SECTOR_SIZE;
+
+  // ПРОВЕРЯЕМ: если это сектор FAT или Root, убеждаемся что читаем актуальные
+  // данные
+  if (sector >= FAT_START_SECTOR && sector < DATA_START_SECTOR) {
+    // Для FAT/Root читаем напрямую, минуя кэш
+    PY25Q16_ReadBuffer(flash_addr, sector_cache, SECTOR_SIZE);
+    cached_sector = sector;
+    cache_dirty = false;
+    return;
+  }
 
   PY25Q16_ReadBuffer(flash_addr, sector_cache, SECTOR_SIZE);
   cached_sector = sector;
@@ -426,9 +446,11 @@ static void write_fat_entry(uint16_t cluster, uint16_t value) {
 static uint16_t find_free_cluster(void) {
   for (uint16_t i = 2; i < (DATA_SECTORS / SECTORS_PER_CLUSTER); i++) {
     if (read_fat_entry(i) == 0) {
+      LogC(LOG_C_BRIGHT_GREEN, "[FAT] Found free cluster: %u", i);
       return i;
     }
   }
+  LogC(LOG_C_BRIGHT_GREEN, "[FAT] No free clusters found!");
   return 0;
 }
 
@@ -730,8 +752,9 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     }
   }
 
-  /* printf("  File size: %lu bytes, clusters needed: %lu\n", new_size,
-         (new_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE); */
+  LogC(LOG_C_BRIGHT_GREEN,
+       "[FAT] Writing file '%s', size=%lu, clusters needed=%lu", name, size,
+       (size + CLUSTER_SIZE - 1) / CLUSTER_SIZE);
 
   if (first_cluster == 0) {
     printf("  ERROR: No cluster allocated!\n");
@@ -761,10 +784,16 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     offset_in_cluster = remaining;
   }
 
-  /* printf("  Starting write at cluster=%u, offset=%lu\n", cluster,
-         offset_in_cluster); */
+  // ПРИНУДИТЕЛЬНО СБРАСЫВАЕМ КЭШ ПЕРЕД ЗАПИСЬЮ БОЛЬШОГО ФАЙЛА
+  if (size > SECTOR_SIZE) {
+    flush_cache();
+    cached_sector = 0xFFFFFFFF;
+  }
 
   while (written < size) {
+    LogC(LOG_C_BRIGHT_GREEN,
+         "[FAT] Write loop: written=%lu, total=%lu, cluster=%u, offset=%lu\n",
+         written, size, cluster, offset_in_cluster);
     uint32_t flash_addr =
         FLASH_DATA_OFFSET + (cluster - 2) * CLUSTER_SIZE + offset_in_cluster;
     uint32_t space_in_cluster = CLUSTER_SIZE - offset_in_cluster;
@@ -775,20 +804,22 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
     }
 
     // Проверяем, нужно ли стирать кластер
-    // Стираем только если начинаем писать с начала кластера И это новый файл
-    // (не append)
     if (offset_in_cluster == 0 && (!append || old_size == 0)) {
-      // Проверяем, не стерт ли уже кластер (все байты 0xFF)
+      // Сбрасываем кэш перед каждой новой операцией записи
+      flush_cache();
+      cached_sector = 0xFFFFFFFF;
+
       uint8_t check_byte;
       PY25Q16_ReadBuffer(flash_addr, &check_byte, 1);
 
       if (check_byte != 0xFF) {
         // printf("  Erasing cluster %u at 0x%06lx\n", cluster, flash_addr);
         PY25Q16_SectorErase(flash_addr);
-      } else {
-        // printf("  Cluster %u already erased\n", cluster);
       }
     }
+
+    // СБРАСЫВАЕМ КЭШ ПЕРЕД КАЖДОЙ ЗАПИСЬЮ
+    flush_cache();
 
     /* printf("  Writing %lu bytes to cluster %u at 0x%06lx\n", to_write,
        cluster, flash_addr); */
@@ -810,6 +841,10 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
       cluster = next_cluster;
     }
   }
+
+  // ФИНАЛЬНЫЙ СБРОС КЭША
+  flush_cache();
+  cached_sector = 0xFFFFFFFF;
 
   // 5. Обновляем запись в директории
   memset(&entry, 0, sizeof(entry));
@@ -943,6 +978,12 @@ int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size) {
   uint32_t max_read = *size;
   *size = 0;
 
+  // СБРАСЫВАЕМ КЭШ перед чтением большого файла
+  if (handle.file_size > SECTOR_SIZE) {
+    flush_cache();
+    cached_sector = 0xFFFFFFFF;
+  }
+
   uint8_t *ptr = data;
   while (*size < handle.file_size && *size < max_read) {
     size_t chunk = usb_fs_read_bytes(&handle, ptr, max_read - *size);
@@ -1062,7 +1103,21 @@ void usb_fs_format(void) {
 }
 
 // USB callbacks
-void usb_fs_configure_done(void) { Log("[USB] MSC Configure done"); }
+
+void usb_fs_reset_cache(void) {
+  flush_cache(); // Сохраняем изменения если есть
+  cached_sector = 0xFFFFFFFF;
+  cache_dirty = false;
+}
+
+void usb_fs_configure_done(void) {
+  Log("[USB] MSC Configure done");
+  // КРИТИЧНО: Сбрасываем кэш FAT при подключении USB
+  // Это заставит FAT перечитать все структуры с флешки
+  flush_cache(); // Если функция доступна, иначе нужно добавить
+  cached_sector = 0xFFFFFFFF; // Инвалидируем кэш
+  cache_dirty = false;
+}
 
 void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size) {
   *sector_num = TOTAL_SECTORS;
@@ -1070,9 +1125,14 @@ void usb_fs_get_cap(uint32_t *sector_num, uint16_t *sector_size) {
 }
 
 int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
-  // УБЕРИТЕ проверку выравнивания! Linux не гарантирует выравнивание
   if (size != SECTOR_SIZE) {
     return 1;
+  }
+
+  // Если этот сектор в кэше и он грязный, сбрасываем его
+  if (cached_sector == sector && cache_dirty) {
+    flush_cache();
+    cached_sector = 0xFFFFFFFF;
   }
 
   if (sector == 0) {
@@ -1082,12 +1142,8 @@ int usb_fs_sector_read(uint32_t sector, uint8_t *buf, uint32_t size) {
     buf[511] = 0xAA;
     memset(buf + sizeof(BOOT_SECTOR_RECORD), 0,
            SECTOR_SIZE - sizeof(BOOT_SECTOR_RECORD));
-  } else if (sector < RESERVED_SECTORS) {
-    // Reserved sectors - нули
-    memset(buf, 0, SECTOR_SIZE);
   } else {
-    // Чтение данных - БЕЗ блокировки для скорости
-    // (чтение не конфликтует с другими операциями во флеш-памяти)
+    // Чтение данных - БЕЗ использования кэша
     uint32_t flash_addr = sector * SECTOR_SIZE;
     PY25Q16_ReadBuffer(flash_addr, buf, SECTOR_SIZE);
   }
@@ -1100,50 +1156,36 @@ int usb_fs_sector_write(uint32_t sector, uint8_t *buf, uint32_t size) {
     return 1;
   }
 
+  flush_cache(); // Сброс кэша перед записью
+  cached_sector = 0xFFFFFFFF;
+  cache_dirty = false;
+
   if (sector == 0) {
-    // ВАЖНО: Linux пытается обновить boot sector при монтировании
-    // Разрешаем запись, но только определенных полей
-    // printf("USB: Write to boot sector (sector %lu)\n", sector);
-
-    // Проверяем, что пытается записать Linux
-    // Обычно он обновляет только:
-    // 1. Метку времени (смещение 0x24-0x27) - Volume ID
-    // 2. Сигнатуру (0x55AA на конце) - уже установлена
-
-    // Читаем текущий boot sector
-    uint8_t current[512];
-    PY25Q16_ReadBuffer(0, current, 512);
-
-    // Разрешаем обновление только Volume ID (смещение 0x24-0x27)
-    // и Volume Label (смещение 0x2B-0x35)
-    for (int i = 0; i < 512; i++) {
-      // Разрешаем запись в поля Volume ID и Volume Label
-      if ((i >= 0x24 && i <= 0x27) || (i >= 0x2B && i <= 0x35)) {
-        // Пропускаем - разрешаем Linux обновить
-        continue;
-      }
-      // Защищаем остальные поля
-      if (buf[i] != current[i]) {
-        printf("USB: Blocked write to protected boot sector area at 0x%02X\n",
-               i);
-        // Восстанавливаем оригинальное значение
-        buf[i] = current[i];
+    // Специальная обработка boot sector (как есть, но используем smart)
+    uint8_t protected_boot[SECTOR_SIZE];
+    PY25Q16_ReadBuffer(0, protected_boot, SECTOR_SIZE);
+    // Разрешаем только Volume ID (0x24-0x27) и Label (0x2B-0x35)
+    for (int i = 0; i < SECTOR_SIZE; i++) {
+      if (!((i >= 0x24 && i <= 0x27) || (i >= 0x2B && i <= 0x35))) {
+        buf[i] = protected_boot[i];
       }
     }
-
-    // Обязательно сохраняем сигнатуру 55AA
     buf[510] = 0x55;
     buf[511] = 0xAA;
-
-    // Разрешаем запись обновленного boot sector
-    uint32_t flash_addr = sector * SECTOR_SIZE;
-    PY25Q16_WriteBuffer(flash_addr, buf, SECTOR_SIZE, false);
-    return 0;
+    // Теперь smart запись
+    smart_write_sector(sector, buf);
+  } else {
+    // Для всех остальных — smart запись
+    smart_write_sector(sector, buf);
   }
 
-  // Для остальных секторов - разрешаем запись
-  uint32_t flash_addr = sector * SECTOR_SIZE;
-  PY25Q16_WriteBuffer(flash_addr, buf, SECTOR_SIZE, false);
+  // Инвалидация кэша для FAT/root
+  if ((sector >= FAT_START_SECTOR &&
+       sector < FAT2_START_SECTOR + SECTORS_PER_FAT) ||
+      (sector >= ROOT_START_SECTOR && sector < DATA_START_SECTOR)) {
+    cached_sector = 0xFFFFFFFF;
+    cache_dirty = false;
+  }
 
   return 0;
 }
@@ -1218,4 +1260,52 @@ void debug_fat_table(uint16_t start_cluster, uint16_t count) {
       printf("\n");
     }
   }
+}
+
+void check_fat_consistency(void) {
+  printf("=== FAT Consistency Check ===\n");
+
+  // Проверяем, что FAT1 и FAT2 идентичны
+  uint8_t fat1_sector[SECTOR_SIZE];
+  uint8_t fat2_sector[SECTOR_SIZE];
+  bool fat_ok = true;
+
+  for (int i = 0; i < SECTORS_PER_FAT; i++) {
+    uint32_t fat1_addr = FLASH_FAT_OFFSET + i * SECTOR_SIZE;
+    uint32_t fat2_addr =
+        FLASH_FAT_OFFSET + SECTORS_PER_FAT * SECTOR_SIZE + i * SECTOR_SIZE;
+
+    PY25Q16_ReadBuffer(fat1_addr, fat1_sector, SECTOR_SIZE);
+    PY25Q16_ReadBuffer(fat2_addr, fat2_sector, SECTOR_SIZE);
+
+    if (memcmp(fat1_sector, fat2_sector, SECTOR_SIZE) != 0) {
+      printf("FAT mismatch in sector %d\n", i);
+      fat_ok = false;
+    }
+  }
+  printf("FAT copies identical: %s\n", fat_ok ? "YES" : "NO");
+
+  // Проверяем кэш
+  printf("Cache state: sector=%lu, dirty=%d\n", cached_sector, cache_dirty);
+
+  // Проверяем наличие файла настроек
+  if (usb_fs_file_exists("settings.ini")) {
+    printf("settings.ini exists\n");
+
+    // Читаем и показываем размер
+    uint8_t buffer[100];
+    uint32_t size = sizeof(buffer);
+    if (usb_fs_read_file("settings.ini", buffer, &size) == 0) {
+      printf("File size: %lu bytes\n", size);
+      printf("First 32 bytes: ");
+      for (int i = 0; i < 32 && i < size; i++) {
+        printf("%02X ", buffer[i]);
+      }
+      printf("\n");
+    }
+  } else {
+    printf("settings.ini does NOT exist\n");
+  }
+
+  printf("=== End Check ===\n");
 }

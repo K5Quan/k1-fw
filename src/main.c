@@ -14,6 +14,7 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
+  check_fat_consistency();
 
   SYS_Main();
 }

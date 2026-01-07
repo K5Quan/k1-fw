@@ -18,7 +18,7 @@
 
 #define CS_PIN GPIO_MAKE_PIN(GPIOA, LL_GPIO_PIN_3)
 
-#define SECTOR_SIZE 256
+#define SECTOR_SIZE 4096
 #define PAGE_SIZE 0x100
 
 static uint32_t SectorCacheAddr = 0x1000000;
@@ -372,7 +372,7 @@ void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
 
 void PY25Q16_SectorErase(uint32_t Address) {
   flash_lock();
-  Address -= (Address % SECTOR_SIZE);
+  Address &= ~(SECTOR_SIZE - 1);
 
 #ifdef DEBUG
   printf("SectorErase: 0x%06lx\n", Address);

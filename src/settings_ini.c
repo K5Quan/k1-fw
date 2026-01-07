@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INI_BUFFER_SIZE 512
+#define INI_BUFFER_SIZE 1024
 #define LINE_BUFFER_SIZE 64
 
 static char ini_buffer[INI_BUFFER_SIZE];
