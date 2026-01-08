@@ -47,8 +47,6 @@ static_assert((FLASH_DATA_OFFSET % FLASH_ERASE_SIZE) == 0, "Data not aligned");
 static_assert((SECTORS_PER_CLUSTER * SECTOR_SIZE) == FLASH_ERASE_SIZE,
               "Cluster size must match erase size");
 
-// Единственный буфер для работы с секторами
-static uint8_t sector_buffer[SECTOR_SIZE];
 
 // Boot sector (константа)
 static const fat_boot_sector_t BOOT_SECTOR_RECORD = {
