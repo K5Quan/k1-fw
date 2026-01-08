@@ -14,7 +14,13 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
-  check_fat_consistency();
+  /* BOARD_USBInit();
+  for (;;) {
+    printf(".");
+    SYSTICK_DelayMs(1000);
+  } */
+
+  // check_fat_consistency();
 
   SYS_Main();
 }

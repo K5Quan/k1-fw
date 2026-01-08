@@ -1,13 +1,13 @@
 #include "settings_ini.h"
 #include "driver/fat.h"
+#include "driver/uart.h"
 #include "external/printf/printf.h"
 #include <stdlib.h>
 #include <string.h>
 
-#define INI_BUFFER_SIZE 1024
 #define LINE_BUFFER_SIZE 64
+#define NAME_BUFFER_SIZE 32
 
-static char ini_buffer[INI_BUFFER_SIZE];
 static uint32_t ini_size = 0;
 
 // Названия полей для INI файла
@@ -56,228 +56,359 @@ static const char *setting_names[SETTING_COUNT] = {
     [SETTING_INVERT_BUTTONS] = "invert_buttons",
 };
 
-// Вспомогательные функции для работы с INI
-static void append_line(const char *line) {
-  size_t len = strlen(line);
-  if (ini_size + len + 1 < INI_BUFFER_SIZE) {
-    strcpy(ini_buffer + ini_size, line);
-    ini_size += len;
-    ini_buffer[ini_size++] = '\n';
-    ini_buffer[ini_size] = '\0';
-  }
-}
+// Добавьте эту статическую переменную в начало файла (вне функций)
+static bool pending_lf = false; // флаг: предыдущий байт был \r
 
-static void append_setting(const char *name, uint32_t value) {
-  char line[LINE_BUFFER_SIZE];
-  snprintf(line, LINE_BUFFER_SIZE, "%s=%u", name, value);
-  append_line(line);
-}
+// НОВАЯ надёжная функция чтения строки
+static int read_ini_line(usb_fs_handle_t *handle, char *line_buf,
+                         size_t buf_size) {
+  size_t pos = 0;
 
-static const char *find_value(const char *name) {
-  static char value_buffer[64];
-  const char *line = ini_buffer;
-  size_t name_len = strlen(name);
-
-  while (*line) {
-    // Пропустить пробелы в начале строки
-    while (*line == ' ' || *line == '\t')
-      line++;
-
-    // Пропустить комментарии и пустые строки
-    if (*line == ';' || *line == '#' || *line == '\n' || *line == '\r') {
-      while (*line && *line != '\n')
-        line++;
-      if (*line)
-        line++;
-      continue;
+  // Если предыдущая строка закончилась на \r, пропускаем следующий \n
+  if (pending_lf) {
+    pending_lf = false;
+    uint8_t byte;
+    if (usb_fs_read_bytes(handle, &byte, 1) == 0) {
+      // EOF сразу после \r — считаем строку завершённой
+      if (pos == 0)
+        return 0;
+      goto finalize;
     }
-
-    // Проверить имя параметра
-    if (strncmp(line, name, name_len) == 0 && line[name_len] == '=') {
-      line += name_len + 1;
-
-      // Пропустить пробелы после '='
-      while (*line == ' ' || *line == '\t')
-        line++;
-
-      // Скопировать значение
-      int i = 0;
-      while (*line && *line != '\n' && *line != '\r' && *line != ';' &&
-             *line != '#') {
-        if (i < 63) {
-          value_buffer[i++] = *line;
-        }
-        line++;
+    if (byte != '\n') {
+      // Это был одиночный \r — добавляем его как обычный символ
+      if (pos < buf_size - 1) {
+        line_buf[pos++] = '\r';
       }
-
-      // Убрать trailing пробелы
-      while (i > 0 &&
-             (value_buffer[i - 1] == ' ' || value_buffer[i - 1] == '\t')) {
-        i--;
-      }
-
-      value_buffer[i] = '\0';
-      return value_buffer;
     }
-
-    // Перейти к следующей строке
-    while (*line && *line != '\n')
-      line++;
-    if (*line)
-      line++;
+    // иначе \n после \r — просто пропустили
   }
 
-  return NULL;
+  while (1) {
+    uint8_t byte;
+    size_t read = usb_fs_read_bytes(handle, &byte, 1);
+    if (read == 0) {
+      // EOF
+      if (pos > 0)
+        goto finalize;
+      return 0;
+    }
+
+    if (byte == '\r') {
+      pending_lf = true; // ждём возможный \n в следующей итерации
+      goto finalize;
+    }
+
+    if (byte == '\n') {
+      // Одиночный \n (Unix-style) — конец строки
+      goto finalize;
+    }
+
+    // Обычный символ
+    if (pos < buf_size - 1) {
+      line_buf[pos++] = (char)byte;
+    }
+    // если буфер полон — игнорируем остаток до конца строки
+  }
+
+finalize:
+  line_buf[pos] = '\0';
+  return (pos > 0 || !pending_lf); // возвращаем 1, если есть данные
 }
 
-// Сохранить настройки в INI файл
+// Запись строки в файл
+static int write_line(const char *filename, const char *line, bool append) {
+  return usb_fs_write_file(filename, (const uint8_t *)line, strlen(line),
+                           append);
+}
+
+static bool parse_ini_line(const char *line, char *name_buf, uint32_t *value) {
+  const char *p = line;
+  while (*p == ' ' || *p == '\t')
+    p++;
+
+  if (*p == ';' || *p == '#' || *p == '\0')
+    return false;
+
+  const char *eq = strchr(p, '=');
+  if (!eq)
+    return false;
+
+  // Имя
+  size_t name_len = eq - p;
+  while (name_len > 0 && (p[name_len - 1] == ' ' || p[name_len - 1] == '\t'))
+    name_len--;
+  if (name_len == 0 || name_len >= NAME_BUFFER_SIZE)
+    return false;
+  strncpy(name_buf, p, name_len);
+  name_buf[name_len] = '\0';
+
+  // Значение — ищем первый пробел или ; для комментария
+  const char *val_start = eq + 1;
+  while (*val_start == ' ' || *val_start == '\t')
+    val_start++;
+
+  // Обрезаем по комментарию
+  const char *comment = strchr(val_start, ';');
+  if (comment) {
+    // Копируем только до комментария
+    char temp[32];
+    size_t len = comment - val_start;
+    if (len >= sizeof(temp))
+      len = sizeof(temp) - 1;
+    strncpy(temp, val_start, len);
+    temp[len] = '\0';
+    *value = atoi(temp);
+  } else {
+    *value = atoi(val_start);
+  }
+
+  return true;
+}
+
+// SETTINGS_SaveToINI — построчно, без буфера
 int SETTINGS_SaveToINI(const Settings *settings, const char *filename) {
-  // Очистить буфер
-  memset(ini_buffer, 0, INI_BUFFER_SIZE);
-  ini_size = 0;
+  char line[LINE_BUFFER_SIZE];
 
-  // Добавить заголовок
-  append_line("; Settings Configuration");
-  append_line("; Generated automatically");
-  append_line("");
+  // Заголовок
+  write_line(filename, "; Settings Configuration\n", false);
+  write_line(filename, "; Generated automatically\n\n", true);
 
-  append_line("[General]");
-  append_setting("eeprom_type", settings->eepromType);
-  append_setting("battery_save", settings->batsave);
-  append_setting("vox", settings->vox);
-  append_setting("backlight", settings->backlight);
-  append_setting("tx_time", settings->txTime);
-  append_line("");
+  // [General]
+  write_line(filename, "[General]\n", true);
+  snprintf(line, sizeof(line), "eeprom_type=%u\n", settings->eepromType);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "battery_save=%u\n", settings->batsave);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "vox=%u\n", settings->vox);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "backlight=%u\n", settings->backlight);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "tx_time=%u\n", settings->txTime);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Display]\n", true);
 
-  append_line("[Display]");
-  append_setting("contrast", settings->contrast);
-  append_setting("brightness_high", settings->brightness);
-  append_setting("brightness_low", settings->brightnessLow);
-  append_setting("ch_display_mode", settings->chDisplayMode);
-  append_setting("show_level_in_vfo", settings->showLevelInVFO);
-  append_setting("backlight_on_squelch", settings->backlightOnSquelch);
-  append_line("");
+  // [Display]
+  snprintf(line, sizeof(line), "contrast=%u\n", settings->contrast);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "brightness_high=%u\n", settings->brightness);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "brightness_low=%u\n", settings->brightnessLow);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "ch_display_mode=%u\n", settings->chDisplayMode);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "show_level_in_vfo=%u\n",
+           settings->showLevelInVFO);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "backlight_on_squelch=%u\n",
+           settings->backlightOnSquelch);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Audio]\n", true);
 
-  append_line("[Audio]");
-  append_setting("beep", settings->beep);
-  append_setting("roger", settings->roger);
-  append_setting("mic", settings->mic);
-  append_setting("deviation", settings->deviation);
-  append_setting("tone_local", settings->toneLocal);
-  append_line("");
+  // [Audio]
+  snprintf(line, sizeof(line), "beep=%u\n", settings->beep);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "roger=%u\n", settings->roger);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "mic=%u\n", settings->mic);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "deviation=%u\n", settings->deviation);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "tone_local=%u\n", settings->toneLocal);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Scanning]\n", true);
 
-  append_line("[Scanning]");
-  append_setting("current_scanlist", settings->currentScanlist);
-  append_setting("scan_mode", settings->scanmode);
-  append_setting("sq_opened_timeout", settings->sqOpenedTimeout);
-  append_setting("sq_closed_timeout", settings->sqClosedTimeout);
-  append_setting("sql_open_time", settings->sqlOpenTime);
-  append_setting("sql_close_time", settings->sqlCloseTime);
-  append_setting("multiwatch", settings->mWatch);
-  append_line("");
+  // [Scanning]
+  snprintf(line, sizeof(line), "current_scanlist=%u\n",
+           settings->currentScanlist);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "scan_mode=%u\n", settings->scanmode);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "sq_opened_timeout=%u\n",
+           settings->sqOpenedTimeout);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "sq_closed_timeout=%u\n",
+           settings->sqClosedTimeout);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "sql_open_time=%u\n", settings->sqlOpenTime);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "sql_close_time=%u\n", settings->sqlCloseTime);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "multiwatch=%u\n", settings->mWatch);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Security]\n", true);
 
-  append_line("[Security]");
-  append_setting("key_lock", settings->keylock);
-  append_setting("ptt_lock", settings->pttLock);
-  append_setting("busy_channel_tx_lock", settings->busyChannelTxLock);
-  append_line("");
+  // [Security]
+  snprintf(line, sizeof(line), "key_lock=%u\n", settings->keylock);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "ptt_lock=%u\n", settings->pttLock);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "busy_channel_tx_lock=%u\n",
+           settings->busyChannelTxLock);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Features]\n", true);
 
-  append_line("[Features]");
-  append_setting("ste", settings->ste);
-  append_setting("repeater_ste", settings->repeaterSte);
-  append_setting("dtmf_decode", settings->dtmfdecode);
-  append_setting("main_app", settings->mainApp);
-  append_setting("skip_garbage_frequencies", settings->skipGarbageFrequencies);
-  append_setting("active_vfo", settings->activeVFO);
-  append_setting("no_listen", settings->noListen);
-  append_setting("si4732_power_off", settings->si4732PowerOff);
-  append_setting("fc_time", settings->fcTime);
-  append_line("");
+  // [Features]
+  snprintf(line, sizeof(line), "ste=%u\n", settings->ste);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "repeater_ste=%u\n", settings->repeaterSte);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "dtmf_decode=%u\n", settings->dtmfdecode);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "main_app=%u\n", settings->mainApp);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "skip_garbage_frequencies=%u\n",
+           settings->skipGarbageFrequencies);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "active_vfo=%u\n", settings->activeVFO);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "no_listen=%u\n", settings->noListen);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "si4732_power_off=%u\n",
+           settings->si4732PowerOff);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "fc_time=%u\n", settings->fcTime);
+  write_line(filename, line, true);
+  write_line(filename, "\n[Hardware]\n", true);
 
-  append_line("[Hardware]");
-  append_setting("battery_type", settings->batteryType);
-  append_setting("battery_style", settings->batteryStyle);
-  append_setting("battery_calibration", settings->batteryCalibration);
-  append_setting("upconverter", settings->upconverter);
-  append_setting("bound_240_280", settings->bound_240_280);
-  append_setting("freq_correction", settings->freqCorrection);
-  append_setting("invert_buttons", settings->invertButtons);
-  append_line("");
+  // [Hardware]
+  snprintf(line, sizeof(line), "battery_type=%u\n", settings->batteryType);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "battery_style=%u\n", settings->batteryStyle);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "battery_calibration=%u\n",
+           settings->batteryCalibration);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "upconverter=%u\n", settings->upconverter);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "bound_240_280=%u\n", settings->bound_240_280);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "freq_correction=%u\n",
+           settings->freqCorrection);
+  write_line(filename, line, true);
+  snprintf(line, sizeof(line), "invert_buttons=%u\n", settings->invertButtons);
+  write_line(filename, line, true);
 
-  // Записать в файл
-  return usb_fs_write_file(filename, (uint8_t *)ini_buffer, ini_size, false);
+  return 0;
 }
 
 // Загрузить настройки из INI файла
 int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
-  ini_size = INI_BUFFER_SIZE;
+  usb_fs_handle_t handle;
 
-  // Пробуем прочитать как есть
-  if (usb_fs_read_file(filename, (uint8_t *)ini_buffer, &ini_size) != 0) {
-    // Пробуем с отформатированным именем
+  // Попытка открыть файл
+  if (usb_fs_open(filename, &handle) != 0) {
+    // Fallback на FAT8.3 имя
     char fat_name[12];
     fat_format_name(filename, fat_name);
-    ini_size = INI_BUFFER_SIZE;
-    if (usb_fs_read_file(fat_name, (uint8_t *)ini_buffer, &ini_size) != 0) {
+    if (usb_fs_open(fat_name, &handle) != 0) {
       return -1; // Файл не найден
     }
   }
 
-  ini_buffer[ini_size] = '\0';
+  char line_buf[LINE_BUFFER_SIZE];
+  char name_buf[NAME_BUFFER_SIZE];
+  size_t line_pos;
 
-  // Парсить значения
-  const char *val;
+  // Сброс настроек по умолчанию
+  memset(settings, 0, sizeof(*settings));
 
-#define READ_VALUE(field, name)                                                \
-  val = find_value(name);                                                      \
-  if (val)                                                                     \
-    settings->field = atoi(val);
+  while (read_ini_line(&handle, line_buf, sizeof(line_buf))) {
+    LogC(LOG_C_BRIGHT_CYAN, "[INI] line: %s", line_buf);
 
-  READ_VALUE(eepromType, "eeprom_type");
-  READ_VALUE(batsave, "battery_save");
-  READ_VALUE(vox, "vox");
-  READ_VALUE(backlight, "backlight");
-  READ_VALUE(txTime, "tx_time");
-  READ_VALUE(contrast, "contrast");
-  READ_VALUE(brightness, "brightness_high");
-  READ_VALUE(brightnessLow, "brightness_low");
-  READ_VALUE(chDisplayMode, "ch_display_mode");
-  READ_VALUE(showLevelInVFO, "show_level_in_vfo");
-  READ_VALUE(backlightOnSquelch, "backlight_on_squelch");
-  READ_VALUE(beep, "beep");
-  READ_VALUE(roger, "roger");
-  READ_VALUE(mic, "mic");
-  READ_VALUE(deviation, "deviation");
-  READ_VALUE(toneLocal, "tone_local");
-  READ_VALUE(currentScanlist, "current_scanlist");
-  READ_VALUE(scanmode, "scan_mode");
-  READ_VALUE(sqOpenedTimeout, "sq_opened_timeout");
-  READ_VALUE(sqClosedTimeout, "sq_closed_timeout");
-  READ_VALUE(sqlOpenTime, "sql_open_time");
-  READ_VALUE(sqlCloseTime, "sql_close_time");
-  READ_VALUE(mWatch, "multiwatch");
-  READ_VALUE(keylock, "key_lock");
-  READ_VALUE(pttLock, "ptt_lock");
-  READ_VALUE(busyChannelTxLock, "busy_channel_tx_lock");
-  READ_VALUE(ste, "ste");
-  READ_VALUE(repeaterSte, "repeater_ste");
-  READ_VALUE(dtmfdecode, "dtmf_decode");
-  READ_VALUE(mainApp, "main_app");
-  READ_VALUE(skipGarbageFrequencies, "skip_garbage_frequencies");
-  READ_VALUE(activeVFO, "active_vfo");
-  READ_VALUE(noListen, "no_listen");
-  READ_VALUE(si4732PowerOff, "si4732_power_off");
-  READ_VALUE(fcTime, "fc_time");
-  READ_VALUE(batteryType, "battery_type");
-  READ_VALUE(batteryStyle, "battery_style");
-  READ_VALUE(batteryCalibration, "battery_calibration");
-  READ_VALUE(upconverter, "upconverter");
-  READ_VALUE(bound_240_280, "bound_240_280");
-  READ_VALUE(freqCorrection, "freq_correction");
-  READ_VALUE(invertButtons, "invert_buttons");
+    uint32_t value;
+    if (!parse_ini_line(line_buf, name_buf, &value)) {
+      LogC(LOG_C_BRIGHT_CYAN, "[INI] cannot parse line");
+      continue;
+    }
 
-#undef READ_VALUE
+    // Применение значений
+    if (strcmp(name_buf, "eeprom_type") == 0)
+      settings->eepromType = value;
+    else if (strcmp(name_buf, "battery_save") == 0)
+      settings->batsave = value;
+    else if (strcmp(name_buf, "vox") == 0)
+      settings->vox = value;
+    else if (strcmp(name_buf, "backlight") == 0)
+      settings->backlight = value;
+    else if (strcmp(name_buf, "tx_time") == 0)
+      settings->txTime = value;
+    else if (strcmp(name_buf, "contrast") == 0)
+      settings->contrast = value;
+    else if (strcmp(name_buf, "brightness_high") == 0)
+      settings->brightness = value;
+    else if (strcmp(name_buf, "brightness_low") == 0)
+      settings->brightnessLow = value;
+    else if (strcmp(name_buf, "ch_display_mode") == 0)
+      settings->chDisplayMode = value;
+    else if (strcmp(name_buf, "show_level_in_vfo") == 0)
+      settings->showLevelInVFO = value;
+    else if (strcmp(name_buf, "backlight_on_squelch") == 0)
+      settings->backlightOnSquelch = value;
+    else if (strcmp(name_buf, "beep") == 0)
+      settings->beep = value;
+    else if (strcmp(name_buf, "roger") == 0)
+      settings->roger = value;
+    else if (strcmp(name_buf, "mic") == 0)
+      settings->mic = value;
+    else if (strcmp(name_buf, "deviation") == 0)
+      settings->deviation = value;
+    else if (strcmp(name_buf, "tone_local") == 0)
+      settings->toneLocal = value;
+    else if (strcmp(name_buf, "current_scanlist") == 0)
+      settings->currentScanlist = value;
+    else if (strcmp(name_buf, "scan_mode") == 0)
+      settings->scanmode = value;
+    else if (strcmp(name_buf, "sq_opened_timeout") == 0)
+      settings->sqOpenedTimeout = value;
+    else if (strcmp(name_buf, "sq_closed_timeout") == 0)
+      settings->sqClosedTimeout = value;
+    else if (strcmp(name_buf, "sql_open_time") == 0)
+      settings->sqlOpenTime = value;
+    else if (strcmp(name_buf, "sql_close_time") == 0)
+      settings->sqlCloseTime = value;
+    else if (strcmp(name_buf, "multiwatch") == 0)
+      settings->mWatch = value;
+    else if (strcmp(name_buf, "key_lock") == 0)
+      settings->keylock = value;
+    else if (strcmp(name_buf, "ptt_lock") == 0)
+      settings->pttLock = value;
+    else if (strcmp(name_buf, "busy_channel_tx_lock") == 0)
+      settings->busyChannelTxLock = value;
+    else if (strcmp(name_buf, "ste") == 0)
+      settings->ste = value;
+    else if (strcmp(name_buf, "repeater_ste") == 0)
+      settings->repeaterSte = value;
+    else if (strcmp(name_buf, "dtmf_decode") == 0)
+      settings->dtmfdecode = value;
+    else if (strcmp(name_buf, "main_app") == 0)
+      settings->mainApp = value;
+    else if (strcmp(name_buf, "skip_garbage_frequencies") == 0)
+      settings->skipGarbageFrequencies = value;
+    else if (strcmp(name_buf, "active_vfo") == 0)
+      settings->activeVFO = value;
+    else if (strcmp(name_buf, "no_listen") == 0)
+      settings->noListen = value;
+    else if (strcmp(name_buf, "si4732_power_off") == 0)
+      settings->si4732PowerOff = value;
+    else if (strcmp(name_buf, "fc_time") == 0)
+      settings->fcTime = value;
+    else if (strcmp(name_buf, "battery_type") == 0)
+      settings->batteryType = value;
+    else if (strcmp(name_buf, "battery_style") == 0)
+      settings->batteryStyle = value;
+    else if (strcmp(name_buf, "battery_calibration") == 0)
+      settings->batteryCalibration = value;
+    else if (strcmp(name_buf, "upconverter") == 0)
+      settings->upconverter = value;
+    else if (strcmp(name_buf, "bound_240_280") == 0)
+      settings->bound_240_280 = value;
+    else if (strcmp(name_buf, "freq_correction") == 0)
+      settings->freqCorrection = value;
+    else if (strcmp(name_buf, "invert_buttons") == 0)
+      settings->invertButtons = value;
+  }
 
+  usb_fs_close(&handle);
   return 0;
 }
 

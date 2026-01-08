@@ -4,7 +4,7 @@
 #include "channels.h"
 #include <stdint.h>
 
-#define BANDS_COUNT_MAX 32
+#define BANDS_COUNT_MAX 2
 #define RANGES_STACK_SIZE 5
 
 typedef struct {
