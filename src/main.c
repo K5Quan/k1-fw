@@ -16,7 +16,7 @@ int main(void) {
 
   /* BOARD_USBInit();
   for (;;) {
-    printf(".");
+    printf("%lu\n", Now());
     SYSTICK_DelayMs(1000);
   } */
 
