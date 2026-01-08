@@ -80,9 +80,12 @@ static bool resetNeeded() {
 }
 
 static void reset() {
+  UI_ClearScreen();
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Formatting...");
   usb_fs_format();
   SETTINGS_Export("SETTINGS.INI");
 
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Release key 0!");
   keyboard_tick_1ms();
   while (keyboard_is_pressed(KEY_0)) {
     SYSTICK_DelayMs(1);
