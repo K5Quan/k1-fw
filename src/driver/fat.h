@@ -123,66 +123,11 @@ static inline bool usb_fs_is_write_protected(void) {
   return false; // Разрешаем запись
 }
 
-// Вспомогательные функции для формирования имен FAT
-// Преобразует "test.txt" в "TEST    TXT"
-static inline void fat_format_name(const char *filename, char *fat_name) {
-  int i, j;
-
-  // Инициализация пробелами
-  for (i = 0; i < 11; i++) {
-    fat_name[i] = ' ';
-  }
-
-  // Копирование имени (до точки или 8 символов)
-  for (i = 0; i < 8 && filename[i] && filename[i] != '.'; i++) {
-    fat_name[i] = (filename[i] >= 'a' && filename[i] <= 'z') ? filename[i] - 32
-                                                             : filename[i];
-  }
-
-  // Поиск расширения
-  while (filename[i] && filename[i] != '.')
-    i++;
-  if (filename[i] == '.') {
-    i++;
-    // Копирование расширения (до 3 символов)
-    for (j = 0; j < 3 && filename[i + j]; j++) {
-      fat_name[8 + j] = (filename[i + j] >= 'a' && filename[i + j] <= 'z')
-                            ? filename[i + j] - 32
-                            : filename[i + j];
-    }
-  }
-}
-
-// Преобразует "TEST    TXT" в "TEST.TXT"
-static void fat_unformat_name(const char *fat_name, char *output) {
-  int i;
-
-  // Копируем имя (первые 8 символов, пропускаем пробелы)
-  for (i = 0; i < 8; i++) {
-    if (fat_name[i] != ' ') {
-      *output++ = fat_name[i];
-    }
-  }
-
-  // Копируем расширение (символы 8-10)
-  if (fat_name[8] != ' ') {
-    *output++ = '.';
-    for (i = 8; i < 11; i++) {
-      if (fat_name[i] != ' ') {
-        *output++ = fat_name[i];
-      }
-    }
-  }
-
-  *output = '\0'; // Всегда завершаем нулевым символом
-}
-
 // Функции работы с открытыми файлами
 int usb_fs_open(const char *name, usb_fs_handle_t *handle);
 size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len);
 void usb_fs_close(usb_fs_handle_t *handle);
 
-void usb_fs_format_safe(void);
 void debug_file_structure(const char *name);
 void debug_fat_table(uint16_t start_cluster, uint16_t count);
 void check_fat_consistency(void);

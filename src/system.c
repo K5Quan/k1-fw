@@ -80,7 +80,7 @@ static bool resetNeeded() {
 }
 
 static void reset() {
-  usb_fs_format_safe();
+  usb_fs_format();
   SETTINGS_Export("SETTINGS.INI");
 
   keyboard_tick_1ms();

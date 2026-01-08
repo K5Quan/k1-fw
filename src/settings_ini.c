@@ -297,12 +297,7 @@ int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
 
   // Попытка открыть файл
   if (usb_fs_open(filename, &handle) != 0) {
-    // Fallback на FAT8.3 имя
-    char fat_name[12];
-    fat_format_name(filename, fat_name);
-    if (usb_fs_open(fat_name, &handle) != 0) {
-      return -1; // Файл не найден
-    }
+    return -1; // Файл не найден
   }
 
   char line_buf[LINE_BUFFER_SIZE];
