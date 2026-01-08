@@ -308,11 +308,9 @@ int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
   memset(settings, 0, sizeof(*settings));
 
   while (read_ini_line(&handle, line_buf, sizeof(line_buf))) {
-    LogC(LOG_C_BRIGHT_CYAN, "[INI] line: %s", line_buf);
-
     uint32_t value;
     if (!parse_ini_line(line_buf, name_buf, &value)) {
-      LogC(LOG_C_BRIGHT_CYAN, "[INI] cannot parse line");
+      LogC(LOG_C_YELLOW, "[INI] cannot parse line");
       continue;
     }
 
@@ -409,9 +407,7 @@ int SETTINGS_LoadFromINI(Settings *settings, const char *filename) {
 
 // Экспортировать текущие настройки
 int SETTINGS_Export(const char *filename) {
-  printf("================ %s START ==============\n", filename);
   return SETTINGS_SaveToINI(&gSettings, filename);
-  printf("================ %s END   ==============\n", filename);
 }
 
 // Импортировать настройки

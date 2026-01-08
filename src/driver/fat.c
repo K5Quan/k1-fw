@@ -186,22 +186,22 @@ static uint16_t read_fat_entry(uint16_t cluster) {
   return (buf[offset + 1] << 8) | buf[offset];
 }
 
-// Записать FAT entry
+static void write_fat_sector(uint32_t sector, uint8_t *buf) {
+  write_sector(sector, buf);
+  // FAT2 - та же логика
+  write_sector(sector + SECTORS_PER_FAT, buf);
+}
+
 static void write_fat_entry(uint16_t cluster, uint16_t value) {
   uint8_t buf[SECTOR_SIZE];
   uint32_t sector = FAT_START_SECTOR + (cluster * 2) / SECTOR_SIZE;
   uint32_t offset = (cluster * 2) % SECTOR_SIZE;
 
-  // Обновляем FAT1
-  uint32_t flash_addr = sector * SECTOR_SIZE;
-  PY25Q16_ReadBuffer(flash_addr, buf, SECTOR_SIZE);
+  PY25Q16_ReadBuffer(sector * SECTOR_SIZE, buf, SECTOR_SIZE);
   buf[offset] = value & 0xFF;
   buf[offset + 1] = value >> 8;
-  write_sector(sector, buf);
 
-  // Копируем в FAT2
-  sector = FAT2_START_SECTOR + (cluster * 2) / SECTOR_SIZE;
-  write_sector(sector, buf);
+  write_fat_sector(sector, buf);
 }
 
 // Найти свободный кластер
