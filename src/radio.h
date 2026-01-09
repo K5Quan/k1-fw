@@ -101,45 +101,44 @@ typedef struct {
 typedef struct {
 
   struct {
-    uint32_t frequency; // Частота передачи (может отличаться от RX)
-    uint8_t power_level; // Уровень мощности
-    TXStatus last_error;
-    ModulationType modulation; // Модуляция TX
+    uint32_t frequency : 27; // Частота передачи (может отличаться от RX)
+    TXStatus last_error : 3;
+    uint8_t power_level : 4; // Уровень мощности
+    OffsetDirection offsetDirection : 4;
+    bool dirty : 1;     // Флаг изменения параметров TX
+    bool is_active : 1; // true, если идёт передача
+    bool pa_enabled : 1;
     Code code;
-    OffsetDirection offsetDirection;
-    bool dirty;     // Флаг изменения параметров TX
-    bool is_active; // true, если идёт передача
-    bool pa_enabled;
-  } tx_state;
+  } __attribute__((packed)) tx_state;
 
   char name[10];
   bool dirty[PARAM_COUNT]; // Флаги изменений
 
   const FreqBand *current_band; // Активный диапазон
   uint32_t last_save_time; // Время последнего сохранения
-  uint32_t frequency;      // Текущая частота
-  uint16_t bandwidth;      // Полоса пропускания
+  uint32_t frequency : 27; // Текущая частота
   uint16_t dev;
-  uint8_t modulation_index;
-  uint8_t bandwidth_index;
   uint8_t volume; // Громкость
-  uint8_t gain;
   uint8_t afc;
   uint8_t afc_speed;
-  uint8_t mic;
-  Code code;
-  Step step;
-  Radio radio_type;
-  ModulationType modulation; // Текущая модуляция
-  XtalMode xtal;
-  Filter filter;
-  TXOutputPower power;
   Squelch squelch;
-  bool preciseFChange;
-  bool fixed_bounds;
+  Code code;
+  Step step : 5;
+  ModulationType modulation : 3; // Текущая модуляция
+  uint8_t bandwidth : 4;         // Полоса пропускания
+  uint8_t bandwidth_index : 4;
+  uint8_t mic : 4;
+  Radio radio_type : 4;
+  uint8_t gain : 5;
+  uint8_t modulation_index : 3;
+  XtalMode xtal : 2;
+  Filter filter : 2;
+  TXOutputPower power : 2;
+  bool preciseFChange : 1;
+  bool fixed_bounds : 1;
 
   bool save_to_eeprom; // Флаг необходимости сохранения в EEPROM
-} VFOContext;
+} __attribute__((packed)) VFOContext;
 
 // Channel/VFO mode
 typedef enum { MODE_VFO, MODE_CHANNEL } VFOMode;
@@ -149,25 +148,25 @@ typedef struct {
   uint32_t last_activity_time; // for multiwatch
   uint16_t channel_index;      // Channel index if in channel mode
   uint16_t vfo_ch_index;       // MR index of VFO
-  Measurement msm;             // TODO: implement
-  VFOContext context;          // Existing VFO context
-  VFOMode mode;                // VFO or channel mode
-  bool is_active;              // Whether this is the active VFO
-  bool is_open;
-} ExtendedVFOContext;
+  Measurement msm;
+  VFOContext context; // Existing VFO context
+  VFOMode mode : 1;   // VFO or channel mode
+  bool is_active : 1; // Whether this is the active VFO
+  bool is_open : 1;
+} __attribute__((packed)) ExtendedVFOContext;
 
 // Global radio state
 typedef struct {
   ExtendedVFOContext vfos[MAX_VFOS]; // Array of VFOs
-  RadioScanState scan_state; // Состояние сканирования
-  uint32_t last_scan_time;   // Last scan time
-  uint8_t num_vfos;          // Number of configured VFOs
-  uint8_t active_vfo_index;  // Currently active VFO
-  uint8_t primary_vfo_index; //
-  uint8_t last_active_vfo; // Последний активный VFO с активностью
-  bool audio_routing_enabled; // Флаг управления аудио маршрутизацией
-  bool multiwatch_enabled; // Whether multiwatch is enabled
-} RadioState;
+  RadioScanState scan_state;     // Состояние сканирования
+  uint32_t last_scan_time;       // Last scan time
+  uint8_t num_vfos : 4;          // Number of configured VFOs
+  uint8_t active_vfo_index : 4;  // Currently active VFO
+  uint8_t primary_vfo_index : 4; //
+  uint8_t last_active_vfo : 4; // Последний активный VFO с активностью
+  bool audio_routing_enabled : 1; // Флаг управления аудио маршрутизацией
+  bool multiwatch_enabled : 1; // Whether multiwatch is enabled
+} __attribute__((packed)) RadioState;
 
 // New functions for multi-VFO and multiwatch support
 void RADIO_InitState(RadioState *state, uint8_t num_vfos);

@@ -1,7 +1,7 @@
 #ifndef CHANNELS_H
 #define CHANNELS_H
 
-#define SCANLIST_MAX 128
+#define SCANLIST_MAX 0
 
 #include "../driver/bk4829.h"
 #include "../driver/keyboard.h"

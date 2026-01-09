@@ -14,7 +14,6 @@ GraphMeasurement graphMeasurement = GRAPH_RSSI;
 static uint8_t S_BOTTOM;
 
 static uint16_t rssiHistory[MAX_POINTS] = {0};
-static uint16_t rssiGraphHistory[MAX_POINTS] = {0};
 
 static uint8_t x = 0;
 static uint8_t ox = UINT8_MAX;
@@ -335,7 +334,7 @@ void SP_RenderLine(uint16_t rssi, VMinMax v) {
 uint16_t SP_GetNoiseFloor() { return Std(rssiHistory, filledPoints); }
 uint16_t SP_GetRssiMax() { return Max(rssiHistory, filledPoints); }
 
-uint16_t SP_GetLastGraphValue() { return rssiGraphHistory[MAX_POINTS - 1]; }
+uint16_t SP_GetLastGraphValue() { return rssiHistory[MAX_POINTS - 1]; }
 
 void SP_RenderGraph(uint16_t min, uint16_t max) {
   const VMinMax v = {
@@ -348,12 +347,10 @@ void SP_RenderGraph(uint16_t min, uint16_t max) {
 
   FillRect(0, SPECTRUM_Y, LCD_WIDTH, SPECTRUM_H, C_CLEAR);
 
-  uint8_t oVal =
-      ConvertDomain(rssiGraphHistory[0], v.vMin, v.vMax, 0, SPECTRUM_H);
+  uint8_t oVal = ConvertDomain(rssiHistory[0], v.vMin, v.vMax, 0, SPECTRUM_H);
 
   for (uint8_t i = 1; i < MAX_POINTS; ++i) {
-    uint8_t yVal =
-        ConvertDomain(rssiGraphHistory[i], v.vMin, v.vMax, 0, SPECTRUM_H);
+    uint8_t yVal = ConvertDomain(rssiHistory[i], v.vMin, v.vMax, 0, SPECTRUM_H);
     DrawLine(i - 1, S_BOTTOM - oVal, i, S_BOTTOM - yVal, C_FILL);
     oVal = yVal;
   }
@@ -387,7 +384,7 @@ void SP_AddGraphPoint(const Measurement *msm) {
     break;
   }
 
-  rssiGraphHistory[MAX_POINTS - 1] = v;
+  rssiHistory[MAX_POINTS - 1] = v;
   filledPoints = MAX_POINTS;
 }
 
@@ -413,7 +410,7 @@ static void shiftEx(uint16_t *history, uint16_t n, int16_t shift) {
 }
 
 void SP_Shift(int16_t n) { shiftEx(rssiHistory, MAX_POINTS, n); }
-void SP_ShiftGraph(int16_t n) { shiftEx(rssiGraphHistory, MAX_POINTS, n); }
+void SP_ShiftGraph(int16_t n) { shiftEx(rssiHistory, MAX_POINTS, n); }
 
 static uint8_t curX = MAX_POINTS / 2;
 static uint8_t curSbWidth = 16;
