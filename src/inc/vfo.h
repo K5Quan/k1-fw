@@ -5,6 +5,7 @@
 
 typedef struct {
   uint16_t scanlists;
+  uint16_t channel;
   char name[10];
   uint32_t rxF : 27;
   int32_t ppm : 5;
@@ -21,6 +22,7 @@ typedef struct {
   Squelch squelch;
   CodeRXTX code;
   bool fixedBoundsMode : 1;
+  bool isChMode : 1;
   uint8_t gainIndex : 5;
 } __attribute__((packed)) VFO;
 

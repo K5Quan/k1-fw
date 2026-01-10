@@ -1,8 +1,6 @@
 #include "appslist.h"
-#include "../helper/channels.h"
 #include "../helper/menu.h"
 #include "apps.h"
-#include "chlist.h"
 #include <sys/types.h>
 
 static MenuItem appsItems[RUN_APPS_COUNT];
@@ -12,9 +10,6 @@ static Menu appsMenu = {"Apps", appsItems, RUN_APPS_COUNT};
 static bool run(const MenuItem *item, KEY_Code_t key, Key_State_t state) {
   if (state == KEY_RELEASED && key == KEY_MENU) {
     APPS_exit();
-    if (item->setting == APP_CH_LIST) {
-      gChListFilter = TYPE_FILTER_CH;
-    }
     APPS_runManual(item->setting);
     return true;
   }

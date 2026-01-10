@@ -12,6 +12,8 @@
 static const uint8_t REQUIRED_FREQUENCY_HITS = 2;
 static const uint8_t FILTER_SWITCH_INTERVAL = REQUIRED_FREQUENCY_HITS;
 
+static Loot *gLastActiveLoot;
+
 static const char *FILTER_NAMES[] = {
     [FILTER_OFF] = "ALL",
     [FILTER_VHF] = "VHF",

@@ -1,8 +1,8 @@
 #include "components.h"
 #include "../apps/apps.h"
 #include "../driver/st7565.h"
-#include "../helper/channels.h"
 #include "../helper/measurements.h"
+#include "../settings.h"
 #include <stdint.h>
 
 void UI_Battery(uint8_t Level) {
@@ -88,17 +88,17 @@ void UI_DisplayScanlists(uint32_t y) {
 }
 
 void UI_RenderScanScreen() {
-  if (gScanlistSize) {
+  /* if (gScanlistSize) {
     uint32_t f = RADIO_GetParam(ctx, PARAM_FREQUENCY);
     PrintMediumEx(LCD_XCENTER, 26, POS_C, C_FILL, "%u.%05u", f / MHZ, f % MHZ);
     if (vfo->is_open)
       UI_RSSIBar(28);
-  } else {
-    PrintMediumBoldEx(LCD_XCENTER, 18, POS_C, C_FILL, "Scanlist empty");
-  }
+  } else { */
+  PrintMediumBoldEx(LCD_XCENTER, 18, POS_C, C_FILL, "Scanlist empty");
+  // }
 
-  if (gLastActiveLoot) {
+  /* if (gLastActiveLoot) {
     UI_DrawLoot(gLastActiveLoot, LCD_XCENTER, 50, POS_C);
-  }
+  } */
   UI_DisplayScanlists(60);
 }

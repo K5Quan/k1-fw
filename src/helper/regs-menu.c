@@ -3,7 +3,6 @@
 #include "../external/printf/printf.h"
 #include "../helper/menu.h"
 #include "../radio.h"
-#include "channels.h"
 
 static bool inMenu;
 

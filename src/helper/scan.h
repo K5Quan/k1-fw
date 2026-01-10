@@ -1,8 +1,7 @@
 #ifndef SCAN_H
 #define SCAN_H
 
-#include "channels.h"
-#include "lootlist.h"
+#include "../inc/band.h"
 #include <stdint.h>
 
 typedef enum {

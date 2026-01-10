@@ -2,8 +2,7 @@
 #define RADIO_H
 
 #include "driver/bk4829.h"
-#include "helper/channels.h"
-#include "helper/lootlist.h"
+#include "inc/vfo.h"
 #include <stdbool.h>
 #include <stdint.h>
 

@@ -5,8 +5,6 @@
 #include "../driver/si473x.h"
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
-#include "../helper/bands.h"
-#include "../helper/channels.h"
 #include "../helper/numnav.h"
 #include "components.h"
 #include "graphics.h"
@@ -91,10 +89,6 @@ void STATUSLINE_render(void) {
     icons[idx++] = SYM_EEPROM_W;
   }
 
-  if (LOOT_Size() == LOOT_SIZE_MAX) {
-    icons[idx++] = SYM_LOOT_FULL;
-  }
-
   if (gMonitorMode) {
     icons[idx++] = SYM_MONITOR;
   }
@@ -111,9 +105,9 @@ void STATUSLINE_render(void) {
     icons[idx++] = SYM_LOCK;
   }
 
-  if (gCurrentApp == APP_CH_LIST || gCurrentApp == APP_LOOT_LIST) {
+  /* if (gCurrentApp == APP_CH_LIST || gCurrentApp == APP_LOOT_LIST) {
     UI_Scanlists(LCD_XCENTER - 13, 0, gSettings.currentScanlist);
-  }
+  } */
 
   PrintSymbolsEx(LCD_WIDTH - 1 - 22, BASE_Y, POS_R, C_FILL, "%s", icons);
 

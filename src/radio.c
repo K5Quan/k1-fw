@@ -1,6 +1,5 @@
 #include "radio.h"
 #include "board.h"
-#include "channels_csv.h"
 #include "dcs.h"
 #include "driver/audio.h"
 #include "driver/backlight.h"
@@ -13,10 +12,9 @@
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
-#include "helper/bands.h"
-#include "helper/channels.h"
-#include "helper/lootlist.h"
+#include "helper/ch.h"
 #include "helper/measurements.h"
+#include "inc/vfo.h"
 #include "misc.h"
 #include "settings.h"
 #include <stdint.h>
@@ -32,6 +30,9 @@ bool gMonitorMode = false;
 RadioState *gRadioState;
 ExtendedVFOContext *vfo;
 VFOContext *ctx;
+
+const char *TX_POWER_NAMES[4] = {"ULow", "Low", "Mid", "High"};
+const char *TX_OFFSET_NAMES[4] = {"None", "+", "-", "Freq"};
 
 const char *RADIO_NAMES[3] = {
     [RADIO_BK4819] = "BK4819",
@@ -943,8 +944,8 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     break;
   case PARAM_POWER: {
     ctx->power = value;
-    ctx->tx_state.power_level =
-        BANDS_CalculateOutputPower(ctx->power, ctx->tx_state.frequency);
+    ctx->tx_state.power_level = 10;
+    // BANDS_CalculateOutputPower(ctx->power, ctx->tx_state.frequency);
 
     ctx->tx_state.pa_enabled = true;
     ctx->dirty[PARAM_TX_POWER] = true;
@@ -1406,10 +1407,11 @@ void RADIO_CheckAndSaveVFO(RadioState *state) {
     if (ctx->save_to_eeprom &&
         (Now() - ctx->last_save_time >= RADIO_SAVE_DELAY_MS)) {
       LogC(LOG_C_BRIGHT_YELLOW, "TRYING TO SAVE PARAM");
-      VFO ch;
 
+      // TODO: VFO, NOT CH!!!11
+      CH ch;
       RADIO_SaveVFOToStorage(state, i, &ch);
-      CHANNEL_SaveCSV("VFO.CSV", i, &ch);
+      CH_Save("CHANNELS.CH", i, &ch);
 
       ctx->save_to_eeprom = false;
     }
@@ -1566,8 +1568,6 @@ void RADIO_SaveVFOToStorage(const RadioState *state, uint8_t vfo_index,
   const ExtendedVFOContext *vfo = &state->vfos[vfo_index];
   const VFOContext *ctx = &vfo->context;
 
-  storage->meta.type = TYPE_VFO;
-
   storage->isChMode = vfo->mode;
   storage->channel = vfo->channel_index;
 
@@ -1596,7 +1596,7 @@ bool RADIO_SaveCurrentVFO(RadioState *state) {
   VFO storage;
 
   RADIO_SaveVFOToStorage(state, current, &storage);
-  CHANNEL_SaveCSV("VFO.CSV", current, &storage);
+  // CHANNEL_SaveCSV("VFO.CSV", current, &storage);
 
   return true;
 }
@@ -1613,7 +1613,7 @@ void RADIO_LoadChannelToVFO(RadioState *state, uint8_t vfo_index,
   ExtendedVFOContext *vfo = &state->vfos[vfo_index];
   VFOContext *ctx = &vfo->context;
   CH channel;
-  CHANNEL_LoadCSV("CHANNELS.CSV", channel_index, &channel);
+  // CHANNEL_LoadCSV("CHANNELS.CSV", channel_index, &channel);
 
   vfo->mode = MODE_CHANNEL;
   vfo->channel_index = channel_index;
@@ -1638,8 +1638,8 @@ bool RADIO_ToggleVFOMode(RadioState *state, uint8_t vfo_index) {
 
   // Определяем новый режим (инвертируем текущий)
   VFOMode new_mode = vfo->mode == MODE_CHANNEL ? MODE_VFO : MODE_CHANNEL;
-  MR ch;
-  if (new_mode == MODE_CHANNEL) {
+  VFO ch;
+  /* if (new_mode == MODE_CHANNEL) {
     CHANNEL_LoadCSV("CHANNELS.CSV", vfo->vfo_ch_index, &ch);
   } else {
     CHANNEL_LoadCSV("VFO.CSV", vfo_index, &ch);
@@ -1655,7 +1655,7 @@ bool RADIO_ToggleVFOMode(RadioState *state, uint8_t vfo_index) {
     RADIO_LoadChannelToVFO(state, vfo_index, ch.channel);
   } else {
     RADIO_LoadVFOFromStorage(state, vfo_index, &ch);
-  }
+  } */
   RADIO_ApplySettings(&vfo->context);
 
   // Помечаем для сохранения в EEPROM
@@ -1707,9 +1707,9 @@ static void RADIO_UpdateMeasurement(ExtendedVFOContext *vfo) {
   vfo->msm.glitch = BK4819_GetGlitch();
   vfo->msm.snr = RADIO_GetSNR(ctx);
   vfo->msm.open = RADIO_CheckSquelch(ctx);
-  if (!gMonitorMode && ctx->radio_type == RADIO_BK4819) {
+  /* if (!gMonitorMode && ctx->radio_type == RADIO_BK4819) {
     LOOT_Update(&vfo->msm);
-  }
+  } */
 }
 
 void RADIO_UpdateSquelch(RadioState *state) {
@@ -1834,13 +1834,13 @@ void RADIO_LoadVFOs(RadioState *state) {
   for (uint16_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
 
-    MR ch;
+    /* MR ch;
     CHANNEL_LoadCSV("VFO.CSV", i, &ch);
     if (ch.isChMode) {
       RADIO_LoadChannelToVFO(state, vfoIdx, ch.channel);
     } else {
       RADIO_LoadVFOFromStorage(state, vfoIdx, &ch);
-    }
+    } */
     vfoIdx++;
   }
   state->num_vfos = vfoIdx;

@@ -4,10 +4,10 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../radio.h"
+#include "../settings.h"
 #include "../ui/spectrum.h"
-#include "bands.h"
-#include "channels.h"
-#include "lootlist.h"
+
+static Band gCurrentBand;
 
 // =============================
 // Состояние сканирования
@@ -80,9 +80,9 @@ static void ApplyBandSettings() {
   SP_Init(&gCurrentBand);
   LogC(LOG_C_BRIGHT_YELLOW, "[SCANER] Bounds: %u .. %u", gCurrentBand.rxF,
        gCurrentBand.txF);
-  if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, gCurrentBand)) {
+  /* if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, gCurrentBand)) {
     gLastActiveLoot = NULL;
-  }
+  } */
 }
 
 static void NextFrequency() {
@@ -96,7 +96,7 @@ static void NextFrequency() {
 
   if (vfo->msm.f > gCurrentBand.txF) {
     if (scan.isMultiband) {
-      BANDS_SelectBandRelativeByScanlist(true);
+      // BANDS_SelectBandRelativeByScanlist(true);
       ApplyBandSettings();
     }
     vfo->msm.f = gCurrentBand.rxF;
@@ -106,7 +106,7 @@ static void NextFrequency() {
     gRedrawScreen = true;
   }
 
-  LOOT_Replace(&vfo->msm, vfo->msm.f);
+  // LOOT_Replace(&vfo->msm, vfo->msm.f);
   SetTimeout(&scan.scanListenTimeout, 0);
   SetTimeout(&scan.stayAtTimeout, 0);
   UpdateCPS();
@@ -121,9 +121,9 @@ static void NextStep() {
 
   case SCAN_MODE_CHANNEL:
     // Переход к следующему каналу
-    CHANNELS_Next(true);
+    /* CHANNELS_Next(true);
     CHANNELS_LoadCurrentScanlistCH();
-    LOOT_Replace(&vfo->msm, vfo->msm.f);
+    LOOT_Replace(&vfo->msm, vfo->msm.f); */
     break;
 
   case SCAN_MODE_FREQUENCY:
@@ -186,7 +186,7 @@ void SCAN_SetMode(ScanMode mode) {
     break;
   case SCAN_MODE_CHANNEL:
     // Загрузим первый канал из списка
-    CHANNELS_LoadCurrentScanlistCH();
+    // CHANNELS_LoadCurrentScanlistCH();
     break;
   case SCAN_MODE_FREQUENCY:
   case SCAN_MODE_ANALYSER:
@@ -224,12 +224,12 @@ void SCAN_setRange(uint32_t fs, uint32_t fe) {
 void SCAN_Next() { NextFrequency(); }
 
 void SCAN_NextBlacklist() {
-  LOOT_BlacklistLast();
+  // LOOT_BlacklistLast();
   SCAN_Next();
 }
 
 void SCAN_NextWhitelist() {
-  LOOT_BlacklistLast();
+  // LOOT_BlacklistLast();
   SCAN_Next();
 }
 
@@ -257,7 +257,7 @@ static void HandleAnalyserMode() {
 }
 
 static void UpdateSquelchAndRssi(bool isAnalyserMode) {
-  Loot *msm = LOOT_Get(vfo->msm.f);
+  /* Loot *msm = LOOT_Get(vfo->msm.f);
   if ((gSettings.skipGarbageFrequencies &&
        (vfo->msm.f % GARBAGE_FREQUENCY_MOD == 0)) ||
       (msm && (msm->blacklist || msm->whitelist))) {
@@ -283,7 +283,7 @@ static void UpdateSquelchAndRssi(bool isAnalyserMode) {
   }
 
   vfo->msm.open = vfo->msm.rssi >= scan.squelchLevel;
-  SP_AddPoint(&vfo->msm);
+  SP_AddPoint(&vfo->msm); */
 }
 
 void SCAN_Check() {
@@ -342,7 +342,7 @@ void SCAN_Check() {
     }
   }
 
-  LOOT_Update(&vfo->msm);
+  // LOOT_Update(&vfo->msm);
 
   // Автокоррекция squelch
   if (vfo->is_open && !vfo->msm.open) {
@@ -352,76 +352,6 @@ void SCAN_Check() {
   // Переход к следующей частоте/каналу с учетом таймаутов
   NextWithTimeout();
 }
-
-/* void SCAN_Check(bool isAnalyserMode) {
-  static uint32_t lastFreqChangeTime = 0;
-  static uint32_t stuckCounter = 0;
-
-  // Проверка на зависание на одной частоте
-  if (Now() - lastFreqChangeTime > 5000) { // 5 секунд без смены частоты
-    stuckCounter++;
-    if (stuckCounter > 3) {
-      scan.squelchLevel = 0; // Сброс squelch
-      NextFrequency();
-      stuckCounter = 0;
-    }
-    lastFreqChangeTime = Now();
-  }
-
-  RADIO_UpdateMultiwatch(gRadioState);
-
-  if (isAnalyserMode) {
-    HandleAnalyserMode();
-    return;
-  }
-
-  if (vfo->msm.open) {
-    RADIO_UpdateSquelch(gRadioState);
-    vfo->msm.open = vfo->is_open;
-    gRedrawScreen = true;
-  } else {
-    UpdateSquelchAndRssi(isAnalyserMode);
-  }
-
-  if (vfo->msm.open && !vfo->is_open) {
-    scan.thinking = true;
-    scan.wasThinkingEarlier = true;
-    SYSTICK_DelayUs(SQL_DELAY * 1000);
-    RADIO_UpdateSquelch(gRadioState);
-    vfo->msm.open = vfo->is_open;
-    scan.thinking = false;
-    // gRedrawScreen = true;
-    if (!vfo->msm.open) {
-      scan.squelchLevel++;
-    }
-  }
-
-  LOOT_Update(&vfo->msm);
-
-  if (vfo->is_open && !vfo->msm.open) {
-    scan.squelchLevel = SP_GetNoiseFloor();
-  }
-
-  if (vfo->msm.open) {
-    gRedrawScreen = true;
-  }
-
-  static uint8_t stepsPassed;
-  if (!vfo->msm.open) {
-    if (stepsPassed++ > 64) {
-      stepsPassed = 0;
-      // gRedrawScreen = true;
-      if (!scan.wasThinkingEarlier && scan.squelchLevel > 0) {
-        scan.squelchLevel--;
-      }
-      scan.wasThinkingEarlier = false;
-    }
-  } else {
-    stepsPassed = 0;
-  }
-
-  NextWithTimeout();
-} */
 
 void SCAN_SetDelay(uint32_t delay) { scan.scanDelayUs = delay; }
 uint32_t SCAN_GetDelay() { return scan.scanDelayUs; }

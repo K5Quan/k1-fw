@@ -1,7 +1,7 @@
 #ifndef COMPONENTS_H
 #define COMPONENTS_H
 
-#include "../helper/lootlist.h"
+#include "../inc/loot.h"
 #include "../radio.h"
 #include "graphics.h"
 #include <stdbool.h>

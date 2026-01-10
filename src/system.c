@@ -1,7 +1,6 @@
 #include "system.h"
 #include "apps/apps.h"
 #include "board.h"
-#include "channels_csv.h"
 #include "driver/backlight.h"
 #include "driver/battery.h"
 #include "driver/bk4829.h"
@@ -13,10 +12,9 @@
 #include "driver/uart.h"
 #include "external/CMSIS/Device/PY32F071/Include/py32f071xB.h"
 #include "external/printf/printf.h"
-#include "helper/bands.h"
-#include "helper/channels.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
+#include "inc/channel.h"
 #include "settings.h"
 #include "settings_ini.h"
 #include "ui/graphics.h"
@@ -106,38 +104,6 @@ static void loadSettingsOrReset() {
   ch.step = STEP_25_0kHz;
   ch.squelch.type = SQUELCH_RSSI_NOISE_GLITCH;
   ch.squelch.value = 4;
-
-  if (!usb_fs_file_exists("VFO.CSV")) {
-    ch.meta.type = TYPE_VFO;
-
-    sprintf(ch.name, "VFO A");
-    ch.rxF = 43392500;
-    CHANNEL_SaveCSV("VFO.CSV", 0, &ch);
-
-    sprintf(ch.name, "VFO B");
-    ch.rxF = 25355000;
-    CHANNEL_SaveCSV("VFO.CSV", 1, &ch);
-  }
-
-  if (!usb_fs_file_exists("CHANNELS.CSV")) {
-    ch.meta.type = TYPE_CH;
-
-    sprintf(ch.name, "Workers");
-    ch.rxF = 43312500;
-    CHANNEL_SaveCSV("CHANNELS.CSV", 0, &ch);
-
-    sprintf(ch.name, "DMR");
-    ch.rxF = 17230000;
-    CHANNEL_SaveCSV("CHANNELS.CSV", 1, &ch);
-  }
-
-  if (!usb_fs_file_exists("BANDS.CSV")) {
-    ch.meta.type = TYPE_BAND;
-    ch.rxF = 43307500;
-    ch.txF = 43477500;
-    sprintf(ch.name, "LPD");
-    CHANNEL_SaveCSV("BANDS.CSV", 0, &ch);
-  }
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {

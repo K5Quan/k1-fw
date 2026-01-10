@@ -363,6 +363,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
 
   // Если файл существует и append=false, удаляем его
   if (idx != -1 && !append) {
+    printf("[WRITE_FILE] Deleting existing file '%s'\n", name);
     usb_fs_delete_file(name);
     idx = -1;
   }
@@ -372,124 +373,68 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
   uint16_t first_cluster = existed ? entry.first_clusterLO : 0;
   uint32_t new_size = old_size + size;
 
-  // Если нет данных для записи
+  // Если нет данных для записи - просто создаём пустой файл
   if (size == 0) {
-    memset(&entry, 0, sizeof(entry));
-    memcpy(entry.name, formatted_name, 11);
-    entry.attr = 0x20;
-    entry.first_clusterLO = first_cluster;
-    entry.file_size = new_size;
-    entry.create_date = _VOLUME_CREATE_DATE;
-    entry.create_time = _VOLUME_CREATE_TIME;
-    entry.write_date = _VOLUME_CREATE_DATE;
-    entry.write_time = _VOLUME_CREATE_TIME;
-
-    return update_file_entry(formatted_name, &entry);
+    if (!existed) {
+      memset(&entry, 0, sizeof(entry));
+      memcpy(entry.name, formatted_name, 11);
+      entry.attr = 0x20;
+      entry.first_clusterLO = 0;
+      entry.file_size = 0;
+      entry.create_date = _VOLUME_CREATE_DATE;
+      entry.create_time = _VOLUME_CREATE_TIME;
+      entry.write_date = _VOLUME_CREATE_DATE;
+      entry.write_time = _VOLUME_CREATE_TIME;
+      return update_file_entry(formatted_name, &entry);
+    }
+    return 0;
   }
 
-  // Выделяем кластеры
-  uint32_t total_clusters_needed = (new_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
-  uint32_t existing_clusters = (old_size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
-  uint32_t additional_clusters = total_clusters_needed - existing_clusters;
+  // === КРИТИЧНО: Используем handle для записи ===
+  usb_fs_handle_t handle;
 
-  if (additional_clusters > 0) {
+  if (existed && append) {
+    // Открываем существующий файл и идём в конец
+    if (usb_fs_open(name, &handle) != 0) {
+      printf("[WRITE_FILE] Failed to open for append\n");
+      return -1;
+    }
+    usb_fs_seek(&handle, old_size); // В конец файла
+  } else {
+    // Новый файл - создаём первый кластер
+    first_cluster = find_free_cluster();
     if (first_cluster == 0) {
-      // Новый файл
-      first_cluster = find_free_cluster();
-      if (first_cluster == 0) {
-        LogC(LOG_C_RED, "[FAT] No free cluster");
-        return -1;
-      }
-      write_fat_entry(first_cluster, 0xFFFF);
-      additional_clusters--;
-
-      // Выделяем остальные кластеры
-      uint16_t current = first_cluster;
-      for (uint32_t i = 0; i < additional_clusters; i++) {
-        uint16_t next = find_free_cluster();
-        if (next == 0) {
-          free_clusters(first_cluster);
-          return -1;
-        }
-        write_fat_entry(current, next);
-        write_fat_entry(next, 0xFFFF);
-        current = next;
-      }
-    } else {
-      // Существующий файл - находим последний кластер
-      uint16_t current = first_cluster;
-      while (true) {
-        uint16_t next = read_fat_entry(current);
-        if (next >= 0xFFF8)
-          break;
-        current = next;
-      }
-
-      // Добавляем новые кластеры
-      for (uint32_t i = 0; i < additional_clusters; i++) {
-        uint16_t next = find_free_cluster();
-        if (next == 0)
-          return -1;
-        write_fat_entry(current, next);
-        write_fat_entry(next, 0xFFFF);
-        current = next;
-      }
+      printf("[WRITE_FILE] No free cluster\n");
+      return -1;
     }
+    write_fat_entry(first_cluster, 0xFFFF);
+
+    // Инициализируем handle
+    memset(&handle, 0, sizeof(handle));
+    handle.first_cluster = first_cluster;
+    handle.file_size = 0;
+    handle.position = 0;
+    handle.current_cluster = first_cluster;
+    handle.current_position_in_cluster = 0;
   }
 
-  // Записываем данные
-  uint32_t written = 0;
-  uint16_t cluster = first_cluster;
-  uint32_t offset_in_cluster = 0;
+  // Записываем данные через handle
+  size_t written = usb_fs_write_bytes(&handle, data, size);
 
-  // Если append, находим позицию в последнем кластере
-  if (append && old_size > 0) {
-    cluster = first_cluster;
-    uint32_t remaining = old_size;
-
-    while (remaining > CLUSTER_SIZE) {
-      cluster = read_fat_entry(cluster);
-      remaining -= CLUSTER_SIZE;
+  if (written != size) {
+    printf("[WRITE_FILE] Write failed: %zu/%lu bytes\n", written, size);
+    if (!existed) {
+      free_clusters(first_cluster);
     }
-    offset_in_cluster = remaining;
-  }
-
-  while (written < size) {
-    uint32_t flash_addr =
-        FLASH_DATA_OFFSET + (cluster - 2) * CLUSTER_SIZE + offset_in_cluster;
-    uint32_t space_in_cluster = CLUSTER_SIZE - offset_in_cluster;
-    uint32_t to_write = size - written;
-
-    if (to_write > space_in_cluster) {
-      to_write = space_in_cluster;
-    }
-
-    // Стираем кластер если начинаем с начала
-    if (offset_in_cluster == 0 && (!append || old_size == 0)) {
-      uint8_t check_byte;
-      PY25Q16_ReadBuffer(flash_addr, &check_byte, 1);
-      if (check_byte != 0xFF) {
-        PY25Q16_SectorErase(flash_addr);
-      }
-    }
-
-    PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
-
-    written += to_write;
-    offset_in_cluster += to_write;
-
-    if (offset_in_cluster >= CLUSTER_SIZE) {
-      offset_in_cluster = 0;
-      cluster = read_fat_entry(cluster);
-    }
+    return -1;
   }
 
   // Обновляем запись в директории
   memset(&entry, 0, sizeof(entry));
   memcpy(entry.name, formatted_name, 11);
   entry.attr = 0x20;
-  entry.first_clusterLO = first_cluster;
-  entry.file_size = new_size;
+  entry.first_clusterLO = handle.first_cluster;
+  entry.file_size = handle.file_size;
   entry.create_date = _VOLUME_CREATE_DATE;
   entry.create_time = _VOLUME_CREATE_TIME;
   entry.write_date = _VOLUME_CREATE_DATE;
@@ -571,6 +516,191 @@ size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len) {
   return read;
 }
 
+// В функции usb_fs_write_bytes добавим проверку для дозаписи:
+size_t usb_fs_write_bytes(usb_fs_handle_t *handle, const uint8_t *data,
+                          size_t len) {
+  size_t written = 0;
+  static uint16_t last_erased_cluster = 0xFFFF;
+
+  if (!handle || handle->first_cluster < 2 || len == 0) {
+    return 0;
+  }
+
+  // Если позиция не в начале файла, нужно убедиться что текущий кластер
+  // правильный
+  if (handle->current_cluster == 0 && handle->first_cluster >= 2) {
+    // Ищем правильный кластер для текущей позиции
+    uint32_t target_cluster_index = handle->position / CLUSTER_SIZE;
+    uint16_t cluster = handle->first_cluster;
+
+    for (uint32_t i = 0; i < target_cluster_index; i++) {
+      if (cluster < 2 || cluster >= 0xFFF8) {
+        break;
+      }
+      cluster = read_fat_entry(cluster);
+    }
+
+    if (cluster >= 2 && cluster < 0xFFF8) {
+      handle->current_cluster = cluster;
+      handle->current_position_in_cluster = handle->position % CLUSTER_SIZE;
+    }
+  }
+
+  while (len > 0) {
+    if (handle->current_cluster < 2 || handle->current_cluster >= 0xFFF8) {
+      // Нужно выделить новый кластер
+      uint16_t new_cluster = find_free_cluster();
+      if (new_cluster == 0) {
+        printf("[WRITE] No free clusters at pos %lu\n", handle->position);
+        break;
+      }
+
+      if (handle->current_cluster >= 2 && handle->current_cluster < 0xFFF8) {
+        write_fat_entry(handle->current_cluster, new_cluster);
+      } else if (handle->first_cluster < 2) {
+        handle->first_cluster = new_cluster;
+      }
+
+      write_fat_entry(new_cluster, 0xFFFF);
+      handle->current_cluster = new_cluster;
+      handle->current_position_in_cluster = 0;
+
+      if (handle->first_cluster < 2) {
+        handle->first_cluster = new_cluster;
+      }
+    }
+
+    uint32_t remaining_in_cluster =
+        CLUSTER_SIZE - handle->current_position_in_cluster;
+
+    uint32_t to_write =
+        (len < remaining_in_cluster) ? len : remaining_in_cluster;
+    uint32_t flash_addr = FLASH_DATA_OFFSET +
+                          (handle->current_cluster - 2) * CLUSTER_SIZE +
+                          handle->current_position_in_cluster;
+
+    // Перед записью читаем существующие данные
+    uint8_t sector_buffer[SECTOR_SIZE];
+    uint32_t sector_addr = flash_addr & ~(SECTOR_SIZE - 1);
+    uint32_t offset_in_sector = flash_addr - sector_addr;
+
+    // Если пишем не с начала сектора, читаем существующие данные
+    if (offset_in_sector > 0 || to_write < SECTOR_SIZE) {
+      PY25Q16_ReadBuffer(sector_addr, sector_buffer, SECTOR_SIZE);
+    }
+
+    // Стираем только если нужно
+    if (handle->current_position_in_cluster == 0 &&
+        last_erased_cluster != handle->current_cluster) {
+      uint8_t check_byte;
+      PY25Q16_ReadBuffer(flash_addr, &check_byte, 1);
+      if (check_byte != 0xFF) {
+        printf("[WRITE] Erasing cluster %u at 0x%06lX\n",
+               handle->current_cluster, flash_addr);
+        PY25Q16_SectorErase(flash_addr);
+        last_erased_cluster = handle->current_cluster;
+      }
+    }
+
+    // Обновляем буфер и записываем сектор
+    if (offset_in_sector > 0 || to_write < SECTOR_SIZE) {
+      memcpy(sector_buffer + offset_in_sector, data + written, to_write);
+      PY25Q16_WriteBuffer(sector_addr, sector_buffer, SECTOR_SIZE, true);
+    } else {
+      // Пишем целый сектор
+      PY25Q16_WriteBuffer(flash_addr, data + written, to_write, true);
+    }
+
+    written += to_write;
+    len -= to_write;
+    handle->position += to_write;
+    handle->current_position_in_cluster += to_write;
+
+    if (handle->position > handle->file_size) {
+      handle->file_size = handle->position;
+    }
+
+    // Переход к следующему кластеру
+    if (handle->current_position_in_cluster >= CLUSTER_SIZE) {
+      uint16_t next_cluster = read_fat_entry(handle->current_cluster);
+      if (next_cluster >= 0xFFF8) {
+        // Конец цепочки - ничего не делаем
+        break;
+      }
+      handle->current_cluster = next_cluster;
+      handle->current_position_in_cluster = 0;
+    }
+  }
+
+  return written;
+}
+
+int usb_fs_flush(usb_fs_handle_t *handle, const char *name) {
+  if (!handle || handle->first_cluster < 2) {
+    return -1;
+  }
+
+  char formatted_name[12];
+  fat_format_name(name, formatted_name);
+
+  fat_dir_entry_t entry;
+  memset(&entry, 0, sizeof(entry));
+  memcpy(entry.name, formatted_name, 11);
+  entry.attr = 0x20;
+  entry.first_clusterLO = handle->first_cluster;
+  entry.file_size = handle->file_size;
+  entry.create_date = _VOLUME_CREATE_DATE;
+  entry.create_time = _VOLUME_CREATE_TIME;
+  entry.write_date = _VOLUME_CREATE_DATE;
+  entry.write_time = _VOLUME_CREATE_TIME;
+
+  return update_file_entry(formatted_name, &entry);
+}
+
+int usb_fs_seek(usb_fs_handle_t *handle, uint32_t position) {
+  if (!handle || handle->first_cluster < 2) {
+    return -1;
+  }
+
+  // Нельзя смещаться за пределы файла при чтении
+  if (position > handle->file_size) {
+    return -1;
+  }
+
+  // Если смещаемся в начало
+  if (position == 0) {
+    handle->position = 0;
+    handle->current_cluster = handle->first_cluster;
+    handle->current_position_in_cluster = 0;
+    return 0;
+  }
+
+  // Вычисляем в какой кластер нужно попасть
+  uint32_t target_cluster_index = position / CLUSTER_SIZE;
+  uint32_t offset_in_cluster = position % CLUSTER_SIZE;
+
+  // Идём по цепочке FAT до нужного кластера
+  uint16_t cluster = handle->first_cluster;
+  for (uint32_t i = 0; i < target_cluster_index; i++) {
+    if (cluster < 2 || cluster >= 0xFFF8) {
+      return -1; // Некорректная цепочка
+    }
+    cluster = read_fat_entry(cluster);
+  }
+
+  // Проверяем что дошли до валидного кластера
+  if (cluster < 2 || cluster >= 0xFFF8) {
+    return -1;
+  }
+
+  // Устанавливаем новую позицию
+  handle->position = position;
+  handle->current_cluster = cluster;
+  handle->current_position_in_cluster = offset_in_cluster;
+
+  return 0;
+}
+
 int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size) {
   usb_fs_handle_t handle;
 
@@ -615,6 +745,64 @@ int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size) {
   }
 
   return 0;
+}
+
+size_t usb_fs_create_file(const char *name, uint32_t size) {
+  const uint32_t clusters_needed = (size + CLUSTER_SIZE - 1) / CLUSTER_SIZE;
+
+  // Выделяем кластеры
+  uint16_t first_cluster = find_free_cluster();
+  if (first_cluster == 0) {
+    printf("[CREATE_FILE] No free clusters\n");
+    return 0; // Возвращаем 0 при ошибке
+  }
+
+  uint16_t current = first_cluster;
+  write_fat_entry(current, 0xFFFF);
+
+  for (uint32_t i = 1; i < clusters_needed; i++) {
+    uint16_t next = find_free_cluster();
+    if (next == 0) {
+      printf("[CREATE_FILE] Not enough clusters\n");
+      free_clusters(first_cluster);
+      return 0;
+    }
+    write_fat_entry(current, next);
+    write_fat_entry(next, 0xFFFF);
+    current = next;
+  }
+
+  // Стираем все кластеры
+  current = first_cluster;
+  for (uint32_t i = 0; i < clusters_needed; i++) {
+    uint32_t flash_addr = FLASH_DATA_OFFSET + (current - 2) * CLUSTER_SIZE;
+    PY25Q16_SectorErase(flash_addr);
+
+    if (i < clusters_needed - 1) {
+      current = read_fat_entry(current);
+    }
+  }
+
+  // Создаём directory entry
+  char formatted_name[12];
+  fat_format_name(name, formatted_name);
+
+  fat_dir_entry_t entry;
+  memset(&entry, 0, sizeof(entry));
+  memcpy(entry.name, formatted_name, 11);
+  entry.attr = 0x20;
+  entry.first_clusterLO = first_cluster;
+  entry.file_size = size;
+  entry.create_date = _VOLUME_CREATE_DATE;
+  entry.create_time = _VOLUME_CREATE_TIME;
+  entry.write_date = _VOLUME_CREATE_DATE;
+  entry.write_time = _VOLUME_CREATE_TIME;
+
+  int result = update_file_entry(formatted_name, &entry);
+  printf("[CREATE_FILE] update_file_entry returned: %d\n", result);
+
+  // Возвращаем реальный размер при успехе
+  return (result == 0) ? size : 0;
 }
 
 // === УДАЛЕНИЕ ФАЙЛА ===
@@ -781,6 +969,48 @@ int usb_fs_sector_write(uint32_t sector, uint8_t *buf, uint32_t size) {
 }
 
 // === DEBUG ФУНКЦИИ ===
+
+void debug_file_info(const char *name) {
+  char formatted_name[12];
+  fat_format_name(name, formatted_name);
+
+  fat_dir_entry_t entry;
+  if (find_file_entry(formatted_name, &entry) == -1) {
+    printf("[DEBUG] File '%s' not found in directory\n", name);
+    return;
+  }
+
+  printf("[DEBUG] File '%s' info:\n", name);
+  printf("  FAT name: ");
+  for (int i = 0; i < 11; i++) {
+    printf("%c", entry.name[i]);
+  }
+  printf("\n");
+  printf("  Size: %lu bytes\n", entry.file_size);
+  printf("  First cluster: %u\n", entry.first_clusterLO);
+  printf("  Attributes: 0x%02X\n", entry.attr);
+
+  // Проверяем цепочку кластеров
+  if (entry.first_clusterLO >= 2) {
+    printf("  Cluster chain: ");
+    uint16_t cluster = entry.first_clusterLO;
+    int count = 0;
+
+    while (cluster >= 2 && cluster < 0xFFF8 && count < 10) {
+      printf("%u", cluster);
+      uint16_t next = read_fat_entry(cluster);
+      if (next >= 2 && next < 0xFFF8) {
+        printf(" -> ");
+        cluster = next;
+      } else {
+        printf(" -> EOF(0x%04X)", next);
+        break;
+      }
+      count++;
+    }
+    printf("\n");
+  }
+}
 
 void debug_file_structure(const char *name) {
   char formatted_name[12];

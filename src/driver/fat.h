@@ -98,6 +98,7 @@ int usb_fs_write_file(const char *name, const uint8_t *data, uint32_t size,
                       bool append);
 int usb_fs_read_file(const char *name, uint8_t *data, uint32_t *size);
 int usb_fs_delete_file(const char *name);
+size_t usb_fs_create_file(const char *name, uint32_t size);
 
 // Получение информации
 int usb_fs_list_files(file_info_t *list, int max_count);
@@ -126,10 +127,15 @@ static inline bool usb_fs_is_write_protected(void) {
 // Функции работы с открытыми файлами
 int usb_fs_open(const char *name, usb_fs_handle_t *handle);
 size_t usb_fs_read_bytes(usb_fs_handle_t *handle, uint8_t *buf, size_t len);
+size_t usb_fs_write_bytes(usb_fs_handle_t *handle, const uint8_t *data,
+                          size_t len);
 void usb_fs_close(usb_fs_handle_t *handle);
+int usb_fs_seek(usb_fs_handle_t *handle, uint32_t position);
+int usb_fs_flush(usb_fs_handle_t *handle, const char *name);
 
 void debug_file_structure(const char *name);
 void debug_fat_table(uint16_t start_cluster, uint16_t count);
+void debug_file_info(const char *name);
 void check_fat_consistency(void);
 
 #endif // USB_FS_H
