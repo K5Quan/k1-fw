@@ -1,4 +1,5 @@
 #include "radio.h"
+#include "apps/apps.h"
 #include "board.h"
 #include "dcs.h"
 #include "driver/audio.h"
@@ -7,6 +8,7 @@
 #include "driver/bk1080.h"
 #include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
+#include "driver/fat.h"
 #include "driver/si473x.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
@@ -14,6 +16,8 @@
 #include "external/printf/printf.h"
 #include "helper/ch.h"
 #include "helper/measurements.h"
+#include "helper/storage.h"
+#include "inc/common.h"
 #include "inc/vfo.h"
 #include "misc.h"
 #include "settings.h"
@@ -1408,10 +1412,11 @@ void RADIO_CheckAndSaveVFO(RadioState *state) {
         (Now() - ctx->last_save_time >= RADIO_SAVE_DELAY_MS)) {
       LogC(LOG_C_BRIGHT_YELLOW, "TRYING TO SAVE PARAM");
 
-      // TODO: VFO, NOT CH!!!11
-      CH ch;
-      RADIO_SaveVFOToStorage(state, i, &ch);
-      CH_Save("CHANNELS.CH", i, &ch);
+      char vfosFileName[10];
+      snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
+      VFO vfo;
+      RADIO_SaveVFOToStorage(state, i, &vfo);
+      STORAGE_SAVE(vfosFileName, i, &vfo);
 
       ctx->save_to_eeprom = false;
     }
@@ -1596,7 +1601,9 @@ bool RADIO_SaveCurrentVFO(RadioState *state) {
   VFO storage;
 
   RADIO_SaveVFOToStorage(state, current, &storage);
-  // CHANNEL_SaveCSV("VFO.CSV", current, &storage);
+  char vfosFileName[10];
+  snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
+  STORAGE_SAVE(vfosFileName, current, &storage);
 
   return true;
 }
@@ -1830,17 +1837,56 @@ void RADIO_LoadVFOs(RadioState *state) {
 
   BK1080_Init(0, false);
 
+  char vfosFileName[10];
+  snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
+  if (!usb_fs_file_exists(vfosFileName)) {
+    STORAGE_INIT(vfosFileName, VFO, MAX_VFOS);
+    VFO vfos[] = {
+        {
+            .name = "VFO A",
+            .rxF = 43392500,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO B",
+            .rxF = 17230000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO C",
+            .rxF = 25355000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO D",
+            .rxF = 14550000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+    };
+    for (uint8_t i = 0; i < MAX_VFOS; ++i) {
+      STORAGE_SAVE(vfosFileName, i, &vfos[i]);
+    }
+  }
+
   uint8_t vfoIdx = 0;
-  for (uint16_t i = 0; i < MAX_VFOS; ++i) {
+  for (uint8_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
 
-    /* MR ch;
-    CHANNEL_LoadCSV("VFO.CSV", i, &ch);
-    if (ch.isChMode) {
-      RADIO_LoadChannelToVFO(state, vfoIdx, ch.channel);
+    VFO vfo;
+    STORAGE_LOAD(vfosFileName, i, &vfo);
+    if (vfo.isChMode) {
+      RADIO_LoadChannelToVFO(state, vfoIdx, vfo.channel);
     } else {
-      RADIO_LoadVFOFromStorage(state, vfoIdx, &ch);
-    } */
+      RADIO_LoadVFOFromStorage(state, vfoIdx, &vfo);
+    }
     vfoIdx++;
   }
   state->num_vfos = vfoIdx;

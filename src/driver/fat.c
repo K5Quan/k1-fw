@@ -1088,12 +1088,12 @@ void check_fat_consistency(void) {
   printf("FAT copies identical: %s\n", fat_ok ? "YES" : "NO");
 
   // Проверяем наличие файла настроек
-  if (usb_fs_file_exists("settings.ini")) {
-    printf("settings.ini exists\n");
+  if (usb_fs_file_exists("settings.set")) {
+    printf("settings.set exists\n");
 
     uint8_t buffer[100];
     uint32_t size = sizeof(buffer);
-    if (usb_fs_read_file("settings.ini", buffer, &size) == 0) {
+    if (usb_fs_read_file("settings.set", buffer, &size) == 0) {
       printf("File size: %lu bytes\n", size);
       printf("First 32 bytes: ");
       for (int i = 0; i < 32 && i < size; i++) {
@@ -1102,7 +1102,7 @@ void check_fat_consistency(void) {
       printf("\n");
     }
   } else {
-    printf("settings.ini does NOT exist\n");
+    printf("settings.set does NOT exist\n");
   }
 
   printf("=== End Check ===\n");

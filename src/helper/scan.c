@@ -299,10 +299,10 @@ void SCAN_Check() {
 
   // Одиночная частота — только мониторинг
   if (scan.mode == SCAN_MODE_SINGLE) {
-    /* RADIO_UpdateSquelch(gRadioState);
+    RADIO_UpdateSquelch(gRadioState);
     vfo->msm.rssi = MeasureSignal(vfo->msm.f, true);
     vfo->msm.open = vfo->is_open;
-    gRedrawScreen = true; */
+    gRedrawScreen = true;
 
     static uint32_t radioTimer;
     RADIO_CheckAndSaveVFO(gRadioState);
@@ -311,7 +311,8 @@ void SCAN_Check() {
       /* Log("SQL? %u RNG %u %u %u", vfo->msm.open, vfo->msm.rssi,
          vfo->msm.noise, vfo->msm.glitch); */
       SP_ShiftGraph(-1);
-      SP_AddGraphPoint(&vfo->msm);
+      /* SP_AddGraphPoint(&vfo->msm);
+      Log("L10"); */
       radioTimer = Now();
     }
 

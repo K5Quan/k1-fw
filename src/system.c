@@ -14,9 +14,9 @@
 #include "external/printf/printf.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
+#include "helper/storage.h"
 #include "inc/channel.h"
 #include "settings.h"
-#include "settings_ini.h"
 #include "ui/graphics.h"
 #include "ui/statusline.h"
 #include <string.h>
@@ -81,7 +81,9 @@ static void reset() {
   UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Formatting...");
   usb_fs_format();
-  SETTINGS_Export("SETTINGS.INI");
+
+  STORAGE_INIT("SETTINGS.SET", Settings, 1);
+  STORAGE_SAVE("SETTINGS.SET", 0, &gSettings);
 
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Release key 0!");
   keyboard_tick_1ms();
@@ -93,10 +95,10 @@ static void reset() {
 }
 
 static void loadSettingsOrReset() {
-  if (!usb_fs_file_exists("SETTINGS.INI")) {
+  if (!usb_fs_file_exists("SETTINGS.SET")) {
     reset();
   }
-  SETTINGS_LoadFromINI(&gSettings, "SETTINGS.INI");
+  STORAGE_LOAD("SETTINGS.SET", 0, &gSettings);
 
   CH ch = {0};
   ch.bw = BK4819_FILTER_BW_12k;
@@ -175,15 +177,15 @@ void SYS_Main() {
     ST7565_Blit();
 
     LogC(LOG_C_BRIGHT_WHITE, "Load bands");
-    BANDS_Load();
+    // BANDS_Load();
 
     LogC(LOG_C_BRIGHT_WHITE, "Run default app: %s",
          apps[gSettings.mainApp].name);
     APPS_run(gSettings.mainApp);
   }
 
-  LogC(LOG_C_BRIGHT_WHITE, "USB MSC init");
-  BOARD_USBInit();
+  /* LogC(LOG_C_BRIGHT_WHITE, "USB MSC init");
+  BOARD_USBInit(); */
 
   LogC(LOG_C_BRIGHT_WHITE, "System initialized");
 

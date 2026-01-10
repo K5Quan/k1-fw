@@ -99,7 +99,7 @@ int main(void) {
 
   // usb_fs_format();
 
-  ch_init();
+  /* ch_init();
   ch_prepare_sl();
   ch_show_scanlists();
 
@@ -108,7 +108,7 @@ int main(void) {
   BOARD_USBInit();
 
   for (;;) {
-  }
+  } */
 
   /* BOARD_USBInit();
   for (;;) {

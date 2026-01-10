@@ -173,10 +173,10 @@ bool FC_key(KEY_Code_t key, Key_State_t state) {
       // APPS_run(APP_LOOT_LIST);
       return true;
     case KEY_SIDE1:
-      LOOT_BlacklistLast();
+      // LOOT_BlacklistLast();
       return true;
     case KEY_SIDE2:
-      LOOT_WhitelistLast();
+      // LOOT_WhitelistLast();
       return true;
     case KEY_F:
       switchFilter();

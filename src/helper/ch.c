@@ -1,6 +1,7 @@
 #include "ch.h"
 #include "../driver/fat.h"
 #include "../external/printf/printf.h"
+#include <string.h>
 
 #define MAX_CHANNELS 1024
 #define CH_SZ sizeof(CH)
