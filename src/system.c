@@ -154,11 +154,11 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
     gRedrawScreen = true;
     gLastRender = 0;
   } else if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
-    LogC(LOG_C_BRIGHT_WHITE, "[SYS] Apps key %u %u", key, state);
+    // LogC(LOG_C_BRIGHT_WHITE, "[SYS] Apps key %u %u", key, state);
     gRedrawScreen = true;
     gLastRender = 0;
   } else {
-    LogC(LOG_C_BRIGHT_WHITE, "[SYS] Global key %u %u", key, state);
+    // LogC(LOG_C_BRIGHT_WHITE, "[SYS] Global key %u %u", key, state);
     if (key == KEY_MENU) {
       if (state == KEY_LONG_PRESSED) {
         APPS_run(APP_SETTINGS);
