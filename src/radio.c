@@ -8,15 +8,15 @@
 #include "driver/bk1080.h"
 #include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
-#include "driver/fat.h"
+#include "driver/lfs.h"
 #include "driver/si473x.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
-#include "helper/ch.h"
 #include "helper/measurements.h"
 #include "helper/storage.h"
+#include "inc/channel.h"
 #include "inc/common.h"
 #include "inc/vfo.h"
 #include "misc.h"
@@ -1839,7 +1839,7 @@ void RADIO_LoadVFOs(RadioState *state) {
 
   char vfosFileName[10];
   snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
-  if (!usb_fs_file_exists(vfosFileName)) {
+  if (!lfs_file_exists(vfosFileName)) {
     STORAGE_INIT(vfosFileName, VFO, MAX_VFOS);
     VFO vfos[] = {
         {

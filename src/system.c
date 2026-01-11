@@ -5,8 +5,8 @@
 #include "driver/battery.h"
 #include "driver/bk4829.h"
 #include "driver/eeprom.h"
-#include "driver/fat.h"
 #include "driver/keyboard.h"
+#include "driver/lfs.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
@@ -80,7 +80,6 @@ static bool resetNeeded() {
 static void reset() {
   UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Formatting...");
-  usb_fs_format();
 
   STORAGE_INIT("SETTINGS.SET", Settings, 1);
   STORAGE_SAVE("SETTINGS.SET", 0, &gSettings);
@@ -95,7 +94,7 @@ static void reset() {
 }
 
 static void loadSettingsOrReset() {
-  if (!usb_fs_file_exists("SETTINGS.SET")) {
+  if (!lfs_file_exists("SETTINGS.SET")) {
     reset();
   }
   STORAGE_LOAD("SETTINGS.SET", 0, &gSettings);

@@ -1,12 +1,12 @@
 #include "board.h"
 #include "driver/bk4829.h"
-#include "driver/fat.h"
+#include "driver/lfs.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
-#include "helper/ch.h"
 #include "helper/measurements.h"
 #include "helper/storage.h"
+#include "inc/channel.h"
 #include "system.h"
 #include <assert.h>
 #include <stdbool.h>
@@ -61,7 +61,7 @@ void ch_show_scanlists() {
   for (uint8_t sl = 0; sl < 16; ++sl) {
     char slName[10];
     snprintf(slName, 10, "SL%u.SL", sl);
-    if (!usb_fs_file_exists(slName)) {
+    if (!lfs_file_exists(slName)) {
       continue;
     }
     for (uint16_t i = 0; i < 1024; ++i) {
@@ -97,7 +97,7 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
-  // usb_fs_format();
+  fs_init();
 
   /* ch_init();
   ch_prepare_sl();

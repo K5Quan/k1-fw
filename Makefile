@@ -55,9 +55,8 @@ OBJS := $(OBJ_DIR)/start.o \
         $(OBJ_DIR)/external/PY32F071_HAL_Driver/Src/py32f071_ll_gpio.o \
         $(OBJ_DIR)/external/PY32F071_HAL_Driver/Src/py32f071_ll_rcc.o \
         $(OBJ_DIR)/external/PY32F071_HAL_Driver/Src/py32f071_ll_usart.o \
-		$(OBJ_DIR)/external/CherryUSB/core/usbd_core.o \
-		$(OBJ_DIR)/external/CherryUSB/port/usb_dc_py32.o \
-		$(OBJ_DIR)/external/CherryUSB/class/msc/usbd_msc.o \
+		$(OBJ_DIR)/external/littlefs/lfs.o \
+		$(OBJ_DIR)/external/littlefs/lfs_util.o \
         $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
 # =============================================================================
@@ -104,16 +103,18 @@ DEFINES  := -DPRINTF_INCLUDE_CONFIG_H \
             -DGIT_HASH=\"$(GIT_HASH)\" \
             -DTIME_STAMP=\"$(BUILD_TIME)\" \
             -DPY32F071xB \
-			-DUSE_FULL_LL_DRIVER
+			-DUSE_FULL_LL_DRIVER \
+			-DLFS_NO_MALLOC \
+			-DLFS_NO_ASSERT \
+			-DLFS_NO_DEBUG \
+			-DLFS_NO_WARN \
+			-DLFS_NO_ERROR
 
 # Include paths
 INC_DIRS := -I./src/config \
 			-I./src/external/CMSIS/Device/PY32F071/Include \
 			-I./src/external/CMSIS/Include \
-			-I./src/external/CherryUSB/core \
-			-I./src/external/CherryUSB/common \
-			-I./src/external/CherryUSB/class/msc \
-			-I./src/external/CherryUSB/class/cdc \
+			-I./src/external/littlefs \
 			-I./src/external/PY32F071_HAL_Driver/Inc
 
 # =============================================================================
@@ -123,9 +124,12 @@ INC_DIRS := -I./src/config \
 LDFLAGS  := $(COMMON_FLAGS) $(OPTIMIZATION) \
             -nostartfiles \
             -Tfirmware.ld \
-            -lc -lnosys -lm \
+            -lnosys -lm \
+			-nostdlib \
+			-ffreestanding \
+			-fno-builtin \
             -Wl,--gc-sections \
-			-specs=nosys.specs \
+			--specs=nano.specs \
             -Wl,--build-id=none \
             -Wl,--print-memory-usage \
             -Wl,-Map=$(OBJ_DIR)/output.map

@@ -3,6 +3,7 @@
 #include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
 #include "driver/gpio.h"
+#include "driver/lfs.h"
 #include "driver/py25q16.h"
 #include "driver/st7565.h"
 #include "driver/uart.h"
@@ -181,7 +182,7 @@ void BOARD_Init(void) {
   LogC(LOG_C_BRIGHT_WHITE, "Flash init");
   PY25Q16_Init();
   LogC(LOG_C_BRIGHT_WHITE, "File system init");
-  usb_fs_init();
+  fs_init();
 
   LogC(LOG_C_BRIGHT_WHITE, "Display init");
   ST7565_Init();

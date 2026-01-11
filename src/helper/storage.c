@@ -1,118 +1,180 @@
 #include "storage.h"
-#include "../driver/fat.h"
+#include "../driver/lfs.h"
 #include "../external/printf/printf.h"
 #include <string.h>
 
+// Статические буферы для кеша файлов (не используем malloc)
+static uint8_t file_buffer[256]; // Размер должен быть >= lfs->cfg->cache_size
+
+// Вспомогательный буфер
+static uint8_t temp_buf[32];
+
 bool Storage_Init(const char *name, size_t item_size, uint16_t max_items) {
-  if (usb_fs_file_exists(name)) {
-    return true;
-  }
+  lfs_file_t file;
+  struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
 
-  return usb_fs_create_file(name, max_items * item_size) > 0;
-}
-
-bool Storage_Load(const char *name, uint16_t num, void *item,
-                  size_t item_size) {
-  if (!usb_fs_file_exists(name)) {
-    printf("[Storage_Load] File does not exist: %s\n", name);
+  // Используем lfs_file_opencfg с нашим буфером
+  int err = lfs_file_opencfg(&gLfs, &file, name,
+                             LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC, &config);
+  if (err < 0) {
+    printf("[Storage_Init] Cannot create file '%s': %d\n", name, err);
     return false;
   }
 
-  usb_fs_handle_t handle;
-  if (usb_fs_open(name, &handle) != 0) {
-    printf("[Storage_Load] Cannot open file: %s\n", name);
+  // Создаем файл нужного размера
+  uint32_t total_size = max_items * item_size;
+  uint32_t written = 0;
+
+  memset(temp_buf, 0, sizeof(temp_buf));
+
+  while (written < total_size) {
+    size_t to_write = total_size - written;
+    if (to_write > sizeof(temp_buf)) {
+      to_write = sizeof(temp_buf);
+    }
+
+    lfs_ssize_t result = lfs_file_write(&gLfs, &file, temp_buf, to_write);
+    if (result != (lfs_ssize_t)to_write) {
+      printf("[Storage_Init] Write failed: %ld\n", result);
+      lfs_file_close(&gLfs, &file);
+      return false;
+    }
+    written += to_write;
+  }
+
+  lfs_file_close(&gLfs, &file);
+  printf("[Storage_Init] File '%s' created, size: %lu\n", name, total_size);
+  return true;
+}
+
+bool Storage_Save(const char *name, uint16_t num, const void *item,
+                  size_t item_size) {
+  lfs_file_t file;
+  struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
+
+  // Открываем с нашим буфером
+  int err =
+      lfs_file_opencfg(&gLfs, &file, name, LFS_O_RDWR | LFS_O_CREAT, &config);
+  if (err < 0) {
+    printf("[Storage_Save] Cannot open file '%s': %d\n", name, err);
+    return false;
+  }
+
+  // Узнаем текущий размер
+  lfs_soff_t file_size = lfs_file_size(&gLfs, &file);
+  if (file_size < 0) {
+    printf("[Storage_Save] Cannot get file size\n");
+    lfs_file_close(&gLfs, &file);
     return false;
   }
 
   uint32_t offset = num * item_size;
-  if (offset >= handle.file_size) {
-    printf("[Storage_Load] Offset %lu beyond file size %lu\n", offset,
-           handle.file_size);
-    usb_fs_close(&handle);
-    return false;
+  uint32_t required_size = offset + item_size;
+
+  // Если нужно расширить файл
+  if (required_size > (uint32_t)file_size) {
+    // Переходим в конец
+    if (lfs_file_seek(&gLfs, &file, 0, LFS_SEEK_END) < 0) {
+      printf("[Storage_Save] Seek to end failed\n");
+      lfs_file_close(&gLfs, &file);
+      return false;
+    }
+
+    // Расширяем файл нулями
+    uint32_t to_extend = required_size - file_size;
+    memset(temp_buf, 0, sizeof(temp_buf));
+
+    while (to_extend > 0) {
+      size_t chunk = to_extend;
+      if (chunk > sizeof(temp_buf))
+        chunk = sizeof(temp_buf);
+
+      lfs_ssize_t written = lfs_file_write(&gLfs, &file, temp_buf, chunk);
+      if (written != (lfs_ssize_t)chunk) {
+        printf("[Storage_Save] Extend failed: %ld\n", written);
+        lfs_file_close(&gLfs, &file);
+        return false;
+      }
+      to_extend -= chunk;
+    }
+
+    // Возвращаемся к началу для записи данных
+    if (lfs_file_seek(&gLfs, &file, offset, LFS_SEEK_SET) < 0) {
+      printf("[Storage_Save] Seek failed after extend\n");
+      lfs_file_close(&gLfs, &file);
+      return false;
+    }
+  } else {
+    // Просто переходим к позиции
+    if (lfs_file_seek(&gLfs, &file, offset, LFS_SEEK_SET) < 0) {
+      printf("[Storage_Save] Seek failed\n");
+      lfs_file_close(&gLfs, &file);
+      return false;
+    }
   }
 
-  if (usb_fs_seek(&handle, offset) != 0) {
-    printf("[Storage_Load] Seek failed at offset %lu\n", offset);
-    usb_fs_close(&handle);
-    return false;
-  }
+  // Записываем данные
+  lfs_ssize_t written = lfs_file_write(&gLfs, &file, item, item_size);
+  lfs_file_close(&gLfs, &file);
 
-  memset(item, 0, item_size);
-
-  size_t read = usb_fs_read_bytes(&handle, (uint8_t *)item, item_size);
-  usb_fs_close(&handle);
-
-  if (read != item_size) {
-    printf("[Storage_Load] Read %zu bytes, expected %zu\n", read, item_size);
+  if (written != (lfs_ssize_t)item_size) {
+    printf("[Storage_Save] Write failed: %ld/%zu\n", written, item_size);
     return false;
   }
 
   return true;
 }
 
-bool Storage_Save(const char *name, uint16_t num, const void *item,
+bool Storage_Load(const char *name, uint16_t num, void *item,
                   size_t item_size) {
-  if (!usb_fs_file_exists(name)) {
-    printf("[Storage_Save] File does not exist, creating: %s\n", name);
-    // Создаём файл с размером для первого элемента
-    if (!Storage_Init(name, item_size, num + 1)) {
-      return false;
-    }
-  }
+  lfs_file_t file;
+  struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
 
-  usb_fs_handle_t handle;
-  if (usb_fs_open(name, &handle) != 0) {
-    printf("[Storage_Save] Cannot open file: %s\n", name);
+  int err = lfs_file_opencfg(&gLfs, &file, name, LFS_O_RDONLY, &config);
+  if (err < 0) {
+    printf("[Storage_Load] Cannot open file '%s': %d\n", name, err);
     return false;
   }
 
-  // Проверяем, нужно ли расширить файл
-  uint32_t required_pos = (num + 1) * item_size;
-  if (required_pos > handle.file_size) {
-    printf("[Storage_Save] File needs extension from %lu to %u\n",
-           handle.file_size, required_pos);
-
-    // Закрываем handle чтобы обновить размер через write_file
-    usb_fs_close(&handle);
-
-    // Просто записываем файл через usb_fs_write_file с append
-    uint8_t zero_data = 0;
-    if (usb_fs_write_file(name, &zero_data, 0, true) != 0) {
-      printf("[Storage_Save] Failed to extend file\n");
-      return false;
-    }
-
-    // Снова открываем
-    if (usb_fs_open(name, &handle) != 0) {
-      printf("[Storage_Save] Cannot reopen file\n");
-      return false;
-    }
+  // Проверяем размер
+  lfs_soff_t file_size = lfs_file_size(&gLfs, &file);
+  if (file_size < 0) {
+    printf("[Storage_Load] Cannot get file size\n");
+    lfs_file_close(&gLfs, &file);
+    return false;
   }
 
-  // Перемещаемся к позиции
   uint32_t offset = num * item_size;
-  if (usb_fs_seek(&handle, offset) != 0) {
-    printf("[Storage_Save] Seek failed at offset %lu\n", offset);
-    usb_fs_close(&handle);
+  uint32_t required_size = offset + item_size;
+
+  if (required_size > (uint32_t)file_size) {
+    printf("[Storage_Load] Offset %lu > file size %ld\n", required_size,
+           file_size);
+    lfs_file_close(&gLfs, &file);
     return false;
   }
 
-  // Записываем данные
-  size_t written =
-      usb_fs_write_bytes(&handle, (const uint8_t *)item, item_size);
-
-  if (written == item_size) {
-    // Обновляем запись в директории
-    if (usb_fs_flush(&handle, name) != 0) {
-      printf("[Storage_Save] Flush failed\n");
-    }
-  } else {
-    printf("[Storage_Save] Written %zu bytes, expected %zu\n", written,
-           item_size);
+  // Переходим к позиции
+  if (lfs_file_seek(&gLfs, &file, offset, LFS_SEEK_SET) < 0) {
+    printf("[Storage_Load] Seek failed\n");
+    lfs_file_close(&gLfs, &file);
+    return false;
   }
 
-  usb_fs_close(&handle);
+  // Читаем данные
+  lfs_ssize_t read = lfs_file_read(&gLfs, &file, item, item_size);
+  lfs_file_close(&gLfs, &file);
 
-  return written == item_size;
+  if (read != (lfs_ssize_t)item_size) {
+    printf("[Storage_Load] Read failed: %ld/%zu\n", read, item_size);
+    return false;
+  }
+
+  return true;
+}
+
+// Дополнительные функции
+bool Storage_Exists(const char *name) {
+  struct lfs_info info;
+  return lfs_stat(&gLfs, name, &info) == 0;
 }
