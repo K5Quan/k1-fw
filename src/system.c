@@ -16,6 +16,7 @@
 #include "helper/bands.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
+#include "helper/screenshot.h"
 #include "helper/storage.h"
 #include "inc/channel.h"
 #include "settings.h"
@@ -130,16 +131,15 @@ static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
     return true;
   }
 
-  /* if (gSettings.keylock && state == KEY_LONG_PRESSED && key == KEY_8) {
+  if (gSettings.keylock && state == KEY_LONG_PRESSED && key == KEY_8) {
     captureScreen();
     return true;
-  } */
+  }
 
   return isKeyLocked && (isPttLocked || !isSpecialKey) && !isLongPressF;
 }
 
 static void onKey(KEY_Code_t key, KEY_State_t state) {
-  // if (!isUartWaiting()) {
   BACKLIGHT_TurnOn();
 
   if (checkKeylock(state, key)) {
@@ -172,7 +172,6 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
       }
     }
   }
-  // }
 }
 
 void SYS_Main() {

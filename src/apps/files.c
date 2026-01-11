@@ -2,6 +2,7 @@
 #include "../driver/lfs.h"
 #include "../driver/uart.h"
 #include "../helper/menu.h"
+#include "../helper/screenshot.h"
 #include "../ui/components.h"
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
@@ -37,6 +38,9 @@ static FileEntry gFilesList[MAX_FILES]; // Список файлов
 static uint16_t gFilesCount = 0;        // Количество файлов
 static char gCurrentPath[MAX_PATH_LEN]; // Текущий путь
 static char gStatusText[32]; // Текст статусной строки
+
+static bool showingScreenshot;
+static char screenshotPath[32];
 
 // Символы для отображения типов файлов
 static const Symbol fileTypeIcons[] = {
@@ -268,6 +272,11 @@ static void navigateTo(const char *name) {
     char sizeStr[16];
     formatSize(info.size, sizeStr, sizeof(sizeStr));
     STATUSLINE_SetText("%s - %s", name, sizeStr);
+    const char *ext = getFileExtension(name);
+    if (strcasecmp(ext, "bmp") == 0) {
+      showingScreenshot = true;
+      sprintf(screenshotPath, "%s/%s", gCurrentPath, name);
+    }
   }
 }
 
@@ -368,6 +377,17 @@ void FILES_deinit() {
 // Обработка клавиатуры
 bool FILES_key(KEY_Code_t key, Key_State_t state) {
   if (state == KEY_RELEASED) {
+
+    if (showingScreenshot) {
+      switch (key) {
+      case KEY_EXIT:
+        showingScreenshot = false;
+        return true;
+      default:
+        break;
+      }
+    }
+
     switch (key) {
     case KEY_STAR: // Выход
       APPS_exit();
@@ -397,6 +417,12 @@ bool FILES_key(KEY_Code_t key, Key_State_t state) {
 
 // Отрисовка
 void FILES_render() {
+  if (showingScreenshot) {
+    displayScreen(screenshotPath);
+    FillRect(0, 0, LCD_WIDTH, 8, C_FILL);
+    PrintSmall(1, 5, "Screenshot");
+    return;
+  }
   MENU_Render();
 
   // Показываем текущий путь вверху
