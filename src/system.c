@@ -11,6 +11,7 @@
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/CMSIS/Device/PY32F071/Include/py32f071xB.h"
+#include "external/littlefs/lfs.h"
 #include "external/printf/printf.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
@@ -88,6 +89,8 @@ static bool resetNeeded() {
 static void reset() {
   UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Formatting...");
+
+  lfs_format(&gLfs, &gStorage.config);
 
   STORAGE_INIT("SETTINGS.SET", Settings, 1);
   STORAGE_SAVE("SETTINGS.SET", 0, &gSettings);

@@ -71,16 +71,20 @@ typedef struct {
   uint16_t duration;
   uint16_t timeUs;
   uint16_t rssi;
-  uint8_t reserved1;
-  uint8_t reserved2;
   uint8_t noise;
   uint8_t glitch;
   uint8_t snr;
-  uint8_t cd;
-  uint8_t ct;
+  uint8_t code;
+  bool isCd : 1;
   bool open : 1;
   bool blacklist : 1;
   bool whitelist : 1;
 } Measurement;
+
+typedef struct {
+  uint32_t s;
+  uint32_t e;
+  PowerCalibration c;
+} PCal;
 
 #endif // !COMMON_H

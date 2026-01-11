@@ -72,14 +72,14 @@ static uint16_t MeasureSignal(uint32_t frequency, bool precise) {
 }
 
 static void ApplyBandSettings() {
-  vfo->msm.f = gCurrentBand.rxF;
+  vfo->msm.f = gCurrentBand.start;
 
   RADIO_SetParam(ctx, PARAM_FREQUENCY, vfo->msm.f, false);
   RADIO_SetParam(ctx, PARAM_STEP, gCurrentBand.step, false);
   RADIO_ApplySettings(ctx);
   SP_Init(&gCurrentBand);
-  LogC(LOG_C_BRIGHT_YELLOW, "[SCANER] Bounds: %u .. %u", gCurrentBand.rxF,
-       gCurrentBand.txF);
+  LogC(LOG_C_BRIGHT_YELLOW, "[SCANER] Bounds: %u .. %u", gCurrentBand.start,
+       gCurrentBand.end);
   /* if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, gCurrentBand)) {
     gLastActiveLoot = NULL;
   } */
@@ -94,15 +94,15 @@ static void NextFrequency() {
     RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
   }
 
-  if (vfo->msm.f > gCurrentBand.txF) {
+  if (vfo->msm.f > gCurrentBand.end) {
     if (scan.isMultiband) {
       // BANDS_SelectBandRelativeByScanlist(true);
       ApplyBandSettings();
     }
-    vfo->msm.f = gCurrentBand.rxF;
+    vfo->msm.f = gCurrentBand.start;
     gRedrawScreen = true;
-  } else if (vfo->msm.f < gCurrentBand.rxF) {
-    vfo->msm.f = gCurrentBand.txF;
+  } else if (vfo->msm.f < gCurrentBand.start) {
+    vfo->msm.f = gCurrentBand.end;
     gRedrawScreen = true;
   }
 
@@ -142,6 +142,7 @@ static void NextStep() {
 static void NextWithTimeout() {
   if (scan.lastListenState != vfo->is_open) {
     scan.lastListenState = vfo->is_open;
+    gRedrawScreen = true;
 
     if (vfo->is_open) {
       SetTimeout(&scan.scanListenTimeout,
@@ -206,18 +207,18 @@ void SCAN_setBand(Band b) {
 }
 
 void SCAN_setStartF(uint32_t f) {
-  gCurrentBand.rxF = f;
+  gCurrentBand.start = f;
   ApplyBandSettings();
 }
 
 void SCAN_setEndF(uint32_t f) {
-  gCurrentBand.txF = f;
+  gCurrentBand.end = f;
   ApplyBandSettings();
 }
 
 void SCAN_setRange(uint32_t fs, uint32_t fe) {
-  gCurrentBand.rxF = fs;
-  gCurrentBand.txF = fe;
+  gCurrentBand.start = fs;
+  gCurrentBand.end = fe;
   ApplyBandSettings();
 }
 
@@ -302,7 +303,10 @@ void SCAN_Check() {
     RADIO_UpdateSquelch(gRadioState);
     vfo->msm.rssi = MeasureSignal(vfo->msm.f, true);
     vfo->msm.open = vfo->is_open;
-    gRedrawScreen = true;
+    if (scan.lastListenState != vfo->is_open) {
+      scan.lastListenState = vfo->is_open;
+      gRedrawScreen = true;
+    }
 
     static uint32_t radioTimer;
     RADIO_CheckAndSaveVFO(gRadioState);

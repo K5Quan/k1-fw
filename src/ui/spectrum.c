@@ -30,7 +30,7 @@ static void drawTicks(uint8_t y, uint32_t fs, uint32_t fe, uint32_t div,
 }
 
 void UI_DrawTicks(uint8_t y, const Band *band) {
-  uint32_t fs = band->rxF, fe = band->txF, bw = fe - fs;
+  uint32_t fs = band->start, fe = band->end, bw = fe - fs;
   for (uint32_t p = 100000000; p >= 10; p /= 10) {
     if (p < bw) {
       drawTicks(y, fs, fe, p / 2, 2);
@@ -70,13 +70,13 @@ void SP_Init(Band *b) {
 
 uint8_t SP_F2X(uint32_t f) {
   // 1. Проверка границ (Clamp)
-  if (f <= range->rxF)
+  if (f <= range->start)
     return 0;
-  if (f >= range->txF)
+  if (f >= range->end)
     return MAX_POINTS - 1;
 
-  uint32_t delta = f - range->rxF;
-  uint32_t aRange = range->txF - range->rxF;
+  uint32_t delta = f - range->start;
+  uint32_t aRange = range->end - range->start;
 
   // Вместо: (delta * 127) / aRange
   // Делаем: delta / (aRange / 127)
@@ -101,9 +101,9 @@ uint32_t SP_X2F(uint8_t x) {
   // Считаем шаг частоты на один пиксель
   // Лучше вынести расчет step в место, где меняется range, чтобы не делить
   // каждый раз!
-  uint32_t step = (range->txF - range->rxF) / (MAX_POINTS - 1);
+  uint32_t step = (range->end - range->start) / (MAX_POINTS - 1);
 
-  return range->rxF + (x * step);
+  return range->start + (x * step);
 }
 
 void SP_AddPoint(const Measurement *msm) {
@@ -457,10 +457,10 @@ bool CUR_Size(bool up) {
 
 Band CUR_GetRange(Band *p, uint32_t step) {
   Band range = *p;
-  range.rxF = SP_X2F(curX - curSbWidth);
-  range.txF = SP_X2F(curX + curSbWidth),
-  range.rxF = RoundToStep(range.rxF, step);
-  range.txF = RoundToStep(range.txF, step);
+  range.start = SP_X2F(curX - curSbWidth);
+  range.end = SP_X2F(curX + curSbWidth),
+  range.start = RoundToStep(range.start, step);
+  range.end = RoundToStep(range.end, step);
   return range;
 }
 

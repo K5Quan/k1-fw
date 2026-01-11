@@ -385,6 +385,7 @@ bool FINPUT_key(KEY_Code_t key, Key_State_t state) {
 }
 
 void FINPUT_render(void) {
+  UI_ClearScreen();
   const uint8_t BASE_Y = 32;
   char displayStr[MAX_INPUT_LENGTH + 3] = "";
 

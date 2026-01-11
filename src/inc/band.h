@@ -6,9 +6,9 @@
 typedef struct {
   uint16_t scanlists;
   char name[10];
-  uint32_t rxF : 27;
+  uint32_t start : 27;
   int32_t ppm : 5;
-  uint32_t txF : 27;
+  uint32_t end : 27;
   OffsetDirection offsetDir : 2;
   bool allowTx : 1;
   uint8_t reserved2 : 2;

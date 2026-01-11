@@ -14,6 +14,7 @@
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
+#include "helper/bands.h"
 #include "helper/measurements.h"
 #include "helper/storage.h"
 #include "inc/channel.h"
@@ -949,8 +950,8 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     break;
   case PARAM_POWER: {
     ctx->power = value;
-    ctx->tx_state.power_level = 10;
-    // BANDS_CalculateOutputPower(ctx->power, ctx->tx_state.frequency);
+    ctx->tx_state.power_level =
+        BANDS_CalculateOutputPower(ctx->power, ctx->tx_state.frequency);
 
     ctx->tx_state.pa_enabled = true;
     ctx->dirty[PARAM_TX_POWER] = true;
@@ -1032,7 +1033,9 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
 
   // TODO: make dirty only when changed.
   // but, potential BUG: param not applied when 0
-  ctx->dirty[param] = true;
+  if (old_value != value) {
+    ctx->dirty[param] = true;
+  }
 
   // Если значение изменилось и требуется сохранение - устанавливаем флаг
   if (save_to_eeprom && (old_value != value)) {
@@ -1711,9 +1714,9 @@ static void RADIO_UpdateMeasurement(ExtendedVFOContext *vfo) {
   VFOContext *ctx = &vfo->context;
   vfo->msm.f = ctx->frequency;
   vfo->msm.rssi = RADIO_GetRSSI(ctx);
-  vfo->msm.noise = BK4819_GetNoise();
+  /* vfo->msm.noise = BK4819_GetNoise();
   vfo->msm.glitch = BK4819_GetGlitch();
-  vfo->msm.snr = RADIO_GetSNR(ctx);
+  vfo->msm.snr = RADIO_GetSNR(ctx); */
   vfo->msm.open = RADIO_CheckSquelch(ctx);
   /* if (!gMonitorMode && ctx->radio_type == RADIO_BK4819) {
     LOOT_Update(&vfo->msm);

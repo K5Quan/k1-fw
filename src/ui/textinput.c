@@ -195,6 +195,7 @@ bool TEXTINPUT_key(KEY_Code_t key, Key_State_t state) {
 }
 
 void TEXTINPUT_render(void) {
+  UI_ClearScreen();
   char String[8];
   const uint8_t INPUT_Y = 8 + 14;
   const uint8_t CHAR_W = 5;

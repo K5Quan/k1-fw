@@ -4,6 +4,8 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../external/printf/printf.h"
+#include "../helper/bands.h"
+#include "../helper/lootlist.h"
 #include "../helper/measurements.h"
 #include "../helper/numnav.h"
 #include "../helper/regs-menu.h"
@@ -21,13 +23,14 @@
 static char String[16];
 static const Step liveStep = STEP_5_0kHz;
 
-/* static void updateBand(void) {
+Band gCurrentBand;
+
+static void updateBand(void) {
   uint32_t f = RADIO_GetParam(ctx, PARAM_FREQUENCY);
-  if (!BANDS_InRange(f, gCurrentBand) ||
-      gCurrentBand.meta.type == TYPE_BAND_DETACHED) {
-    BANDS_SelectByFrequency(f, ctx->fixed_bounds);
+  if (!BANDS_InRange(f, &gCurrentBand)) {
+    gCurrentBand = BANDS_ByFrequency(f);
   }
-} */
+}
 
 static void setChannel(uint16_t v) {
   RADIO_LoadChannelToVFO(gRadioState, RADIO_GetCurrentVFONumber(gRadioState),
@@ -38,16 +41,16 @@ static void tuneTo(uint32_t f, uint32_t _) {
   (void)_;
   RADIO_SetParam(ctx, PARAM_FREQUENCY, f, true);
   RADIO_ApplySettings(ctx);
-  // updateBand();
+  updateBand();
 }
 
 void VFO1_init(void) {
-  /* gLastActiveLoot = NULL;
-  CHANNELS_LoadScanlist(TYPE_FILTER_CH, gSettings.currentScanlist);
+  gLastActiveLoot = NULL;
+  // CHANNELS_LoadScanlist(TYPE_FILTER_CH, gSettings.currentScanlist);
   if (vfo->mode == MODE_CHANNEL) {
     setChannel(vfo->channel_index);
   }
-  updateBand(); */
+  updateBand();
 
   SCAN_SetMode(SCAN_MODE_SINGLE);
   // SCAN_Init(false);
@@ -80,7 +83,7 @@ static bool handleFrequencyChange(KEY_Code_t key) {
   RADIO_IncDecParam(ctx, PARAM_FREQUENCY,
                     (key == KEY_UP) ^ gSettings.invertButtons, true);
   // }
-  // updateBand();
+  updateBand();
   return true;
 }
 
@@ -115,7 +118,7 @@ static bool handleLongPress(KEY_Code_t key) {
   case KEY_3:
     RADIO_SaveCurrentVFO(gRadioState);
     RADIO_ToggleVFOMode(gRadioState, vfoN);
-    // updateBand();
+    updateBand();
     return true;
 
   case KEY_4:
@@ -169,7 +172,11 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
     gFInputCallback = tuneTo;
     FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
     FINPUT_key(key, state);
+    gFInputValue1 = 0;
+    gFInputValue2 = 0;
+    FINPUT_init();
     gFInputActive = true;
+
     return true;
 
     /* case KEY_F:
@@ -199,7 +206,7 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
       RADIO_SaveCurrentVFO(gRadioState);
       RADIO_SwitchVFO(gRadioState,
                       IncDecU(vfoN, 0, gRadioState->num_vfos, true));
-      // updateBand();
+      updateBand();
     }
     return true;
 
@@ -327,17 +334,18 @@ static void renderExtraInfo(uint8_t BASE) {
   }
 }
 
-/* static void renderLootInfo(void) {
+static void renderLootInfo(void) {
   if (!gLastActiveLoot)
     return;
 
   const uint32_t ago = (Now() - gLastActiveLoot->lastTimeOpen) / 1000;
 
-  if (gLastActiveLoot->ct != 255) {
-    PrintRTXCode(String, CODE_TYPE_CONTINUOUS_TONE, gLastActiveLoot->ct);
-    PrintSmallEx(0, LCD_HEIGHT - 1, POS_L, C_FILL, "%s", String);
-  } else if (gLastActiveLoot->cd != 255) {
-    PrintRTXCode(String, CODE_TYPE_DIGITAL, gLastActiveLoot->cd);
+  if (gLastActiveLoot->code != 255) {
+    if (gLastActiveLoot->isCd) {
+      PrintRTXCode(String, CODE_TYPE_DIGITAL, gLastActiveLoot->code);
+    } else {
+      PrintRTXCode(String, CODE_TYPE_CONTINUOUS_TONE, gLastActiveLoot->code);
+    }
     PrintSmallEx(0, LCD_HEIGHT - 1, POS_L, C_FILL, "%s", String);
   }
 
@@ -351,7 +359,7 @@ static void renderExtraInfo(uint8_t BASE) {
   if (gRadioState->multiwatch_enabled) {
     PrintMediumEx(LCD_XCENTER, LCD_HEIGHT - 9, POS_C, C_FILL, "M");
   }
-} */
+}
 
 static void renderMonitorMode(uint8_t BASE) {
   SPECTRUM_Y = BASE + 2;
@@ -412,7 +420,7 @@ void VFO1_render(void) {
 
   renderCodes(BASE);
   renderExtraInfo(BASE);
-  // renderLootInfo();
+  renderLootInfo();
 
   if (gMonitorMode) {
     renderMonitorMode(BASE);

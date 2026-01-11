@@ -2,12 +2,15 @@
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
+#include "../helper/bands.h"
+#include "../helper/lootlist.h"
 #include "../helper/measurements.h"
 #include "../helper/regs-menu.h"
 #include "../helper/scan.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/components.h"
+#include "../ui/finput.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
 #include "apps.h"
@@ -19,16 +22,15 @@ static bool isAnalyserMode = false;
 static bool pttWasLongPressed = false;
 
 static Band gCurrentBand = {
-    .rxF = 43307500,
-    .txF = 43477500,
+    .start = 43307500,
+    .end = 43477500,
     .step = STEP_25_0kHz,
 };
-static Loot *gLastActiveLoot;
 
 static void setRange(uint32_t fs, uint32_t fe) {
-  // BANDS_RangeClear();
+  BANDS_RangeClear();
   SCAN_setRange(fs, fe);
-  // BANDS_RangePush(gCurrentBand);
+  BANDS_RangePush(gCurrentBand);
 }
 
 static void initBand(void) {
@@ -58,8 +60,8 @@ void SCANER_init(void) {
   initBand();
 
   gCurrentBand.step = RADIO_GetParam(ctx, PARAM_STEP);
-  /* BANDS_RangeClear();
-  BANDS_RangePush(gCurrentBand); */
+  BANDS_RangeClear();
+  BANDS_RangePush(gCurrentBand);
 
   SCAN_SetDelay(1200);
 
@@ -74,31 +76,31 @@ static bool handleLongPress(KEY_Code_t key) {
   Band _b;
 
   switch (key) {
-    /* case KEY_6:
-      if (!gLastActiveLoot)
-        return false;
+  case KEY_6:
+    if (!gLastActiveLoot)
+      return false;
 
-      _b = gCurrentBand;
-      _b.rxF = gLastActiveLoot->f - step * 64;
-      _b.txF = _b.rxF + step * 128;
-      BANDS_RangePush(_b);
-      SCAN_setBand(*BANDS_RangePeek());
-      CUR_Reset();
-      return true; */
+    _b = gCurrentBand;
+    _b.start = gLastActiveLoot->f - step * 64;
+    _b.end = _b.start + step * 128;
+    BANDS_RangePush(_b);
+    SCAN_setBand(*BANDS_RangePeek());
+    CUR_Reset();
+    return true;
 
     /* case KEY_0:
       gChListFilter = TYPE_FILTER_BAND;
       APPS_run(APP_CH_LIST);
       return true; */
 
-    /* case KEY_PTT:
-      if (gSettings.keylock) {
-        pttWasLongPressed = true;
-        LOOT_WhitelistLast();
-        SCAN_Next();
-        return true;
-      }
-      return false; */
+  case KEY_PTT:
+    if (gSettings.keylock) {
+      pttWasLongPressed = true;
+      LOOT_WhitelistLast();
+      SCAN_Next();
+      return true;
+    }
+    return false;
 
   default:
     return false;
@@ -178,11 +180,14 @@ static bool handleRelease(KEY_Code_t key) {
     toggleAnalyserMode();
     return true;
 
-  /* case KEY_5:
+  case KEY_5:
     gFInputCallback = setRange;
     FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, true);
-    APPS_run(APP_FINPUT);
-    return true; */
+    gFInputValue1 = 0;
+    gFInputValue1 = 0;
+    FINPUT_init();
+    gFInputActive = true;
+    return true;
 
   case KEY_SIDE1:
     SCAN_NextBlacklist();
@@ -192,11 +197,11 @@ static bool handleRelease(KEY_Code_t key) {
     SCAN_NextWhitelist();
     return true;
 
-  /* case KEY_STAR:
-    APPS_run(APP_LOOT_LIST);
-    return true; */
+    /* case KEY_STAR:
+      APPS_run(APP_LOOT_LIST);
+      return true; */
 
-  /* case KEY_2:
+  case KEY_2:
     BANDS_RangePush(CUR_GetRange(BANDS_RangePeek(), step));
     SCAN_setBand(*BANDS_RangePeek());
     CUR_Reset();
@@ -206,7 +211,7 @@ static bool handleRelease(KEY_Code_t key) {
     BANDS_RangePop();
     SCAN_setBand(*BANDS_RangePeek());
     CUR_Reset();
-    return true; */
+    return true;
 
   case KEY_PTT:
     return handlePTTRelease();
@@ -265,9 +270,9 @@ static void renderTopInfo(void) {
   PrintSmallEx(LCD_WIDTH, 12, POS_R, C_FILL, "%u.%02uk", step / 100,
                step % 100);
 
-  /* if (BANDS_RangeIndex() > 0) {
+  if (BANDS_RangeIndex() > 0) {
     PrintSmallEx(0, 18, POS_L, C_FILL, "Zoom %u", BANDS_RangeIndex() + 1);
-  } */
+  }
 
   PrintSmallEx(0, 24, POS_L, C_FILL, "CPS %u", SCAN_GetCps());
 }
@@ -276,10 +281,10 @@ static void renderBottomFreq(uint32_t step) {
   Band r = CUR_GetRange(&gCurrentBand, step);
   bool showCurRange = (Now() < cursorRangeTimeout);
 
-  uint32_t leftF = showCurRange ? r.rxF : gCurrentBand.rxF;
+  uint32_t leftF = showCurRange ? r.start : gCurrentBand.start;
   uint32_t centerF = showCurRange ? CUR_GetCenterF(step)
                                   : RADIO_GetParam(ctx, PARAM_FREQUENCY);
-  uint32_t rightF = showCurRange ? r.txF : gCurrentBand.txF;
+  uint32_t rightF = showCurRange ? r.end : gCurrentBand.end;
 
   FSmall(1, LCD_HEIGHT - 2, POS_L, leftF);
   FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, centerF);

@@ -207,16 +207,16 @@ void FC_render() {
                 bandAutoSwitch ? "[A]" : "");
   UI_BigFrequency(40, currentFrequency);
 
+  char String[16];
   if (gLastActiveLoot) {
     UI_DrawLoot(gLastActiveLoot, LCD_WIDTH, 48, POS_R);
-
-    if (gLastActiveLoot->ct != 0xFF) {
-      PrintSmallEx(LCD_WIDTH, 40 + 8 + 6, POS_R, C_FILL, "CT:%u.%uHz",
-                   CTCSS_Options[gLastActiveLoot->ct] / 10,
-                   CTCSS_Options[gLastActiveLoot->ct] % 10);
-    } else if (gLastActiveLoot->cd != 0xFF) {
-      PrintSmallEx(LCD_WIDTH, 40 + 8 + 6, POS_R, C_FILL, "DCS:D%03oN",
-                   DCS_Options[gLastActiveLoot->cd]);
+    if (gLastActiveLoot->code != 255) {
+      if (gLastActiveLoot->isCd) {
+        PrintRTXCode(String, CODE_TYPE_DIGITAL, gLastActiveLoot->code);
+      } else {
+        PrintRTXCode(String, CODE_TYPE_CONTINUOUS_TONE, gLastActiveLoot->code);
+      }
+      PrintSmallEx(LCD_WIDTH, 40 + 8 + 6, POS_R, C_FILL, "%s", String);
     }
   }
 }

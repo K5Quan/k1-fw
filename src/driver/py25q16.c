@@ -1,9 +1,7 @@
-#include <string.h>
-
+#include "py25q16.h"
 #include "../external/printf/printf.h"
 #include "flash_sync.h"
 #include "gpio.h"
-#include "py25q16.h"
 #include "py32f071_ll_bus.h"
 #include "py32f071_ll_dma.h"
 #include "py32f071_ll_spi.h"
