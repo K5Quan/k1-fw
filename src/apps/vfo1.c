@@ -11,6 +11,7 @@
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/components.h"
+#include "../ui/finput.h"
 #include "../ui/graphics.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
@@ -155,21 +156,21 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
   uint8_t vfoN = RADIO_GetCurrentVFONumber(gRadioState);
 
   switch (key) {
-    /* case KEY_0:
-    case KEY_1:
-    case KEY_2:
-    case KEY_3:
-    case KEY_4:
-    case KEY_5:
-    case KEY_6:
-    case KEY_7:
-    case KEY_8:
-    case KEY_9:
-      gFInputCallback = tuneTo;
-      FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
-      APPS_run(APP_FINPUT);
-      APPS_key(key, state);
-      return true; */
+  case KEY_0:
+  case KEY_1:
+  case KEY_2:
+  case KEY_3:
+  case KEY_4:
+  case KEY_5:
+  case KEY_6:
+  case KEY_7:
+  case KEY_8:
+  case KEY_9:
+    gFInputCallback = tuneTo;
+    FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
+    FINPUT_key(key, state);
+    gFInputActive = true;
+    return true;
 
     /* case KEY_F:
       RADIO_SaveVFOToStorage(gRadioState, vfoN, &gChEd);

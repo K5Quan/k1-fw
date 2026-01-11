@@ -2,6 +2,7 @@
 
 #include "bk4819-regs.h"
 #include "gpio.h"
+#include "py32f071_ll_spi.h"
 #include "systick.h"
 #include <stdint.h>
 #include <stdio.h>

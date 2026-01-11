@@ -149,23 +149,23 @@ typedef struct {
   uint16_t vfo_ch_index;       // MR index of VFO
   Measurement msm;
   VFOContext context; // Existing VFO context
-  VFOMode mode : 1;   // VFO or channel mode
-  bool is_active : 1; // Whether this is the active VFO
-  bool is_open : 1;
-} __attribute__((packed)) ExtendedVFOContext;
+  VFOMode mode;       // VFO or channel mode
+  bool is_active;     // Whether this is the active VFO
+  bool is_open;
+} ExtendedVFOContext;
 
 // Global radio state
 typedef struct {
   ExtendedVFOContext vfos[MAX_VFOS]; // Array of VFOs
-  RadioScanState scan_state;     // Состояние сканирования
-  uint32_t last_scan_time;       // Last scan time
-  uint8_t num_vfos : 4;          // Number of configured VFOs
-  uint8_t active_vfo_index : 4;  // Currently active VFO
-  uint8_t primary_vfo_index : 4; //
-  uint8_t last_active_vfo : 4; // Последний активный VFO с активностью
-  bool audio_routing_enabled : 1; // Флаг управления аудио маршрутизацией
-  bool multiwatch_enabled : 1; // Whether multiwatch is enabled
-} __attribute__((packed)) RadioState;
+  RadioScanState scan_state; // Состояние сканирования
+  uint32_t last_scan_time;   // Last scan time
+  uint8_t num_vfos;          // Number of configured VFOs
+  uint8_t active_vfo_index;  // Currently active VFO
+  uint8_t primary_vfo_index; //
+  uint8_t last_active_vfo; // Последний активный VFO с активностью
+  bool audio_routing_enabled; // Флаг управления аудио маршрутизацией
+  bool multiwatch_enabled; // Whether multiwatch is enabled
+} RadioState;
 
 // New functions for multi-VFO and multiwatch support
 void RADIO_InitState(RadioState *state, uint8_t num_vfos);

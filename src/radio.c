@@ -766,7 +766,8 @@ static void RADIO_UpdateCurrentBand(VFOContext *ctx) {
     if (ctx->frequency >= SI47XX_FM_F_MIN &&
         ctx->frequency <= SI47XX_FM_F_MAX) {
       band = &si4732_bands[2]; // FM
-    } else if (ctx->modulation == SI47XX_LSB || ctx->modulation == SI47XX_USB) {
+    } else if ((SI47XX_MODE)ctx->modulation == SI47XX_LSB ||
+               (SI47XX_MODE)ctx->modulation == SI47XX_USB) {
       band = &si4732_bands[1]; // SSB
     } else {
       band = &si4732_bands[0]; // AM
@@ -822,7 +823,7 @@ void RADIO_Init(VFOContext *ctx, Radio radio_type) {
   switch (radio_type) {
   case RADIO_BK4819:
     ctx->current_band = &bk4819_bands[0];
-    ctx->frequency = 145500000; // 145.5 МГц (диапазон FM)
+    ctx->frequency = 14550000; // 145.5 МГц (диапазон FM)
     ctx->gain = AUTO_GAIN_INDEX;
     // ctx->afc_speed = BK4819_GetAFCSpeed();
 

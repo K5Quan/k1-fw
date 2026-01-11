@@ -17,8 +17,10 @@
 #include "helper/storage.h"
 #include "inc/channel.h"
 #include "settings.h"
+#include "ui/finput.h"
 #include "ui/graphics.h"
 #include "ui/statusline.h"
+#include "ui/textinput.h"
 #include <string.h>
 
 #define queueLen 20
@@ -53,6 +55,12 @@ static void appRender() {
   UI_ClearScreen();
 
   APPS_render();
+  if (gFInputActive) {
+    FINPUT_render();
+  }
+  if (gTextInputActive) {
+    TEXTINPUT_render();
+  }
 
   if (notificationMessage[0]) {
     FillRect(0, 32 - 5, 128, 9, C_FILL);
@@ -98,13 +106,6 @@ static void loadSettingsOrReset() {
     reset();
   }
   STORAGE_LOAD("SETTINGS.SET", 0, &gSettings);
-
-  CH ch = {0};
-  ch.bw = BK4819_FILTER_BW_12k;
-  ch.modulation = MOD_FM;
-  ch.step = STEP_25_0kHz;
-  ch.squelch.type = SQUELCH_RSSI_NOISE_GLITCH;
-  ch.squelch.value = 4;
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
@@ -136,7 +137,13 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
     return;
   }
 
-  if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
+  if (gFInputActive && FINPUT_key(key, state)) {
+    gRedrawScreen = true;
+    gLastRender = 0;
+  } else if (gTextInputActive && TEXTINPUT_key(key, state)) {
+    gRedrawScreen = true;
+    gLastRender = 0;
+  } else if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
     LogC(LOG_C_BRIGHT_WHITE, "[SYS] Apps key %u %u", key, state);
     gRedrawScreen = true;
     gLastRender = 0;
@@ -193,6 +200,12 @@ void SYS_Main() {
 
     SCAN_Check();
 
+    if (gFInputActive) {
+      FINPUT_update();
+    }
+    if (gTextInputActive) {
+      TEXTINPUT_update();
+    }
     APPS_update();
     if (Now() - appsKeyboardTimer >= 1) {
       keyboard_tick_1ms();

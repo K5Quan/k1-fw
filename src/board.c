@@ -162,8 +162,6 @@ void BOARD_USBInit() {
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USBD);
   // LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA);
 
-  msc_ram_init();
-
   /* Enable USB interrupt */
   NVIC_SetPriority(USB_IRQn, 3);
   NVIC_EnableIRQ(USB_IRQn);

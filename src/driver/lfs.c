@@ -34,7 +34,7 @@ static int lfs_prog(const struct lfs_config *c, lfs_block_t block,
     lfs_size_t chunk = (size - i) < 256 ? (size - i) : 256;
     PY25Q16_ReadBuffer(addr + i, current, chunk);
 
-    for (int j = 0; j < chunk; j++) {
+    for (lfs_size_t j = 0; j < chunk; j++) {
       if ((current[j] & ((uint8_t *)buffer)[i + j]) !=
           ((uint8_t *)buffer)[i + j]) {
         needs_erase = true;
