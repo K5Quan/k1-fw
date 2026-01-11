@@ -2,6 +2,7 @@
 #define RADIO_H
 
 #include "driver/bk4829.h"
+#include "inc/band.h"
 #include "inc/vfo.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -23,6 +24,7 @@ extern const char *RADIO_NAMES[3];
 
 extern const uint16_t StepFrequencyTable[15];
 
+extern Band gCurrentBand;
 extern bool gShowAllRSSI;
 extern bool gMonitorMode;
 

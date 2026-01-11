@@ -8,6 +8,7 @@
 #include "about.h"
 #include "appslist.h"
 #include "fc.h"
+#include "files.h"
 #include "scaner.h"
 #include "settings.h"
 #include "vfo1.h"
@@ -51,6 +52,7 @@ const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_VFO1,   //
     APP_SCANER, //
     APP_FC,     //
+    APP_FILES,  //
     APP_ABOUT,  //
 };
 
@@ -65,6 +67,7 @@ const App apps[APPS_COUNT] = {
     [APP_FC] = {"FC", FC_init, FC_update, FC_render, FC_key, FC_deinit, true},
     [APP_VFO1] = {"1 VFO", VFO1_init, VFO1_update, VFO1_render, VFO1_key, NULL,
                   true},
+    [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
     [APP_ABOUT] = {"ABOUT", NULL, NULL, ABOUT_Render, NULL, NULL},
 };
 

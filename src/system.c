@@ -13,6 +13,7 @@
 #include "external/CMSIS/Device/PY32F071/Include/py32f071xB.h"
 #include "external/littlefs/lfs.h"
 #include "external/printf/printf.h"
+#include "helper/bands.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
 #include "helper/storage.h"
@@ -89,13 +90,19 @@ static bool resetNeeded() {
 static void reset() {
   UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Formatting...");
+  ST7565_Blit();
 
   lfs_format(&gLfs, &gStorage.config);
+  lfs_mount(&gLfs, &gStorage.config);
 
-  STORAGE_INIT("SETTINGS.SET", Settings, 1);
-  STORAGE_SAVE("SETTINGS.SET", 0, &gSettings);
+  STORAGE_INIT("Settings.set", Settings, 1);
+  STORAGE_SAVE("Settings.set", 0, &gSettings);
 
+  BANDS_Recreate();
+
+  UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Release key 0!");
+  ST7565_Blit();
   keyboard_tick_1ms();
   while (keyboard_is_pressed(KEY_0)) {
     SYSTICK_DelayMs(1);
@@ -105,10 +112,10 @@ static void reset() {
 }
 
 static void loadSettingsOrReset() {
-  if (!lfs_file_exists("SETTINGS.SET")) {
+  if (!lfs_file_exists("Settings.set")) {
     reset();
   }
-  STORAGE_LOAD("SETTINGS.SET", 0, &gSettings);
+  STORAGE_LOAD("Settings.set", 0, &gSettings);
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
@@ -196,6 +203,7 @@ void SYS_Main() {
   /* LogC(LOG_C_BRIGHT_WHITE, "USB MSC init");
   BOARD_USBInit(); */
 
+  BACKLIGHT_TurnOn();
   LogC(LOG_C_BRIGHT_WHITE, "System initialized");
 
   for (;;) {

@@ -302,7 +302,36 @@ void PY25Q16_Init() {
   SPI_Init();
 }
 
+// py25q16.c - оптимизированное чтение
 void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
+  CS_Assert();
+
+  // Быстрое чтение с dummy byte (стандарт)
+  SPI_WriteByte(0x0B); // Fast Read
+  SPI_WriteByte(Address >> 16);
+  SPI_WriteByte(Address >> 8);
+  SPI_WriteByte(Address);
+  SPI_WriteByte(0xFF); // Dummy byte
+
+  // Используем DMA для чтения, если размер большой
+  if (Size > 64) {
+    SPI_ReadBuf(pBuffer, Size);
+    if (!wait_for_dma_complete(100)) {
+      // Fallback на байтовое чтение при ошибке
+      for (uint32_t i = 0; i < Size; i++) {
+        ((uint8_t *)pBuffer)[i] = SPI_WriteByte(0xFF);
+      }
+    }
+  } else {
+    // Для малых блоков - байтовое чтение
+    for (uint32_t i = 0; i < Size; i++) {
+      ((uint8_t *)pBuffer)[i] = SPI_WriteByte(0xFF);
+    }
+  }
+
+  CS_Release();
+}
+/* void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
   CS_Assert();
 
   // Команда быстрого чтения с dummy byte
@@ -318,7 +347,7 @@ void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size) {
   }
 
   CS_Release();
-}
+} */
 
 void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,
                          bool Append) {

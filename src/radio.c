@@ -17,6 +17,7 @@
 #include "helper/bands.h"
 #include "helper/measurements.h"
 #include "helper/storage.h"
+#include "inc/band.h"
 #include "inc/channel.h"
 #include "inc/common.h"
 #include "inc/vfo.h"
@@ -31,6 +32,8 @@
 
 bool gShowAllRSSI = false;
 bool gMonitorMode = false;
+
+Band gCurrentBand;
 
 RadioState *gRadioState;
 ExtendedVFOContext *vfo;
@@ -224,6 +227,70 @@ static const FreqBand si4732_bands[] = {
         .available_bandwidths = {},
     },
 };
+
+char vfosDirName[16];
+char vfosFileName[32];
+
+static void saveVfo(uint8_t i, VFO *vfo) {
+  snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
+  snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
+
+  struct lfs_info info;
+  if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
+    lfs_mkdir(&gLfs, vfosDirName);
+  }
+
+  STORAGE_SAVE(vfosFileName, i, vfo);
+}
+
+static void loadVfo(uint8_t i, VFO *vfo) {
+  snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
+  snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
+
+  struct lfs_info info;
+  if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
+    lfs_mkdir(&gLfs, vfosDirName);
+  }
+
+  if (!lfs_file_exists(vfosFileName)) {
+    STORAGE_INIT(vfosFileName, VFO, MAX_VFOS);
+    VFO vfos[] = {
+        {
+            .name = "VFO A",
+            .rxF = 43392500,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO B",
+            .rxF = 17230000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO C",
+            .rxF = 25355000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+        {
+            .name = "VFO D",
+            .rxF = 14550000,
+            .bw = BK4819_FILTER_BW_12k,
+            .step = STEP_25_0kHz,
+            .squelch.value = 4,
+        },
+    };
+    for (uint8_t i = 0; i < MAX_VFOS; ++i) {
+      STORAGE_SAVE(vfosFileName, i, &vfos[i]);
+    }
+  }
+
+  STORAGE_LOAD(vfosFileName, i, vfo);
+}
 
 static bool RADIO_HasSi() { return BK1080_ReadRegister(1) != 0x1080; }
 
@@ -718,12 +785,12 @@ static void RADIO_ApplyCorrections(VFOContext *ctx, bool save_to_eeprom) {
   if (!RADIO_IsParamValid(ctx, PARAM_MODULATION, ctx->modulation)) {
     if (band->num_available_mods > 0) {
       uint32_t default_mod = band->available_mods[0];
-      LogC(
-          LOG_C_YELLOW,
-          "[RADIO] CORRECT: Modulation %u invalid for band, setting to %u (%s)",
-          ctx->modulation, default_mod,
-          RADIO_GetParamValueString(
-              ctx, PARAM_MODULATION)); // Используем новую мод для строки
+      LogC(LOG_C_YELLOW,
+           "[RADIO] CORRECT: Modulation %u invalid for band, setting to %u "
+           "(%s)",
+           ctx->modulation, default_mod,
+           RADIO_GetParamValueString(
+               ctx, PARAM_MODULATION)); // Используем новую мод для строки
       ctx->modulation = default_mod;
       ctx->dirty[PARAM_MODULATION] = true;
       if (save_to_eeprom) {
@@ -738,7 +805,8 @@ static void RADIO_ApplyCorrections(VFOContext *ctx, bool save_to_eeprom) {
     if (band->num_available_bandwidths > 0) {
       uint32_t default_bw = band->available_bandwidths[0];
       LogC(LOG_C_YELLOW,
-           "[RADIO] CORRECT: Bandwidth %u invalid for band, setting to %u (%s)",
+           "[RADIO] CORRECT: Bandwidth %u invalid for band, setting to %u "
+           "(%s)",
            ctx->bandwidth, default_bw,
            RADIO_GetParamValueString(ctx, PARAM_BANDWIDTH));
       ctx->bandwidth = default_bw;
@@ -1416,11 +1484,10 @@ void RADIO_CheckAndSaveVFO(RadioState *state) {
         (Now() - ctx->last_save_time >= RADIO_SAVE_DELAY_MS)) {
       LogC(LOG_C_BRIGHT_YELLOW, "TRYING TO SAVE PARAM");
 
-      char vfosFileName[10];
-      snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
       VFO vfo;
       RADIO_SaveVFOToStorage(state, i, &vfo);
-      STORAGE_SAVE(vfosFileName, i, &vfo);
+
+      saveVfo(i, &vfo);
 
       ctx->save_to_eeprom = false;
     }
@@ -1605,9 +1672,7 @@ bool RADIO_SaveCurrentVFO(RadioState *state) {
   VFO storage;
 
   RADIO_SaveVFOToStorage(state, current, &storage);
-  char vfosFileName[10];
-  snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
-  STORAGE_SAVE(vfosFileName, current, &storage);
+  saveVfo(current, &storage);
 
   return true;
 }
@@ -1841,51 +1906,12 @@ void RADIO_LoadVFOs(RadioState *state) {
 
   BK1080_Init(0, false);
 
-  char vfosFileName[10];
-  snprintf(vfosFileName, 10, "%s.VFO", apps[gCurrentApp].name);
-  if (!lfs_file_exists(vfosFileName)) {
-    STORAGE_INIT(vfosFileName, VFO, MAX_VFOS);
-    VFO vfos[] = {
-        {
-            .name = "VFO A",
-            .rxF = 43392500,
-            .bw = BK4819_FILTER_BW_12k,
-            .step = STEP_25_0kHz,
-            .squelch.value = 4,
-        },
-        {
-            .name = "VFO B",
-            .rxF = 17230000,
-            .bw = BK4819_FILTER_BW_12k,
-            .step = STEP_25_0kHz,
-            .squelch.value = 4,
-        },
-        {
-            .name = "VFO C",
-            .rxF = 25355000,
-            .bw = BK4819_FILTER_BW_12k,
-            .step = STEP_25_0kHz,
-            .squelch.value = 4,
-        },
-        {
-            .name = "VFO D",
-            .rxF = 14550000,
-            .bw = BK4819_FILTER_BW_12k,
-            .step = STEP_25_0kHz,
-            .squelch.value = 4,
-        },
-    };
-    for (uint8_t i = 0; i < MAX_VFOS; ++i) {
-      STORAGE_SAVE(vfosFileName, i, &vfos[i]);
-    }
-  }
-
   uint8_t vfoIdx = 0;
   for (uint8_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
 
     VFO vfo;
-    STORAGE_LOAD(vfosFileName, i, &vfo);
+    loadVfo(i, &vfo);
     if (vfo.isChMode) {
       RADIO_LoadChannelToVFO(state, vfoIdx, vfo.channel);
     } else {

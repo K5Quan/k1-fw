@@ -1,7 +1,9 @@
 #include "bands.h"
 #include "../driver/bk4829.h"
 #include "../driver/lfs.h"
+#include "../driver/uart.h"
 #include "../misc.h"
+#include "../radio.h"
 #include "measurements.h"
 #include "storage.h"
 
@@ -418,7 +420,7 @@ Band defaultBands[] = {
     (Band){
         .start = 14600000,
         .end = 14799999,
-        .name = "2m HAM EXT",
+        .name = "2m HAM E",
         .step = STEP_12_5kHz,
         .modulation = MOD_FM,
         .bw = BK4819_FILTER_BW_12k,
@@ -711,18 +713,19 @@ PCal POWER_CALIBRATIONS[] = {
 static Band rangesStack[RANGES_STACK_SIZE] = {0};
 static int8_t rangesStackIndex = -1;
 
+void BANDS_Recreate() {
+  STORAGE_INIT("Bands.bnd", Band, MAX_BANDS);
+  for (uint8_t i = 0; i < MAX_BANDS; ++i) {
+    STORAGE_SAVE("Bands.bnd", i, &defaultBands[i]);
+  }
+}
+
 bool BANDS_InRange(uint32_t f, Band *b) { return b->start <= f && f < b->end; }
 
 Band BANDS_ByFrequency(uint32_t f) {
   Band b;
-  if (!lfs_file_exists("BANDS.BND")) {
-    STORAGE_INIT("BANDS.BND", Band, MAX_BANDS);
-    for (uint8_t i = 0; i < MAX_BANDS; ++i) {
-      STORAGE_SAVE("BANDS.BND", i, &defaultBands[i]);
-    }
-  }
   for (uint8_t i = 0; i < MAX_BANDS; ++i) {
-    STORAGE_LOAD("BANDS.BND", i, &b);
+    STORAGE_LOAD("Bands.bnd", i, &b);
     if (IsReadable(b.name)) {
       if (BANDS_InRange(f, &b)) {
         return b;
@@ -801,4 +804,18 @@ Band *BANDS_RangePeek(void) {
     return &rangesStack[rangesStackIndex];
   }
   return NULL;
+}
+
+uint16_t BANDS_GetStepSize(Band *p) { return StepFrequencyTable[p->step]; }
+
+uint32_t BANDS_GetSteps(Band *p) {
+  return (p->end - p->start) / BANDS_GetStepSize(p) + 1;
+}
+
+uint32_t BANDS_GetF(Band *p, uint32_t channel) {
+  return p->start + channel * BANDS_GetStepSize(p);
+}
+
+uint32_t BANDS_GetChannel(Band *p, uint32_t f) {
+  return (f - p->start) / BANDS_GetStepSize(p);
 }

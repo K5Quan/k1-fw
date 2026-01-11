@@ -7,8 +7,6 @@
 #include "../settings.h"
 #include "../ui/spectrum.h"
 
-static Band gCurrentBand;
-
 // =============================
 // Состояние сканирования
 // =============================

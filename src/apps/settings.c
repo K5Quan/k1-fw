@@ -114,6 +114,7 @@ static const MenuItem menuItems[] = {
     {"Display", .submenu = &displayMenu},
     {"Battery", .submenu = &batteryMenu},
     {"Beep", SETTING_BEEP, getValS, updateValS},
+    {"Invert buttons", SETTING_INVERT_BUTTONS, getValS, updateValS},
     {"Main app", SETTING_MAINAPP, getValS, updateValS},
     {"Lock PTT", SETTING_PTT_LOCK, getValS, updateValS},
 };

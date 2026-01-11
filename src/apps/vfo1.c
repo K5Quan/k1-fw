@@ -23,8 +23,6 @@
 static char String[16];
 static const Step liveStep = STEP_5_0kHz;
 
-Band gCurrentBand;
-
 static void updateBand(void) {
   uint32_t f = RADIO_GetParam(ctx, PARAM_FREQUENCY);
   if (!BANDS_InRange(f, &gCurrentBand)) {
@@ -291,21 +289,20 @@ static void renderStatusLine(void) {
   }
 }
 
-/* static void renderBandInfo(uint8_t BASE) {
+static void renderBandInfo(uint8_t BASE) {
   if (vfo->mode == MODE_CHANNEL) {
     PrintMediumEx(LCD_XCENTER, BASE - 16, POS_C, C_FILL, "%s", ctx->name);
   } else {
-    const char *format =
-        (gCurrentBand.meta.type == TYPE_BAND_DETACHED) ? "*%s" : "%s:%u";
-    uint32_t channel = CHANNELS_GetChannel(&gCurrentBand, ctx->frequency) + 1;
+    const char *format = (gCurrentBand.detached) ? "*%s" : "%s:%u";
 
-    if (gCurrentBand.meta.type == TYPE_BAND_DETACHED) {
+    if (gCurrentBand.detached) {
       PrintSmallEx(32, 12, POS_L, C_FILL, format, gCurrentBand.name);
     } else {
+      uint32_t channel = BANDS_GetChannel(&gCurrentBand, ctx->frequency) + 1;
       PrintSmallEx(32, 12, POS_L, C_FILL, format, gCurrentBand.name, channel);
     }
   }
-} */
+}
 
 static void renderCodes(uint8_t BASE) {
   if (ctx->code.type) {
@@ -403,7 +400,7 @@ void VFO1_render(void) {
       ctx, ctx->tx_state.is_active ? PARAM_TX_FREQUENCY_FACT : PARAM_FREQUENCY);
   const char *mod = RADIO_GetParamValueString(ctx, PARAM_MODULATION);
 
-  // renderBandInfo(BASE);
+  renderBandInfo(BASE);
   renderTxRxState(BASE - 4,
                   ctx->tx_state.is_active || ctx->tx_state.last_error);
 

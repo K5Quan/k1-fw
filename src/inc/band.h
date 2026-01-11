@@ -11,7 +11,8 @@ typedef struct {
   uint32_t end : 27;
   OffsetDirection offsetDir : 2;
   bool allowTx : 1;
-  uint8_t reserved2 : 2;
+  bool detached : 1;
+  uint8_t reserved2 : 1;
   Step step : 4;
   uint8_t modulation : 4;
   uint8_t bw : 4;

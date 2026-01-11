@@ -97,8 +97,6 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
-  fs_init();
-
   /* ch_init();
   ch_prepare_sl();
   ch_show_scanlists();

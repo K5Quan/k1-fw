@@ -21,12 +21,6 @@ static uint32_t cursorRangeTimeout = 0;
 static bool isAnalyserMode = false;
 static bool pttWasLongPressed = false;
 
-static Band gCurrentBand = {
-    .start = 43307500,
-    .end = 43477500,
-    .step = STEP_25_0kHz,
-};
-
 static void setRange(uint32_t fs, uint32_t fe) {
   BANDS_RangeClear();
   SCAN_setRange(fs, fe);
