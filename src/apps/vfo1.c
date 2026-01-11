@@ -56,20 +56,20 @@ void VFO1_init(void) {
 
 void VFO1_update(void) {}
 
-/* static bool handleNumNav(KEY_Code_t key) {
+static bool handleNumNav(KEY_Code_t key) {
   if (gIsNumNavInput) {
     NUMNAV_Input(key);
     return true;
   }
 
-  if (key <= KEY_9) {
+  /* if (key <= KEY_9) {
     NUMNAV_Init(vfo->channel_index, 0, CHANNELS_GetCountMax() - 1);
     gNumNavCallback = setChannel;
     return false;
-  }
+  } */
 
   return false;
-} */
+}
 
 static bool handleFrequencyChange(KEY_Code_t key) {
   if (key != KEY_UP && key != KEY_DOWN)
@@ -220,10 +220,11 @@ bool VFO1_key(KEY_Code_t key, Key_State_t state) {
   }
 
   // Обработка NUM NAV в режиме канала
-  /* if (state == KEY_RELEASED && vfo->mode == MODE_CHANNEL && !gIsNumNavInput)
-  { if (handleNumNav(key)) { return true;
+  if (state == KEY_RELEASED && vfo->mode == MODE_CHANNEL && !gIsNumNavInput) {
+    if (handleNumNav(key)) {
+      return true;
     }
-  } */
+  }
 
   // PTT
   if (key == KEY_PTT && !gIsNumNavInput) {

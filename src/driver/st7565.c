@@ -16,6 +16,8 @@
 #define PIN_A0 GPIO_MAKE_PIN(GPIOA, LL_GPIO_PIN_6)
 
 uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
+uint8_t gPrevFrameBuffer[FRAME_LINES][LCD_WIDTH]; // Предыдущий кадр
+bool gLineChanged[FRAME_LINES]; // Флаги изменений строк
 
 static uint32_t gLastRender;
 bool gRedrawScreen = true;
@@ -76,6 +78,21 @@ static inline uint8_t SPI_WriteByte(uint8_t Value) {
   return LL_SPI_ReceiveData8(SPIx);
 }
 
+// Пометить строку как изменённую (вызывать при изменении данных)
+void ST7565_MarkLineDirty(uint8_t line) {
+  if (line < FRAME_LINES) {
+    gRedrawScreen = true;
+  }
+}
+
+// Пометить область как изменённую
+void ST7565_MarkRegionDirty(uint8_t start_line, uint8_t end_line) {
+  for (uint8_t line = start_line; line <= end_line && line < FRAME_LINES;
+       line++) {
+    gRedrawScreen = true;
+  }
+}
+
 // Оптимизация: отправка буфера DMA-style (пакетная передача)
 static void DrawLine(uint8_t column, uint8_t line, const uint8_t *lineBuffer,
                      unsigned size) {
@@ -95,6 +112,14 @@ static void DrawLine(uint8_t column, uint8_t line, const uint8_t *lineBuffer,
   }
 }
 
+void ST7565_ForceFullRedraw(void) {
+  // Помечаем все строки как изменённые и копируем текущий буфер в предыдущий
+  for (uint8_t line = 0; line < FRAME_LINES; line++) {
+    memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
+  }
+  gRedrawScreen = true;
+}
+
 void ST7565_DrawLine(const unsigned int Column, const unsigned int Line,
                      const uint8_t *pBitmap, const unsigned int Size) {
   CS_Assert();
@@ -102,13 +127,32 @@ void ST7565_DrawLine(const unsigned int Column, const unsigned int Line,
   CS_Release();
 }
 
-// Оптимизированная отрисовка - всегда полный буфер
+// Оптимизированная отрисовка - только изменённые строки
 void ST7565_Blit(void) {
+  bool any_change = false;
+
+  // Определяем изменённые строки
+  for (uint8_t line = 0; line < FRAME_LINES; line++) {
+    gLineChanged[line] =
+        memcmp(gFrameBuffer[line], gPrevFrameBuffer[line], LCD_WIDTH) != 0;
+    if (gLineChanged[line])
+      any_change = true;
+  }
+
+  if (!any_change) {
+    gRedrawScreen = false;
+    return;
+  }
+
   CS_Assert();
   ST7565_WriteByte(0x40); // Start line
 
   for (uint8_t line = 0; line < FRAME_LINES; line++) {
-    DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
+    if (gLineChanged[line]) {
+      DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
+      // Копируем в буфер предыдущего кадра
+      memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
+    }
   }
 
   CS_Release();
@@ -119,13 +163,41 @@ void ST7565_BlitLine(unsigned line) {
   if (line >= FRAME_LINES)
     return;
 
+  // Проверяем, изменилась ли строка
+  if (memcmp(gFrameBuffer[line], gPrevFrameBuffer[line], LCD_WIDTH) == 0) {
+    return; // Строка не изменилась
+  }
+
   CS_Assert();
   ST7565_WriteByte(0x40);
   DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
   CS_Release();
+
+  // Обновляем буфер предыдущего кадра
+  memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
 }
+/* void ST7565_BlitLine(unsigned line) {
+  if (line >= FRAME_LINES)
+    return;
+
+  CS_Assert();
+  ST7565_WriteByte(0x40);
+  DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
+  CS_Release();
+} */
 
 void ST7565_FillScreen(uint8_t value) {
+  memset(gFrameBuffer, value, sizeof(gFrameBuffer));
+
+  // При заполнении экрана помечаем все строки как изменённые
+  for (uint8_t i = 0; i < FRAME_LINES; i++) {
+    memset(gPrevFrameBuffer[i], ~value,
+           LCD_WIDTH); // Заполняем противоположным значением
+  }
+
+  gRedrawScreen = true;
+}
+/* void ST7565_FillScreen(uint8_t value) {
   CS_Assert();
   for (unsigned i = 0; i < FRAME_LINES; i++) {
     DrawLine(0, i, NULL, value);
@@ -134,7 +206,7 @@ void ST7565_FillScreen(uint8_t value) {
 
   // Синхронизируем буфер с экраном
   memset(gFrameBuffer, value, sizeof(gFrameBuffer));
-}
+} */
 
 // Команды ST7565
 #define ST7565_CMD_SOFTWARE_RESET 0xE2
@@ -197,6 +269,9 @@ void ST7565_Init(void) {
 
   // Очистка экрана
   ST7565_FillScreen(0x00);
+  memset(gFrameBuffer, 0, sizeof(gFrameBuffer));
+  memset(gPrevFrameBuffer, 0xFF,
+         sizeof(gPrevFrameBuffer)); // Заполняем противоположными значениями
   gRedrawScreen = true;
 }
 

@@ -3,9 +3,11 @@
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
+#include "../helper/lootlist.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/spectrum.h"
+#include "bands.h"
 
 // =============================
 // Состояние сканирования
@@ -78,9 +80,9 @@ static void ApplyBandSettings() {
   SP_Init(&gCurrentBand);
   LogC(LOG_C_BRIGHT_YELLOW, "[SCANER] Bounds: %u .. %u", gCurrentBand.start,
        gCurrentBand.end);
-  /* if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, gCurrentBand)) {
+  if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, &gCurrentBand)) {
     gLastActiveLoot = NULL;
-  } */
+  }
 }
 
 static void NextFrequency() {
@@ -104,7 +106,7 @@ static void NextFrequency() {
     gRedrawScreen = true;
   }
 
-  // LOOT_Replace(&vfo->msm, vfo->msm.f);
+  LOOT_Replace(&vfo->msm, vfo->msm.f);
   SetTimeout(&scan.scanListenTimeout, 0);
   SetTimeout(&scan.stayAtTimeout, 0);
   UpdateCPS();
@@ -223,12 +225,12 @@ void SCAN_setRange(uint32_t fs, uint32_t fe) {
 void SCAN_Next() { NextFrequency(); }
 
 void SCAN_NextBlacklist() {
-  // LOOT_BlacklistLast();
+  LOOT_BlacklistLast();
   SCAN_Next();
 }
 
 void SCAN_NextWhitelist() {
-  // LOOT_BlacklistLast();
+  LOOT_BlacklistLast();
   SCAN_Next();
 }
 
@@ -256,7 +258,7 @@ static void HandleAnalyserMode() {
 }
 
 static void UpdateSquelchAndRssi(bool isAnalyserMode) {
-  /* Loot *msm = LOOT_Get(vfo->msm.f);
+  Loot *msm = LOOT_Get(vfo->msm.f);
   if ((gSettings.skipGarbageFrequencies &&
        (vfo->msm.f % GARBAGE_FREQUENCY_MOD == 0)) ||
       (msm && (msm->blacklist || msm->whitelist))) {
@@ -282,7 +284,7 @@ static void UpdateSquelchAndRssi(bool isAnalyserMode) {
   }
 
   vfo->msm.open = vfo->msm.rssi >= scan.squelchLevel;
-  SP_AddPoint(&vfo->msm); */
+  SP_AddPoint(&vfo->msm);
 }
 
 void SCAN_Check() {
@@ -313,8 +315,7 @@ void SCAN_Check() {
       /* Log("SQL? %u RNG %u %u %u", vfo->msm.open, vfo->msm.rssi,
          vfo->msm.noise, vfo->msm.glitch); */
       SP_ShiftGraph(-1);
-      /* SP_AddGraphPoint(&vfo->msm);
-      Log("L10"); */
+      SP_AddGraphPoint(&vfo->msm);
       radioTimer = Now();
     }
 
@@ -332,7 +333,7 @@ void SCAN_Check() {
 
   // Проверка на "думание" о squelch
   if (vfo->msm.open && !vfo->is_open) {
-    LogC(LOG_C_YELLOW, "MSM OPEN at %u, thinking", vfo->msm.f);
+    // LogC(LOG_C_YELLOW, "MSM OPEN at %u, thinking", vfo->msm.f);
     scan.thinking = true;
     scan.wasThinkingEarlier = true;
     SYSTICK_DelayMs(SQL_DELAY);
@@ -345,7 +346,7 @@ void SCAN_Check() {
     }
   }
 
-  // LOOT_Update(&vfo->msm);
+  LOOT_Update(&vfo->msm);
 
   // Автокоррекция squelch
   if (vfo->is_open && !vfo->msm.open) {

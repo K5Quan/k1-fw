@@ -28,22 +28,22 @@ static void setRange(uint32_t fs, uint32_t fe) {
 }
 
 static void initBand(void) {
-  /* if (gCurrentBand.meta.type != TYPE_BAND_DETACHED) {
+  if (gCurrentBand.detached) {
     LogC(LOG_C_BRIGHT_YELLOW, "[i] [SCAN] Init withOUT detached band");
-    BANDS_SelectByFrequency(RADIO_GetParam(ctx, PARAM_FREQUENCY), false);
-    gCurrentBand.meta.type = TYPE_BAND_DETACHED;
+    gCurrentBand = BANDS_ByFrequency(RADIO_GetParam(ctx, PARAM_FREQUENCY));
+    gCurrentBand.detached = true;
   } else {
     LogC(LOG_C_BRIGHT_YELLOW, "[i] [SCAN] Init with detached band");
-    if (!gCurrentBand.rxF && !gCurrentBand.txF) {
-      gCurrentBand = defaultBand;
+    if (!gCurrentBand.start && !gCurrentBand.end) {
+      gCurrentBand = DEFAULT_BAND;
     }
-  } */
-  /* if (gCurrentBand.rxF == defaultBand.rxF &&
-      gCurrentBand.txF == defaultBand.txF) {
+  }
+  if (gCurrentBand.start == DEFAULT_BAND.start &&
+      gCurrentBand.end == DEFAULT_BAND.end) {
     uint32_t step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
-    gCurrentBand.rxF = ctx->frequency - 64 * step;
-    gCurrentBand.txF = gCurrentBand.rxF + 128 * step;
-  } */
+    gCurrentBand.start = ctx->frequency - 64 * step;
+    gCurrentBand.end = gCurrentBand.start + 128 * step;
+  }
 }
 
 void SCANER_init(void) {

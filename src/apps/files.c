@@ -327,6 +327,14 @@ static bool action(const uint16_t index, KEY_Code_t key, Key_State_t state) {
       deleteItem(gFilesList[index].name, gFilesList[index].type);
       return true;
 
+    case KEY_EXIT:
+      if (strcmp(gCurrentPath, "/") == 0) {
+        APPS_exit();
+        return true;
+      }
+      navigateTo("..");
+      return true;
+
     default:
       break;
     }
