@@ -33,4 +33,11 @@ void SCAN_NextWhitelist();
 void SCAN_SetDelay(uint32_t delay);
 uint32_t SCAN_GetDelay();
 
+// Поддержка SCMD
+void SCAN_LoadCommandFile(const char *filename);
+void SCAN_SetCommandMode(bool enabled);
+bool SCAN_IsCommandMode(void);
+void SCAN_CommandNext(void);
+void SCAN_CommandRewind(void);
+
 #endif /* end of include guard: SCAN_H */

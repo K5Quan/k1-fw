@@ -236,11 +236,6 @@ void SYS_Main() {
 
     appRender();
 
-    /* while (gCurrentApp != APP_SCANER && UART_IsCommandAvailable()) {
-      UART_HandleCommand();
-      lastUartDataTime = Now();
-    } */
-
     __WFI();
   }
 }

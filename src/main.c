@@ -5,6 +5,7 @@
 #include "driver/uart.h"
 #include "external/printf/printf.h"
 #include "helper/measurements.h"
+#include "helper/scancommand.h"
 #include "helper/storage.h"
 #include "inc/channel.h"
 #include "system.h"
@@ -97,6 +98,8 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
+  // SCMD_CreateExampleScan();
+
   /* ch_init();
   ch_prepare_sl();
   ch_show_scanlists();
@@ -108,8 +111,7 @@ int main(void) {
   for (;;) {
   } */
 
-  /* BOARD_USBInit();
-  for (;;) {
+  /* for (;;) {
     printf("%lu\n", Now());
     SYSTICK_DelayMs(1000);
   } */

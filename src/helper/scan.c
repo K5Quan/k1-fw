@@ -4,6 +4,7 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../helper/lootlist.h"
+#include "../helper/scancommand.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/spectrum.h"
@@ -27,6 +28,12 @@ typedef struct {
   bool wasThinkingEarlier; // Флаг для корректировки squelch
   bool lastListenState;    // Последнее состояние squelch
   bool isMultiband;        // Мультидиапазонный режим
+
+  // Новые поля для SCMD
+  bool commandMode;   // Режим выполнения команд
+  bool commandPaused; // Пауза выполнения команд
+  uint32_t cmdLastExec; // Время последнего выполнения команды
+  SCMD_Context cmdCtx; // Контекст SCMD (если впишется в RAM)
 } ScanState;
 
 static ScanState scan = {
@@ -43,6 +50,10 @@ static ScanState scan = {
     .lastCpsTime = 0,
     .currentCps = 0,
     .cpsUpdateInterval = 1000,
+
+    .commandMode = false,
+    .commandPaused = false,
+    .cmdLastExec = 0,
 };
 
 // =============================
@@ -168,8 +179,147 @@ const char *SCAN_MODE_NAMES[] = {
     [SCAN_MODE_CHANNEL] = "CH Scan",
     [SCAN_MODE_ANALYSER] = "Band scan",
 };
+
+// =====
+// Новые функции для SCMD:
+void SCAN_LoadCommandFile(const char *filename) {
+  if (SCMD_Init(filename)) {
+    scan.commandMode = true;
+    scan.mode = SCAN_MODE_SINGLE; // Переключаем в VFO режим
+    Log("[SCAN] Loaded command file: %s", filename);
+  } else {
+    Log("[SCAN] Failed to load: %s", filename);
+  }
+}
+
+void SCAN_SetCommandMode(bool enabled) {
+  scan.commandMode = enabled;
+  if (!enabled) {
+    SCMD_Close();
+  }
+}
+
+bool SCAN_IsCommandMode(void) { return scan.commandMode; }
+
+void SCAN_CommandNext(void) {
+  if (!scan.commandMode)
+    return;
+
+  SCMD_Command *cmd = SCMD_GetCurrent();
+  if (cmd && !SCMD_ShouldSkip()) {
+    SCMD_ExecuteCurrent();
+  }
+
+  if (!SCMD_Advance()) {
+    SCMD_Rewind(); // Циклическое выполнение
+  }
+}
+
+void SCAN_CommandRewind(void) { SCMD_Rewind(); }
+
+// Новая функция для обработки командного режима:
+static void SCAN_CheckCommandMode(void) {
+  static uint32_t lastCmdCheck = 0;
+  uint32_t now = Now();
+
+  // Проверяем команды каждые 50мс (или по dwell из команды)
+  if (now - lastCmdCheck < 50) {
+    return;
+  }
+  lastCmdCheck = now;
+
+  // Получаем текущую команду
+  SCMD_Command *cmd = SCMD_GetCurrent();
+  if (!cmd) {
+    SCMD_Rewind();
+    return;
+  }
+
+  // Пропускаем команды с низким приоритетом
+  if (SCMD_ShouldSkip()) {
+    SCMD_Advance();
+    return;
+  }
+
+  // Выполняем команду
+  switch (cmd->type) {
+  case SCMD_CHANNEL:
+    // Устанавливаем частоту и ждем
+    vfo->msm.f = cmd->start;
+    RADIO_SetParam(ctx, PARAM_FREQUENCY, cmd->start, false);
+    RADIO_ApplySettings(ctx);
+
+    // Измеряем RSSI
+    vfo->msm.rssi = MeasureSignal(cmd->start, true);
+    vfo->msm.open = vfo->msm.rssi >= scan.squelchLevel;
+
+    // Обновляем спектр
+    SP_AddPoint(&vfo->msm);
+
+    // Ждем dwell время
+    if (cmd->dwell_ms > 0) {
+      SYSTICK_DelayMs(cmd->dwell_ms);
+    }
+    break;
+
+  case SCMD_RANGE:
+    // Сканируем диапазон
+    for (uint32_t f = cmd->start; f <= cmd->end; f += gCurrentBand.step) {
+      vfo->msm.f = f;
+      RADIO_SetParam(ctx, PARAM_FREQUENCY, f, false);
+      RADIO_ApplySettings(ctx);
+
+      vfo->msm.rssi = MeasureSignal(f, false);
+      vfo->msm.open = vfo->msm.rssi >= scan.squelchLevel;
+      SP_AddPoint(&vfo->msm);
+
+      if (cmd->dwell_ms > 0) {
+        SYSTICK_DelayMs(cmd->dwell_ms);
+      }
+
+      // Проверяем прерывания
+      if (gRedrawScreen || scan.commandPaused) {
+        break;
+      }
+    }
+    break;
+
+  case SCMD_PAUSE:
+    // Просто пауза
+    if (cmd->dwell_ms > 0) {
+      SYSTICK_DelayMs(cmd->dwell_ms);
+    }
+    break;
+
+  case SCMD_JUMP:
+  case SCMD_CJUMP:
+    // Обрабатывается в SCMD_Advance
+    break;
+
+  default:
+    // Остальные команды пока не поддерживаем
+    break;
+  }
+
+  // Переходим к следующей команде
+  if (!SCMD_Advance()) {
+    SCMD_Rewind(); // Зацикливаем
+  }
+
+  scan.scanCycles++;
+  UpdateCPS();
+}
+
+// =====
+
 // API для установки режима
 void SCAN_SetMode(ScanMode mode) {
+  // Если переключаемся из командного режима - закрываем файл
+  if (scan.commandMode && mode != scan.mode) {
+    SCMD_Close();
+    scan.commandMode = false;
+  }
+
   scan.mode = mode;
   Log("[SCAN] mode=%s", SCAN_MODE_NAMES[scan.mode]);
 
@@ -288,6 +438,12 @@ static void UpdateSquelchAndRssi(bool isAnalyserMode) {
 }
 
 void SCAN_Check() {
+  // Если включен режим команд, обрабатываем их
+  if (scan.commandMode) {
+    SCAN_CheckCommandMode();
+    return;
+  }
+
   RADIO_UpdateMultiwatch(gRadioState);
 
   // Режим анализатора — упрощенная логика
