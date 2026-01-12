@@ -64,13 +64,6 @@ static void LoadProfile(uint8_t num) {
   }
 }
 
-// Получить текущий индекс команды из SCMD
-static uint16_t GetCurrentCmdIndex(void) {
-  // Нужно добавить функцию в scancommand.c для получения индекса
-  // Пока используем контекст напрямую или возвращаем 0
-  return 0; // Заглушка
-}
-
 // Отобразить информацию о текущей команде
 static void RenderCommandInfo(void) {
   if (!cmdState.showInfo)
@@ -130,7 +123,7 @@ static void RenderCommandInfo(void) {
   PrintSmallEx(2, y, POS_L, C_FILL, "Profile: %d", cmdState.profileNum);
 
   // Получаем реальный индекс команды
-  cmdState.cmdIndex = GetCurrentCmdIndex();
+  cmdState.cmdIndex = SCMD_GetCurrentIndex();
   PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "#%d", cmdState.cmdIndex);
 
   y += 8;

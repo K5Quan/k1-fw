@@ -36,7 +36,7 @@ bool CheckSignalCondition(uint32_t freq) {
 
 uint8_t GetCurrentMinPriority(void) {
   static uint8_t min_prio = 0;
-  Log("GetCurrentMinPriority: -> returning %u", min_prio);
+  // Log("GetCurrentMinPriority: -> returning %u", min_prio);
   return min_prio; // Принимаем все команды
 }
 

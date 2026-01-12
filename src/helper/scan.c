@@ -330,7 +330,7 @@ static void SCAN_ExecuteCommandWithLogic(void) {
       scan_start_freq = cmd->start;
       scan_end_freq = cmd->end;
       current_freq = scan_start_freq;
-      step = gCurrentBand.step;
+      step = StepFrequencyTable[gCurrentBand.step];
       if (step == 0)
         step = 25000; // По умолчанию 25 kHz
 
@@ -379,7 +379,7 @@ static void SCAN_ExecuteCommandWithLogic(void) {
       UpdateSquelchAndRssi(false); // false = не режим анализатора
 
       // Обновляем экран
-      gRedrawScreen = true;
+      // gRedrawScreen = true;
       SP_AddPoint(&vfo->msm);
 
       // Проверяем таймауты (как в NextWithTimeout())
