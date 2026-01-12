@@ -168,13 +168,6 @@ void CMDSCAN_update(void) {
   if (!cmdState.isActive)
     return;
 
-  // ОБНОВЛЯЕМ ЭКРАН ДАЖЕ ЕСЛИ НЕ ВЫПОЛНЯЕМ КОМАНДУ
-  static uint32_t lastRedraw = 0;
-  if (Now() - lastRedraw > 200) { // Обновляем экран каждые 200мс
-    gRedrawScreen = true;
-    lastRedraw = Now();
-  }
-
   // Выполняем команды каждые 50мс (вместо 100мс для более плавного отображения)
   static uint32_t lastUpdate = 0;
   uint32_t now = Now();
@@ -311,24 +304,12 @@ void CMDSCAN_render(void) {
 
   PrintSmallEx(LCD_XCENTER, 24, POS_C, C_FILL, "%s", filename);
 
-  // Отображаем текущую частоту VFO БОЛЬШИМ ШРИФТОМ
   if (vfo) {
     char freqBuf[16];
     mhzToS(freqBuf, vfo->msm.f);
     PrintMediumBoldEx(LCD_XCENTER, 40, POS_C, C_FILL, "%s", freqBuf);
 
-    // RSSI в виде прогресс-бара
-    int rssi_width = (vfo->msm.rssi * 100) / 4096; // Предположим 12-битный ADC
-    if (rssi_width > 100)
-      rssi_width = 100;
-    if (rssi_width < 0)
-      rssi_width = 0;
-
-    // Прогресс-бар RSSI
-    DrawRect(20, 60, LCD_WIDTH - 40, 8, C_FILL);
-    if (rssi_width > 0) {
-      FillRect(20, 60, rssi_width * (LCD_WIDTH - 40) / 100, 8, C_INVERT);
-    }
+    UI_RSSIBar(60);
 
     // Текст RSSI
     PrintSmallEx(20, 70, POS_L, C_FILL, "RSSI: %u", vfo->msm.rssi);
