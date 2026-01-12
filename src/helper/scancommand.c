@@ -84,16 +84,29 @@ bool SCMD_LoadCommand(SCMD_Command *cmd) {
 bool SCMD_HandleGoto(void) {
   uint16_t offset = s_ctx.current.goto_offset;
 
-  // Обработка циклов
-  if (s_ctx.current.loop_count > 0) {
-    if (s_ctx.loop_ptr < 8) {
-      s_ctx.loop_stack[s_ctx.loop_ptr] = s_ctx.current.loop_count;
-      s_ctx.loop_ptr++;
-    }
+  Log("[SCMD] HandleGoto: offset=%u, current_pos=%lu", offset, s_ctx.file_pos);
+
+  // Защита от бесконечного цикла
+  static uint16_t goto_count = 0;
+  goto_count++;
+  if (goto_count > 100) {
+    Log("[SCMD] ERROR: Too many GOTO in a row, possible infinite loop");
+    goto_count = 0;
+    return false;
   }
 
   // Рассчитываем новую позицию
   uint32_t target_pos = sizeof(SCMD_Header) + (offset * sizeof(SCMD_Command));
+
+  Log("[SCMD] Target position: %lu", target_pos);
+
+  // Проверяем, что позиция в пределах файла
+  lfs_soff_t file_size = lfs_file_size(&gLfs, &s_file);
+  if (target_pos >= file_size) {
+    Log("[SCMD] ERROR: GOTO target %lu beyond file size %ld", target_pos,
+        file_size);
+    return false;
+  }
 
   // Перемещаемся
   lfs_file_seek(&gLfs, &s_file, target_pos, LFS_SEEK_SET);
@@ -105,12 +118,17 @@ bool SCMD_HandleGoto(void) {
 
   // Загружаем текущую
   if (!SCMD_LoadCommand(&s_ctx.current)) {
+    Log("[SCMD] ERROR: Cannot load command at target position");
     return false;
   }
 
   // Загружаем следующую
   s_ctx.has_next = SCMD_LoadCommand(&s_ctx.next);
 
+  Log("[SCMD] GOTO complete: new cmd_index=%u, type=%d", s_ctx.cmd_index,
+      s_ctx.current.type);
+
+  goto_count = 0; // Сбрасываем счетчик после успешного перехода
   return true;
 }
 
@@ -137,6 +155,7 @@ bool SCMD_Init(const char *filename) {
   memset(&s_ctx, 0, sizeof(s_ctx));
   s_ctx.file_pos = sizeof(SCMD_Header);
   s_ctx.cmd_index = 0;
+  s_ctx.cmd_count = header.cmd_count;
 
   // Загружаем первую команду
   s_ctx.has_next = SCMD_LoadCommand(&s_ctx.current);
@@ -154,13 +173,21 @@ bool SCMD_Advance(void) {
   s_ctx.current = s_ctx.next;
   s_ctx.cmd_index++;
 
+  Log("[SCMD] Advance: cmd_index=%u, goto_offset=%u", s_ctx.cmd_index,
+      s_ctx.current.goto_offset);
+
   // Проверяем переходы
   if (s_ctx.current.goto_offset > 0) {
+    Log("[SCMD] Executing GOTO to offset %u", s_ctx.current.goto_offset);
     return SCMD_HandleGoto();
   }
 
   // Загружаем следующую команду
   s_ctx.has_next = SCMD_LoadCommand(&s_ctx.next);
+
+  if (!s_ctx.has_next) {
+    Log("[SCMD] No more commands available");
+  }
 
   return s_ctx.has_next;
 }
@@ -354,6 +381,8 @@ bool SCMD_CreateFile(const char *filename, SCMD_Command *commands,
   return success;
 }
 
+uint16_t SCMD_GetCurrentIndex(void) { return s_ctx.cmd_index; }
+
 // Пример создания файла
 void SCMD_CreateExampleScan(void) {
   struct lfs_info info;
@@ -381,5 +410,39 @@ void SCMD_CreateExampleScan(void) {
       {SCMD_JUMP, 0, 0, 0, 0, 0, 0, 0, 0},
   };
 
-  SCMD_CreateFile("/scans/cmd2.bin", cmds, sizeof(cmds) / sizeof(cmds[0]));
+  SCMD_CreateFile("/scans/cmd1.bin", cmds, sizeof(cmds) / sizeof(cmds[0]));
 }
+
+void SCMD_DebugDumpFile(const char *filename) {
+  uint8_t buffer[256];
+  struct lfs_file_config config = {.buffer = buffer, .attr_count = 0};
+  lfs_file_t file;
+
+  int err = lfs_file_opencfg(&gLfs, &file, filename, LFS_O_RDONLY, &config);
+  if (err < 0) {
+    Log("[SCMD] Cannot open %s for debugging", filename);
+    return;
+  }
+
+  // Читаем заголовок
+  SCMD_Header header;
+  lfs_file_read(&gLfs, &file, &header, sizeof(header));
+
+  Log("[SCMD] File %s: magic=0x%08X, version=%u, cmd_count=%u", filename,
+      header.magic, header.version, header.cmd_count);
+
+  // Читаем и дампим все команды
+  for (uint16_t i = 0; i < header.cmd_count; i++) {
+    SCMD_Command cmd;
+    lfs_file_read(&gLfs, &file, &cmd, sizeof(cmd));
+
+    Log("[SCMD] Cmd %d: type=%d, prio=%d, start=%lu, end=%lu, dwell=%u, "
+        "goto=%u",
+        i, cmd.type, cmd.priority, cmd.start, cmd.end, cmd.dwell_ms,
+        cmd.goto_offset);
+  }
+
+  lfs_file_close(&gLfs, &file);
+}
+
+uint16_t SCMD_GetCommandCount(void) { return s_ctx.cmd_count; }

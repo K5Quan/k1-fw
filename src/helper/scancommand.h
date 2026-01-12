@@ -119,7 +119,8 @@ typedef struct {
   uint8_t loop_stack[8]; ///< Стек счетчиков циклов
   uint8_t loop_ptr;      ///< Указатель стека циклов (0-7)
   uint32_t call_stack[4]; ///< Стек возвратов (позиции в файле)
-  uint8_t call_ptr; ///< Указатель стека вызовов (0-3)
+  uint8_t call_ptr;   ///< Указатель стека вызовов (0-3)
+  uint16_t cmd_count; // Общее количество команд
   bool has_next; ///< Флаг наличия следующей команды
 } SCMD_Context;
 
@@ -245,7 +246,11 @@ bool SCMD_GotoIndex(uint16_t index);
  */
 void SCMD_SetEntryPoint(uint16_t offset);
 
+uint16_t SCMD_GetCurrentIndex(void);
+
 void SCMD_CreateExampleScan(void);
+void SCMD_DebugDumpFile(const char *filename);
+extern uint16_t SCMD_GetCommandCount(void);
 
 #ifdef __cplusplus
 }

@@ -30,6 +30,8 @@ uint32_t SCAN_GetCps();
 void SCAN_NextBlacklist();
 void SCAN_NextWhitelist();
 
+void SCAN_CommandForceNext(void);
+
 void SCAN_SetDelay(uint32_t delay);
 uint32_t SCAN_GetDelay();
 
@@ -39,5 +41,8 @@ void SCAN_SetCommandMode(bool enabled);
 bool SCAN_IsCommandMode(void);
 void SCAN_CommandNext(void);
 void SCAN_CommandRewind(void);
+
+void SCAN_SetCommandPaused(bool paused);
+bool SCAN_IsCommandPaused(void);
 
 #endif /* end of include guard: SCAN_H */
