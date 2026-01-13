@@ -70,7 +70,7 @@ static void RenderCommandInfo(void) {
     return;
 
   // Используем API из scan.c для получения текущей команды
-  SCMD_Command *cmd = SCMD_GetCurrent();
+  SCMD_Command *cmd = SCAN_GetCurrentCommand();
   if (!cmd)
     return;
 
@@ -108,7 +108,7 @@ static void RenderCommandInfo(void) {
   case SCMD_CJUMP:
     PrintSmallEx(2, y, POS_L, C_FILL, "Jump to: %d", cmd->goto_offset);
     y += 8;
-    PrintSmallEx(2, y, POS_L, C_FILL, "Loops: %d", cmd->loop_count);
+    // PrintSmallEx(2, y, POS_L, C_FILL, "Loops: %d", cmd->loop_count);
     break;
   }
 
@@ -123,7 +123,7 @@ static void RenderCommandInfo(void) {
   PrintSmallEx(2, y, POS_L, C_FILL, "Profile: %d", cmdState.profileNum);
 
   // Получаем реальный индекс команды
-  cmdState.cmdIndex = SCMD_GetCurrentIndex();
+  cmdState.cmdIndex = SCAN_GetCommandIndex();
   PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "#%d", cmdState.cmdIndex);
 
   y += 8;
@@ -131,10 +131,10 @@ static void RenderCommandInfo(void) {
 
   // Индикатор паузы
   if (SCAN_IsCommandMode()) {
-    if (SCAN_IsCommandPaused()) {
+    /* if (SCAN_IsCommandPaused()) {
       PrintMediumBoldEx(LCD_XCENTER, LCD_HEIGHT - 30, POS_C, C_INVERT,
                         "PAUSED");
-    }
+    } */
   }
 }
 
@@ -184,10 +184,10 @@ void CMDSCAN_update(void) {
   static uint32_t lastStatUpdate = 0;
   if (now - lastStatUpdate > 1000) {
     // Обновляем счетчик выполненных команд
-    SCMD_Command *cmd = SCMD_GetCurrent();
+    SCMD_Command *cmd = SCAN_GetCurrentCommand();
     if (cmd) {
       cmdState.cmdIndex =
-          SCMD_GetCurrentIndex(); // Получаем индекс из контекста
+          SCAN_GetCommandIndex(); // Получаем индекс из контекста
     }
     lastStatUpdate = now;
   }
@@ -218,17 +218,17 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_UP:
       // Шаг вперед - переходим к следующей команде
       if (SCAN_IsCommandMode()) {
-        SCAN_CommandNext();
+        SCAN_CommandForceNext();
         cmdState.execCount++;
       }
       return true;
 
-    case KEY_DOWN:
-      // Перемотка в начало через SCAN API
-      SCAN_CommandRewind();
-      cmdState.cmdIndex = 0;
-      cmdState.execCount = 0;
-      return true;
+      /* case KEY_DOWN:
+        // Перемотка в начало через SCAN API
+        SCAN_CommandRewind();
+        cmdState.cmdIndex = 0;
+        cmdState.execCount = 0;
+        return true; */
 
     case KEY_SIDE1:
       // Пауза/продолжить - нужно добавить API в scan.c
@@ -275,12 +275,12 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
       LoadProfile(cmdState.profileNum);
       return true;
 
-    case KEY_EXIT:
-      // Полный сброс
-      SCAN_CommandRewind();
-      cmdState.execCount = 0;
-      cmdState.cmdIndex = 0;
-      return true;
+      /* case KEY_EXIT:
+        // Полный сброс
+        SCAN_CommandRewind();
+        cmdState.execCount = 0;
+        cmdState.cmdIndex = 0;
+        return true; */
     }
   }
 
@@ -323,7 +323,7 @@ void CMDSCAN_render(void) {
   }
 
   // Информация о текущей команде
-  SCMD_Command *cmd = SCMD_GetCurrent();
+  SCMD_Command *cmd = SCAN_GetCurrentCommand();
   if (cmd && cmdState.showInfo) {
     int y = 85;
 
@@ -366,14 +366,14 @@ void CMDSCAN_render(void) {
     // Индекс команды
     y = LCD_HEIGHT - 30;
     PrintSmallEx(2, y, POS_L, C_FILL, "Cmd: %d/%d", cmdState.cmdIndex,
-                 SCMD_GetCommandCount());
+                 SCAN_GetCommandCount());
     PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "Exec: %lu",
                  cmdState.execCount);
 
     // Прогресс выполнения
-    if (SCMD_GetCommandCount() > 0) {
+    if (SCAN_GetCommandCount() > 0) {
       int progress_width =
-          (cmdState.cmdIndex * (LCD_WIDTH - 40)) / SCMD_GetCommandCount();
+          (cmdState.cmdIndex * (LCD_WIDTH - 40)) / SCAN_GetCommandCount();
       DrawRect(20, LCD_HEIGHT - 20, LCD_WIDTH - 40, 6, C_FILL);
       if (progress_width > 0) {
         FillRect(20, LCD_HEIGHT - 20, progress_width, 6, C_INVERT);

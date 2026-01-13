@@ -1,48 +1,52 @@
+// ============================================================================
+// scan.h - обновленный заголовочный файл
+// ============================================================================
+
 #ifndef SCAN_H
 #define SCAN_H
 
 #include "../inc/band.h"
+#include "scancommand.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
-  SCAN_MODE_SINGLE,    // Одна частота (мониторинг)
-  SCAN_MODE_CHANNEL,   // Канальный режим
-  SCAN_MODE_FREQUENCY, // Частотный режим (диапазон)
-  SCAN_MODE_ANALYSER // Режим анализатора (только частотный)
+  SCAN_MODE_SINGLE,
+  SCAN_MODE_FREQUENCY,
+  SCAN_MODE_CHANNEL,
+  SCAN_MODE_ANALYSER,
 } ScanMode;
 
-typedef enum {
-  SCAN_STATE_IDLE,
-  SCAN_STATE_SCANNING,
-  SCAN_STATE_LISTENING,
-  SCAN_STATE_PAUSED
-} ScanStateType;
-
-void SCAN_SetMode(ScanMode mode);
 void SCAN_Init(bool multiband);
+void SCAN_Check(void);
+void SCAN_SetMode(ScanMode mode);
+ScanMode SCAN_GetMode(void);
+uint32_t SCAN_GetCps(void);
+
+// Управление диапазоном
+void SCAN_setBand(Band b);
 void SCAN_setStartF(uint32_t f);
 void SCAN_setEndF(uint32_t f);
 void SCAN_setRange(uint32_t fs, uint32_t fe);
-void SCAN_setBand(Band b);
-void SCAN_Check();
-void SCAN_Next();
-uint32_t SCAN_GetCps();
-void SCAN_NextBlacklist();
-void SCAN_NextWhitelist();
 
-void SCAN_CommandForceNext(void);
+// Навигация
+void SCAN_Next(void);
+void SCAN_NextBlacklist(void);
+void SCAN_NextWhitelist(void);
 
+// Задержки
 void SCAN_SetDelay(uint32_t delay);
-uint32_t SCAN_GetDelay();
+uint32_t SCAN_GetDelay(void);
 
-// Поддержка SCMD
+// Командный режим
 void SCAN_LoadCommandFile(const char *filename);
 void SCAN_SetCommandMode(bool enabled);
 bool SCAN_IsCommandMode(void);
-void SCAN_CommandNext(void);
-void SCAN_CommandRewind(void);
+void SCAN_CommandForceNext(void);
 
-void SCAN_SetCommandPaused(bool paused);
-bool SCAN_IsCommandPaused(void);
+SCMD_Command *SCAN_GetCurrentCommand(void);
+SCMD_Command *SCAN_GetNextCommand(void);
+uint16_t SCAN_GetCommandIndex(void);
+uint16_t SCAN_GetCommandCount(void);
 
-#endif /* end of include guard: SCAN_H */
+#endif

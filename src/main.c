@@ -131,7 +131,7 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
-  // SCMD_CreateExampleScan();
+  SCMD_CreateExampleScan();
 
   /* ch_init();
   ch_prepare_sl();
