@@ -309,7 +309,7 @@ void CMDSCAN_render(void) {
     mhzToS(freqBuf, vfo->msm.f);
     PrintMediumBoldEx(LCD_XCENTER, 40, POS_C, C_FILL, "%s", freqBuf);
 
-    UI_RSSIBar(60);
+    UI_RSSIBar(64 - 8);
 
     // Текст RSSI
     PrintSmallEx(20, 70, POS_L, C_FILL, "RSSI: %u", vfo->msm.rssi);
