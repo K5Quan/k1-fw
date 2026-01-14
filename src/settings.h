@@ -183,23 +183,6 @@ typedef struct {
   bool skipGarbageFrequencies : 1;
 
 } __attribute__((packed)) Settings;
-// getsize(Settings)
-
-#define SETTINGS_OFFSET (0)
-#define SETTINGS_SIZE sizeof(Settings)
-
-#define CH_SIZE sizeof(CH)
-#define CHANNELS_OFFSET (SETTINGS_OFFSET + SETTINGS_SIZE)
-
-#define PATCH1_SIZE 15832
-#define PATCH3_SIZE 8840
-
-#define PATCH_SIZE PATCH3_SIZE
-
-// settings
-// VFOs
-// channel 1
-// channel 2
 
 extern Settings gSettings;
 extern uint8_t BL_TIME_VALUES[7];

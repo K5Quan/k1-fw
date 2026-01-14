@@ -15,6 +15,7 @@
 #include "driver/uart.h"
 #include "external/printf/printf.h"
 #include "helper/bands.h"
+#include "helper/lootlist.h"
 #include "helper/measurements.h"
 #include "helper/storage.h"
 #include "inc/band.h"
@@ -1779,21 +1780,16 @@ static void RADIO_UpdateMeasurement(ExtendedVFOContext *vfo) {
   VFOContext *ctx = &vfo->context;
   vfo->msm.f = ctx->frequency;
   vfo->msm.rssi = RADIO_GetRSSI(ctx);
-  /* vfo->msm.noise = BK4819_GetNoise();
+  vfo->msm.noise = BK4819_GetNoise();
   vfo->msm.glitch = BK4819_GetGlitch();
-  vfo->msm.snr = RADIO_GetSNR(ctx); */
+  vfo->msm.snr = RADIO_GetSNR(ctx);
   vfo->msm.open = RADIO_CheckSquelch(ctx);
-  /* if (!gMonitorMode && ctx->radio_type == RADIO_BK4819) {
+  if (!gMonitorMode && ctx->radio_type == RADIO_BK4819) {
     LOOT_Update(&vfo->msm);
-  } */
+  }
 }
 
 void RADIO_UpdateSquelch(RadioState *state) {
-  /* if (ctx->tx_state.is_active) {
-    vfo->is_open = vfo->msm.open = false;
-    RADIO_SwitchAudioToVFO(state, state->active_vfo_index);
-    return;
-  } */
   RADIO_UpdateMeasurement(&state->vfos[state->active_vfo_index]);
   if (vfo->msm.open != vfo->is_open) {
     gRedrawScreen = true; // TODO: mv

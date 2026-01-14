@@ -12,6 +12,8 @@
 
 static const uint8_t SI47XX_I2C_ADDR = 0x22;
 
+#define PATCH_SIZE 8840
+
 #define RST_HIGH
 #define RST_LOW
 

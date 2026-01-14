@@ -128,14 +128,7 @@ uint32_t SETTINGS_GetEEPROMSize(void) {
 
 uint16_t SETTINGS_GetPageSize(void) { return PAGE_SIZES[gSettings.eepromType]; }
 
-bool SETTINGS_IsPatchPresent() {
-  if (SETTINGS_GetEEPROMSize() < 32768) {
-    return false;
-  }
-  uint8_t buf[8];
-  EEPROM_ReadBuffer(SETTINGS_GetEEPROMSize() - PATCH_SIZE, buf, 8);
-  return memcmp(buf, PATCH3_PREAMBLE, 8) == 0;
-}
+bool SETTINGS_IsPatchPresent() { return false; }
 
 bool dirty[SETTING_COUNT];
 
