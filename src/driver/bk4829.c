@@ -1,5 +1,6 @@
 #include "bk4829.h"
 
+#include "../settings.h"
 #include "bk4819-regs.h"
 #include "gpio.h"
 #include "py32f071_ll_spi.h"
@@ -74,7 +75,7 @@ typedef struct {
 } AgcConfig;
 
 static const AgcConfig AGC_DEFAULT = {0, 56, 84};
-static const AgcConfig AGC_FAST = {0, 20, 50};
+static const AgcConfig AGC_FAST = {0, 32, 50};
 
 // ============================================================================
 // State Variables
@@ -340,12 +341,16 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   const bool enableAgc = (gainIndex == AUTO_GAIN_INDEX);
   uint16_t regVal = BK4819_ReadRegister(BK4819_REG_7E);
 
-  BK4819_WriteRegister(BK4819_REG_7E,
+  /* BK4819_WriteRegister(BK4819_REG_7E,
                        (regVal & ~(1 << 15) & ~(0b111 << 12)) |
                            (!enableAgc << 15) | // AGC fix mode
                            (3u << 12) |         // AGC fix index
                            (5u << 3) |          // Default DC
-                           (6u << 0));
+                           (6u << 0)); */
+  BK4819_WriteRegister(BK4819_REG_7E, (regVal & ~(1 << 15) & ~(0b111 << 12)) |
+                                          (!enableAgc << 15) // 0  AGC fix mode
+                                          | (3u << 12)       // 3  AGC fix index
+  );
 
   if (enableAgc) {
     BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
@@ -362,7 +367,6 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   }
 
   const AgcConfig *config = fm ? &AGC_DEFAULT : &AGC_FAST;
-  // const AgcConfig *config = &AGC_DEFAULT;
   BK4819_WriteRegister(BK4819_REG_49, (config->lo << 14) | (config->high << 7) |
                                           (config->low << 0));
   BK4819_WriteRegister(BK4819_REG_7B, 0x8420);
@@ -1317,6 +1321,7 @@ void BK4819_Init(void) {
   gSelectedFilter = 255;
   gLastFrequency = 0;
   gLastModulation = 255;
+
   CS_Release();
   SCL_Set();
   SDA_Set();
@@ -1327,16 +1332,13 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
   BK4819_WriteRegister(BK4819_REG_36, 0x0022);
 
-  BK4819_WriteRegister(BK4819_REG_10, 0x0318);
-  BK4819_WriteRegister(BK4819_REG_11, 0x033A);
-  BK4819_WriteRegister(BK4819_REG_12, 0x03DB);
-  BK4819_WriteRegister(BK4819_REG_13, 0x03DF);
-  BK4819_WriteRegister(BK4819_REG_14, 0x0210);
+  BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
+  BK4819_WriteRegister(BK4819_REG_12, 0x037B);
+  BK4819_WriteRegister(BK4819_REG_11, 0x027B);
+  BK4819_WriteRegister(BK4819_REG_10, 0x007A);
+
   BK4819_WriteRegister(BK4819_REG_49, 0x2AB2);
   BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
-
-  // BK4819_WriteRegister(BK4819_REG_19, 0b0001000001000001);   // <15> MIC AGC
-  // 1 = disable  0 = enable
 
   BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
 
@@ -1378,13 +1380,9 @@ void BK4819_Init(void) {
   BK4819_SetupPowerAmplifier(0, 0);
   BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
 
-  // SetAGC(true);
-  // InitAGC(false);
   // BK4819_WriteRegister(BK4819_REG_43, 0x3028);
 
-  /* BK4819_WriteRegister(0x40, (BK4819_ReadRegister(0x40) & ~(0x7FF)) |
-                                 (gSettings.deviation * 10) | (1 << 12)); */
-  BK4819_WriteRegister(0x40, (BK4819_ReadRegister(0x40) & ~(0x7FF)) | (1450) |
-                                 (1 << 12));
+  BK4819_WriteRegister(0x40, (BK4819_ReadRegister(0x40) & ~(0x7FF)) |
+                                 (gSettings.deviation * 10) | (1 << 12));
   isInitialized = true;
 }
