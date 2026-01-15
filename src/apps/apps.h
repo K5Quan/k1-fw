@@ -14,6 +14,7 @@ typedef enum {
   APP_SETTINGS,
   APP_VFO1,
   APP_CMDSCAN,
+  APP_CMDEDIT,
   APP_FILES,
   APP_ABOUT,
 

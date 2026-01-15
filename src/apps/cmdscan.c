@@ -73,6 +73,7 @@ static void RenderCommandInfo(void) {
   SCMD_Command *cmd = SCAN_GetCurrentCommand();
   if (!cmd)
     return;
+  cmdState.cmdIndex = SCAN_GetCommandIndex();
 
   // Координаты для отображения
   int y = 30;
@@ -122,8 +123,6 @@ static void RenderCommandInfo(void) {
   y = LCD_HEIGHT - 20;
   PrintSmallEx(2, y, POS_L, C_FILL, "Profile: %d", cmdState.profileNum);
 
-  // Получаем реальный индекс команды
-  cmdState.cmdIndex = SCAN_GetCommandIndex();
   PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "#%d", cmdState.cmdIndex);
 
   y += 8;
@@ -159,37 +158,15 @@ void CMDSCAN_deinit(void) {
   // Возвращаем обычный режим через SCAN API
   SCAN_SetCommandMode(false);
   cmdState.isActive = false;
-
-  Log("[CMDSCAN] Deinitialized");
 }
 
-// В cmdscan.c, функция CMDSCAN_update()
 void CMDSCAN_update(void) {
-  if (!cmdState.isActive)
-    return;
-
-  // Выполняем команды каждые 50мс (вместо 100мс для более плавного отображения)
-  static uint32_t lastUpdate = 0;
-  uint32_t now = Now();
-
-  if (now - lastUpdate < 50) {
-    return;
-  }
-  lastUpdate = now;
-
-  // ОСНОВНАЯ ЛОГИКА ВЫПОЛНЕНИЯ КОМАНД В scan.c
-  // Мы просто даем системе время на выполнение
-
-  // Обновляем статистику
-  static uint32_t lastStatUpdate = 0;
-  if (now - lastStatUpdate > 1000) {
-    // Обновляем счетчик выполненных команд
+  if (cmdState.isActive) {
+    // Обновляем статистику
     SCMD_Command *cmd = SCAN_GetCurrentCommand();
     if (cmd) {
-      cmdState.cmdIndex =
-          SCAN_GetCommandIndex(); // Получаем индекс из контекста
+      cmdState.cmdIndex = SCAN_GetCommandIndex();
     }
-    lastStatUpdate = now;
   }
 }
 
@@ -212,6 +189,10 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_9:
       // Принудительный переход к следующей команде
       SCAN_CommandForceNext();
+      return true;
+
+    case KEY_F:
+      APPS_run(APP_CMDEDIT);
       return true;
 
     // Управление выполнением
@@ -258,7 +239,6 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
       return true;
 
     case KEY_PTT:
-      // Выход в VFO режим
       APPS_run(APP_VFO1);
       return true;
     }
@@ -288,114 +268,48 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
 }
 
 void CMDSCAN_render(void) {
-  // Статусная строка
   STATUSLINE_RenderRadioSettings();
-
-  // Заголовок
-  PrintSmallEx(LCD_XCENTER, 14, POS_C, C_FILL, "CMD SCAN P%d",
-               cmdState.profileNum);
 
   // Отображаем имя файла (укороченное)
   const char *filename = strrchr(cmdState.filename, '/');
-  if (filename)
+  if (filename) {
     filename++;
-  else
+  } else {
     filename = cmdState.filename;
-
-  PrintSmallEx(LCD_XCENTER, 24, POS_C, C_FILL, "%s", filename);
-
-  if (vfo) {
-    char freqBuf[16];
-    mhzToS(freqBuf, vfo->msm.f);
-    PrintMediumBoldEx(LCD_XCENTER, 40, POS_C, C_FILL, "%s", freqBuf);
-
-    UI_RSSIBar(64 - 8);
-
-    // Текст RSSI
-    PrintSmallEx(20, 70, POS_L, C_FILL, "RSSI: %u", vfo->msm.rssi);
-    PrintSmallEx(LCD_WIDTH - 20, 70, POS_R, C_FILL,
-                 vfo->msm.open ? "SIGNAL" : "NOISE");
-    // Индикатор открытия squelch
-    if (vfo->is_open) {
-      FillRect(LCD_WIDTH - 30, 20, 20, 20, C_INVERT);
-      PrintSmallEx(LCD_WIDTH - 20, 30, POS_C, C_INVERT, "SQL");
-    }
   }
 
-  // Информация о текущей команде
+  char freqBuf[16];
   SCMD_Command *cmd = SCAN_GetCurrentCommand();
-  if (cmd && cmdState.showInfo) {
-    int y = 85;
 
-    // Тип команды
-    const char *typeNames[] = {"CH", "RG", "JU", "CJ", "PA", "BO", "MK", "CL",
-                               "RT", "SP", "SM", "PW", "GN", "RC", "SR", "TR"};
-    uint8_t type_idx = cmd->type % 16;
+  PrintSmallEx(LCD_XCENTER, 12, POS_C, C_FILL, "%s", filename);
 
-    PrintSmallEx(2, y, POS_L, C_FILL, "CMD: %s", typeNames[type_idx]);
-    PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "PRIO: %d", cmd->priority);
-    y += 10;
-
-    // Параметры в зависимости от типа
-    switch (cmd->type) {
-    case SCMD_CHANNEL:
-      if (cmd->start > 0) {
-        PrintSmallEx(2, y, POS_L, C_FILL, "Freq: %.3f MHz",
-                     cmd->start / 1000000.0f);
-        y += 10;
-      }
-      if (cmd->dwell_ms > 0) {
-        PrintSmallEx(2, y, POS_L, C_FILL, "Time: %d ms", cmd->dwell_ms);
-      }
-      break;
-
-    case SCMD_RANGE:
-      PrintSmallEx(2, y, POS_L, C_FILL, "Range: %.3f-%.3f",
-                   cmd->start / 1000000.0f, cmd->end / 1000000.0f);
-      y += 10;
-      if (cmd->dwell_ms > 0) {
-        PrintSmallEx(2, y, POS_L, C_FILL, "Dwell: %d ms/pt", cmd->dwell_ms);
-      }
-      break;
-
-    case SCMD_PAUSE:
-      PrintSmallEx(2, y, POS_L, C_FILL, "Pause: %d ms", cmd->dwell_ms);
-      break;
-    }
-
-    // Индекс команды
-    y = LCD_HEIGHT - 30;
-    PrintSmallEx(2, y, POS_L, C_FILL, "Cmd: %d/%d", cmdState.cmdIndex,
-                 SCAN_GetCommandCount());
-    PrintSmallEx(LCD_WIDTH - 2, y, POS_R, C_FILL, "Exec: %lu",
-                 cmdState.execCount);
-
-    // Прогресс выполнения
-    if (SCAN_GetCommandCount() > 0) {
-      int progress_width =
-          (cmdState.cmdIndex * (LCD_WIDTH - 40)) / SCAN_GetCommandCount();
-      DrawRect(20, LCD_HEIGHT - 20, LCD_WIDTH - 40, 6, C_FILL);
-      if (progress_width > 0) {
-        FillRect(20, LCD_HEIGHT - 20, progress_width, 6, C_INVERT);
-      }
-    }
+  if (cmd) {
+    const char *typeNames[] = {
+        [SCMD_NOP] = "--",     // NOP
+        [SCMD_CHANNEL] = "CH", // Одиночный канал
+        [SCMD_RANGE] = "RNG",  // Диапазон частот
+        [SCMD_JUMP] = "JMP",   // Безусловный переход
+        [SCMD_CJUMP] = "CJ", // Условный переход (если сигнал)
+        [SCMD_PAUSE] = "PAU",    // Пауза
+        [SCMD_CALL] = "CAL",     // Вызов подпрограммы
+        [SCMD_RETURN] = "RET",   // Возврат из подпрограммы
+        [SCMD_MARKER] = "MRK",   // Метка для переходов
+        [SCMD_SETPRIO] = "PRIO", // Установка приоритета
+        [SCMD_SETMODE] = "MOD",  // Установка режима
+    };
+    PrintSmallEx(LCD_XCENTER, 12 + 8, POS_C, C_FILL, "Cmd: %d/%d %s .%lu",
+                 cmdState.cmdIndex, SCAN_GetCommandCount(),
+                 typeNames[cmd->type], cmdState.execCount);
   }
 
-  // Нижняя панель с подсказками
-  int y = LCD_HEIGHT - 10;
-  PrintSmallEx(2, y, POS_L, C_FILL, SCAN_IsCommandMode() ? "RUN" : "STOP");
+  mhzToS(freqBuf, vfo->msm.f);
+  PrintMediumBoldEx(LCD_XCENTER, 12 + 8 + 8, POS_C, C_FILL, "%s", freqBuf);
 
-  // Индикатор активности (мигающий)
-  static bool blink = false;
-  static uint32_t lastBlink = 0;
-  if (Now() - lastBlink > 500) {
-    blink = !blink;
-    lastBlink = Now();
+  if (vfo->is_open) {
+    UI_RSSIBar(41);
   }
 
-  if (SCAN_IsCommandMode() && blink) {
-    FillRect(LCD_WIDTH - 10, y - 3, 3, 3, C_FILL);
+  if (gLastActiveLoot) {
+    UI_DrawLoot(gLastActiveLoot, LCD_XCENTER, 40, POS_C);
   }
-
-  PrintSmallEx(LCD_XCENTER, y, POS_C, C_FILL, "EXIT:PTT");
 }

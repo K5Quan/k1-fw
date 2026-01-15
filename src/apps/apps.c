@@ -7,6 +7,7 @@
 #include "../ui/statusline.h"
 #include "about.h"
 #include "appslist.h"
+#include "cmdedit.h"
 #include "cmdscan.h"
 #include "fc.h"
 #include "files.h"
@@ -69,8 +70,10 @@ const App apps[APPS_COUNT] = {
     [APP_FC] = {"FC", FC_init, FC_update, FC_render, FC_key, FC_deinit, true},
     [APP_VFO1] = {"1 VFO", VFO1_init, VFO1_update, VFO1_render, VFO1_key, NULL,
                   true},
-    [APP_CMDSCAN] = {"CMD Scan", CMDSCAN_init, NULL, CMDSCAN_render,
+    [APP_CMDSCAN] = {"CMD Scan", CMDSCAN_init, CMDSCAN_update, CMDSCAN_render,
                      CMDSCAN_key, CMDSCAN_deinit, true},
+    [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
+                     CMDEDIT_key, NULL, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
     [APP_ABOUT] = {"ABOUT", NULL, NULL, ABOUT_Render, NULL, NULL},
 };
