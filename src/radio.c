@@ -1791,7 +1791,7 @@ static void RADIO_UpdateMeasurement(ExtendedVFOContext *vfo) {
 
 void RADIO_UpdateSquelch(RadioState *state) {
   RADIO_UpdateMeasurement(&state->vfos[state->active_vfo_index]);
-  if (vfo->msm.open != vfo->is_open) {
+  if (vfo->is_open != vfo->msm.open) {
     gRedrawScreen = true; // TODO: mv
     // RADIO_SetParam(ctx, PARAM_AFC_SPD, vfo->msm.open ? 57 : 63, false);
     RADIO_ApplySettings(ctx);

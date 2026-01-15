@@ -10,6 +10,7 @@
 #include "../settings.h"
 #include "../ui/spectrum.h"
 #include "bands.h"
+#include "measurements.h"
 
 // ============================================================================
 // Состояние сканирования
@@ -260,7 +261,7 @@ static void ApplyCommand(SCMD_Command *cmd) {
 // ============================================================================
 
 void SCAN_Check(void) {
-  RADIO_UpdateMultiwatch(gRadioState);
+  // RADIO_UpdateMultiwatch(gRadioState);
 
   // В командном режиме применяем команду если нужно
   if (scan.cmdCtx && !scan.range.active) {
@@ -305,19 +306,25 @@ void SCAN_Check(void) {
   // ОБЩАЯ ЛОГИКА СКАНИРОВАНИЯ (частотный и канальный режимы)
   // ========================================================================
 
-  if (vfo->msm.open) {
+  if (vfo->is_open) {
+    Log("P3");
     RADIO_UpdateSquelch(gRadioState);
-    vfo->msm.open = vfo->is_open;
     gRedrawScreen = true;
   } else {
+    Log("P1");
     UpdateSquelchAndRssi(false);
   }
 
   // Проверка на "думание" о squelch
   if (vfo->msm.open && !vfo->is_open) {
+    Measurement *m = &vfo->msm;
+    // SQL s = GetSql(vfo->context.squelch.value);
+    Log("P2");
     SYSTICK_DelayMs(SQL_DELAY);
     RADIO_UpdateSquelch(gRadioState);
-    vfo->msm.open = vfo->is_open;
+    /* Log("GOT f=%u op=%u(%u), RNG %u(%u) %u(%u) %u(%u)", m->f, vfo->is_open,
+        m->open, //
+        m->rssi, s.ro, m->noise, s.no, m->glitch, s.go); */
 
     if (!vfo->msm.open) {
       scan.squelchLevel++;
@@ -345,7 +352,7 @@ void SCAN_Check(void) {
       if (scan.cmdCtx) {
         SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
         if (cmd && (cmd->flags & SCMD_FLAG_AUTO_WHITELIST)) {
-          // LOOT_Whitelist(&vfo->msm);
+          LOOT_WhitelistLast();
           Log("[SCAN] Auto-whitelisted (NO) %u Hz", vfo->msm.f);
         }
       }
