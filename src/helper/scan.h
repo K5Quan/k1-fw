@@ -11,8 +11,6 @@
 typedef enum {
   SCAN_STATE_IDLE, // Ничего не делаем / ждём команды
   SCAN_STATE_SWITCHING, // Переключаем частоту/VFO
-  SCAN_STATE_WARMUP,    // Ждём стабилизации радио
-  SCAN_STATE_MEASURING, // Измеряем параметры сигнала
   SCAN_STATE_DECIDING,  // Ждём SQL_DELAY и проверяем squelch
   SCAN_STATE_LISTENING  // Squelch открыт, слушаем
 } ScanState;

@@ -39,9 +39,10 @@ const char *SCAN_MODE_NAMES[] = {
 };
 
 const char *SCAN_STATE_NAMES[] = {
-    [SCAN_STATE_IDLE] = "Idle",     [SCAN_STATE_SWITCHING] = "Sw",
-    [SCAN_STATE_WARMUP] = "Warm",   [SCAN_STATE_MEASURING] = "Msm",
-    [SCAN_STATE_DECIDING] = "Decd", [SCAN_STATE_LISTENING] = "Lsn",
+    [SCAN_STATE_IDLE] = "Idle",
+    [SCAN_STATE_SWITCHING] = "Sw",
+    [SCAN_STATE_DECIDING] = "Decd",
+    [SCAN_STATE_LISTENING] = "Lsn",
 };
 
 // ============================================================================
@@ -63,7 +64,8 @@ static void UpdateCPS(void) {
 
 static void ChangeState(ScanState newState) {
   if (scan.state != newState) {
-    // Log("%s->%s", SCAN_STATE_NAMES[scan.state], SCAN_STATE_NAMES[newState]);
+    /* Log("%s->%s %u", SCAN_STATE_NAMES[scan.state],
+       SCAN_STATE_NAMES[newState], vfo->msm.f); */
     scan.state = newState;
     scan.stateEnteredAt = Now();
   }
@@ -155,6 +157,7 @@ static void HandleEndOfRange(void) {
       SCMD_Rewind(scan.cmdCtx);
       Log("[SCAN] Command sequence restarted");
     }
+    scan.rangeActive = false;
     ChangeState(SCAN_STATE_IDLE);
   } else {
     // Обычный режим - возврат к началу
@@ -189,8 +192,13 @@ static void HandleStateSwitching(void) {
 
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
-
+  SYSTICK_DelayUs(scan.scanDelayUs);
   scan.measurement.f = scan.currentF;
+  scan.measurement.rssi = RADIO_GetRSSI(ctx);
+  // scan.measurement.noise = RADIO_GetNoise(ctx);
+  // scan.measurement.glitch = RADIO_GetGlitch(ctx);
+  // scan.measurement.snr = RADIO_GetSNR(ctx);
+
   LOOT_Replace(&scan.measurement, scan.currentF);
 
   scan.scanCycles++;
@@ -200,24 +208,6 @@ static void HandleStateSwitching(void) {
     scan.scanCyclesSql = 0;
   }
   UpdateCPS();
-
-  ChangeState(SCAN_STATE_WARMUP);
-}
-
-static void HandleStateWarmup(void) {
-  uint32_t elapsed = Now() - scan.stateEnteredAt;
-
-  if (elapsed >= scan.scanDelayUs / 1000) {
-    ChangeState(SCAN_STATE_MEASURING);
-  }
-}
-
-static void HandleStateMeasuring(void) {
-  // Измеряем все параметры
-  scan.measurement.rssi = RADIO_GetRSSI(ctx);
-  // scan.measurement.noise = RADIO_GetNoise(ctx);
-  // scan.measurement.glitch = RADIO_GetGlitch(ctx);
-  // scan.measurement.snr = RADIO_GetSNR(ctx);
 
   // Быстрая программная проверка для анализатора
   if (scan.mode == SCAN_MODE_ANALYSER) {
@@ -361,14 +351,6 @@ void SCAN_Check(void) {
 
   case SCAN_STATE_SWITCHING:
     HandleStateSwitching();
-    break;
-
-  case SCAN_STATE_WARMUP:
-    HandleStateWarmup();
-    break;
-
-  case SCAN_STATE_MEASURING:
-    HandleStateMeasuring();
     break;
 
   case SCAN_STATE_DECIDING:

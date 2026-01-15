@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SQL_DELAY 50
+#define SQL_DELAY 90
 #define GARBAGE_FREQUENCY_MOD (13 * MHZ)
 
 #define MAX_VFOS 4
