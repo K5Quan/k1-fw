@@ -13,52 +13,35 @@
 #include "measurements.h"
 
 // ============================================================================
-// Состояние сканирования
+// Глобальный контекст
 // ============================================================================
 
-typedef struct {
-  uint32_t start;
-  uint32_t end;
-  uint32_t current;
-  uint32_t step;
-  bool active;
-} ScanRange;
-
-typedef struct {
-  ScanMode mode;
-  uint32_t scanDelayUs;
-  uint32_t stayAtTimeout;
-  uint32_t scanListenTimeout;
-  uint16_t squelchLevel;
-
-  // Статистика
-  uint32_t scanCycles;
-  uint32_t lastCpsTime;
-  uint32_t currentCps;
-  uint32_t cpsUpdateInterval;
-
-  // Состояние
-  bool lastListenState;
-  bool isMultiband;
-
-  // Единый диапазон для всех режимов
-  ScanRange range;
-
-  // Командный режим
-  SCMD_Context *cmdCtx;
-} ScanState;
-
-static ScanState scan = {
+static ScanContext scan = {
+    .state = SCAN_STATE_IDLE,
     .mode = SCAN_MODE_SINGLE,
     .scanDelayUs = 1200,
+    .sqlDelayMs = SQL_DELAY,
     .squelchLevel = 0,
-    .lastListenState = false,
-    .isMultiband = false,
-    .scanCycles = 0,
-    .lastCpsTime = 0,
-    .currentCps = 0,
-    .cpsUpdateInterval = 1000,
+    .isOpen = false,
+    .rangeActive = false,
+    .currentVfoIndex = -1,
     .cmdCtx = NULL,
+};
+
+static SCMD_Context cmdctx;
+
+const char *SCAN_MODE_NAMES[] = {
+    [SCAN_MODE_SINGLE] = "VFO",
+    [SCAN_MODE_FREQUENCY] = "Scan",
+    [SCAN_MODE_CHANNEL] = "CH Scan",
+    [SCAN_MODE_ANALYSER] = "Analyser",
+    [SCAN_MODE_MULTIWATCH] = "MultiWatch",
+};
+
+const char *SCAN_STATE_NAMES[] = {
+    [SCAN_STATE_IDLE] = "Idle",     [SCAN_STATE_SWITCHING] = "Sw",
+    [SCAN_STATE_WARMUP] = "Warm",   [SCAN_STATE_MEASURING] = "Msm",
+    [SCAN_STATE_DECIDING] = "Decd", [SCAN_STATE_LISTENING] = "Lsn",
 };
 
 // ============================================================================
@@ -69,7 +52,7 @@ static void UpdateCPS(void) {
   uint32_t now = Now();
   uint32_t elapsed = now - scan.lastCpsTime;
 
-  if (elapsed >= scan.cpsUpdateInterval) {
+  if (elapsed >= 1000) {
     if (elapsed > 0) {
       scan.currentCps = (scan.scanCycles * 1000) / elapsed;
     }
@@ -78,12 +61,12 @@ static void UpdateCPS(void) {
   }
 }
 
-static uint16_t MeasureSignal(uint32_t frequency, bool precise) {
-  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, precise, false);
-  RADIO_SetParam(ctx, PARAM_FREQUENCY, frequency, false);
-  RADIO_ApplySettings(ctx);
-  SYSTICK_DelayUs(precise ? scan.scanDelayUs : 50);
-  return RADIO_GetRSSI(ctx);
+static void ChangeState(ScanState newState) {
+  if (scan.state != newState) {
+    // Log("%s->%s", SCAN_STATE_NAMES[scan.state], SCAN_STATE_NAMES[newState]);
+    scan.state = newState;
+    scan.stateEnteredAt = Now();
+  }
 }
 
 static void ApplyBandSettings(void) {
@@ -102,119 +85,30 @@ static void ApplyBandSettings(void) {
 }
 
 static void SetScanRange(uint32_t start, uint32_t end, uint32_t step) {
-  scan.range.start = start;
-  scan.range.end = end;
-  scan.range.current = start;
-  scan.range.step = step;
-  scan.range.active = true;
+  scan.startF = start;
+  scan.endF = end;
+  scan.currentF = start;
+  scan.stepF = step;
+  scan.rangeActive = true;
 
-  vfo->msm.f = start;
-  LOOT_Replace(&vfo->msm, start);
-  SetTimeout(&scan.scanListenTimeout, 0);
-  SetTimeout(&scan.stayAtTimeout, 0);
+  Log("[SCAN] Range: %u-%u Hz, step=%u", start, end, step);
 
-  Log("[SCAN] Range set: %u-%u Hz, step=%u", start, end, step);
+  ChangeState(SCAN_STATE_SWITCHING);
 }
 
 // ============================================================================
-// Переход к следующей частоте - единая функция для всех режимов
-// ============================================================================
-
-static void NextFrequency(void) {
-  if (!scan.range.active)
-    return;
-
-  if (vfo->is_open) {
-    vfo->is_open = false;
-    RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
-  }
-
-  uint32_t step = scan.range.step;
-  if (step == 0) {
-    step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
-  }
-
-  scan.range.current += step;
-
-  // Проверка границ
-  if (scan.range.current > scan.range.end) {
-    if (scan.cmdCtx) {
-      // В командном режиме - следующая команда
-      if (!SCMD_Advance(scan.cmdCtx)) {
-        SCMD_Rewind(scan.cmdCtx);
-        Log("[SCAN] Command sequence restarted");
-      }
-      scan.range.active = false; // Следующая команда установит новый диапазон
-      gRedrawScreen = true;
-      return;
-    } else {
-      // В обычном режиме - возврат к началу
-      if (scan.isMultiband) {
-        ApplyBandSettings();
-      }
-      scan.range.current = scan.range.start;
-      gRedrawScreen = true;
-    }
-  }
-
-  vfo->msm.f = scan.range.current;
-  LOOT_Replace(&vfo->msm, vfo->msm.f);
-  SetTimeout(&scan.scanListenTimeout, 0);
-  SetTimeout(&scan.stayAtTimeout, 0);
-  scan.scanCycles++;
-  UpdateCPS();
-}
-
-static void UpdateSquelchAndRssi(bool isAnalyserMode) {
-  Loot *msm = LOOT_Get(vfo->msm.f);
-
-  // Пропускаем мусорные частоты и black/white list
-  if ((gSettings.skipGarbageFrequencies &&
-       (vfo->msm.f % GARBAGE_FREQUENCY_MOD == 0)) ||
-      (msm && (msm->blacklist || msm->whitelist))) {
-    vfo->msm.open = false;
-    vfo->msm.rssi = 0;
-    SP_AddPoint(&vfo->msm);
-    NextFrequency();
-    return;
-  }
-
-  vfo->msm.rssi = MeasureSignal(vfo->msm.f, !isAnalyserMode);
-  scan.scanCycles++;
-
-  // Автоматическая подстройка squelch
-  if (!scan.squelchLevel && vfo->msm.rssi) {
-    scan.squelchLevel = vfo->msm.rssi - 1;
-  }
-
-  if (scan.squelchLevel > vfo->msm.rssi) {
-    uint16_t perc = (scan.squelchLevel - vfo->msm.rssi) * 100 /
-                    ((scan.squelchLevel + vfo->msm.rssi) / 2);
-    if (perc >= 25) {
-      scan.squelchLevel = vfo->msm.rssi - 1;
-    }
-  }
-
-  vfo->msm.open = vfo->msm.rssi >= scan.squelchLevel;
-  SP_AddPoint(&vfo->msm);
-}
-
-// ============================================================================
-// Применение команды - только установка параметров
+// Обработка команд
 // ============================================================================
 
 static void ApplyCommand(SCMD_Command *cmd) {
-  if (!cmd) {
-    Log("[SCAN] No command to apply");
+  if (!cmd)
     return;
-  }
 
-  Log("[SCAN] Applying command: type=%d, start=%lu, end=%lu", cmd->type,
-      cmd->start, cmd->end);
+  Log("[SCAN] CMD: type=%d, start=%lu, end=%lu", cmd->type, cmd->start,
+      cmd->end);
 
   switch (cmd->type) {
   case SCMD_CHANNEL:
-    // Одиночный канал = диапазон из одной точки
     SetScanRange(cmd->start, cmd->start, 0);
     break;
 
@@ -236,19 +130,17 @@ static void ApplyCommand(SCMD_Command *cmd) {
     break;
 
   case SCMD_JUMP:
-    // GOTO уже обработан в SCMD_Advance
-    Log("[SCAN] Jump executed");
+    Log("[SCAN] Jump");
     break;
 
   case SCMD_MARKER:
-    // Метки игнорируем
     if (!SCMD_Advance(scan.cmdCtx)) {
       SCMD_Rewind(scan.cmdCtx);
     }
     break;
 
   default:
-    Log("[SCAN] Unknown command type: %d", cmd->type);
+    Log("[SCAN] Unknown CMD: %d", cmd->type);
     if (!SCMD_Advance(scan.cmdCtx)) {
       SCMD_Rewind(scan.cmdCtx);
     }
@@ -256,180 +148,242 @@ static void ApplyCommand(SCMD_Command *cmd) {
   }
 }
 
+static void HandleEndOfRange(void) {
+  if (scan.cmdCtx) {
+    // Командный режим - следующая команда
+    if (!SCMD_Advance(scan.cmdCtx)) {
+      SCMD_Rewind(scan.cmdCtx);
+      Log("[SCAN] Command sequence restarted");
+    }
+    ChangeState(SCAN_STATE_IDLE);
+  } else {
+    // Обычный режим - возврат к началу
+    scan.currentF = scan.startF;
+    ChangeState(SCAN_STATE_SWITCHING);
+  }
+  gRedrawScreen = true;
+}
+
 // ============================================================================
-// Главная функция сканирования
+// State Machine - Частотное сканирование
 // ============================================================================
 
-void SCAN_Check(void) {
-  // RADIO_UpdateMultiwatch(gRadioState);
-
-  // В командном режиме применяем команду если нужно
-  if (scan.cmdCtx && !scan.range.active) {
+static void HandleStateIdle(void) {
+  // Ожидание команды в командном режиме
+  if (scan.cmdCtx && !scan.rangeActive) {
     SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
     if (cmd) {
       ApplyCommand(cmd);
     }
+  }
+}
+
+static void HandleStateSwitching(void) {
+  // Переключаем частоту
+  scan.currentF += scan.stepF;
+
+  if (scan.currentF > scan.endF) {
+    HandleEndOfRange();
     return;
   }
 
-  // Режим анализатора - быстрое сканирование
+  RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
+  RADIO_ApplySettings(ctx);
+
+  scan.measurement.f = scan.currentF;
+  LOOT_Replace(&scan.measurement, scan.currentF);
+
+  scan.scanCycles++;
+  scan.scanCyclesSql++;
+  if (scan.scanCyclesSql >= 32) {
+    scan.squelchLevel--;
+    scan.scanCyclesSql = 0;
+  }
+  UpdateCPS();
+
+  ChangeState(SCAN_STATE_WARMUP);
+}
+
+static void HandleStateWarmup(void) {
+  uint32_t elapsed = Now() - scan.stateEnteredAt;
+
+  if (elapsed >= scan.scanDelayUs / 1000) {
+    ChangeState(SCAN_STATE_MEASURING);
+  }
+}
+
+static void HandleStateMeasuring(void) {
+  // Измеряем все параметры
+  scan.measurement.rssi = RADIO_GetRSSI(ctx);
+  // scan.measurement.noise = RADIO_GetNoise(ctx);
+  // scan.measurement.glitch = RADIO_GetGlitch(ctx);
+  // scan.measurement.snr = RADIO_GetSNR(ctx);
+
+  // Быстрая программная проверка для анализатора
   if (scan.mode == SCAN_MODE_ANALYSER) {
-    vfo->msm.rssi = MeasureSignal(vfo->msm.f, false);
-    SP_AddPoint(&vfo->msm);
-    NextFrequency();
+    scan.measurement.open = (scan.measurement.rssi > 0);
+    SP_AddPoint(&scan.measurement);
+    ChangeState(SCAN_STATE_SWITCHING);
     return;
   }
 
-  // Одиночная частота - только мониторинг
-  if (scan.mode == SCAN_MODE_SINGLE) {
-    RADIO_UpdateSquelch(gRadioState);
-    vfo->msm.rssi = MeasureSignal(vfo->msm.f, true);
-    vfo->msm.open = vfo->is_open;
-
-    if (scan.lastListenState != vfo->is_open) {
-      scan.lastListenState = vfo->is_open;
-      gRedrawScreen = true;
-    }
-
-    static uint32_t radioTimer;
-    RADIO_CheckAndSaveVFO(gRadioState);
-    if (Now() - radioTimer >= SQL_DELAY) {
-      RADIO_UpdateSquelch(gRadioState);
-      SP_ShiftGraph(-1);
-      SP_AddGraphPoint(&vfo->msm);
-      radioTimer = Now();
-    }
-    return;
+  // Программная грубая фильтрация
+  if (!scan.squelchLevel && scan.measurement.rssi) {
+    scan.squelchLevel = scan.measurement.rssi - 1;
   }
 
-  // ========================================================================
-  // ОБЩАЯ ЛОГИКА СКАНИРОВАНИЯ (частотный и канальный режимы)
-  // ========================================================================
+  bool programOpen = scan.measurement.rssi >= scan.squelchLevel;
 
-  if (vfo->is_open) {
-    Log("P3");
-    RADIO_UpdateSquelch(gRadioState);
-    gRedrawScreen = true;
+  if (programOpen) {
+    // Потенциально есть сигнал - точная проверка
+    ChangeState(SCAN_STATE_DECIDING);
   } else {
-    Log("P1");
-    UpdateSquelchAndRssi(false);
+    // Точно нет сигнала - на следующую частоту
+    scan.measurement.open = false;
+    SP_AddPoint(&scan.measurement);
+    ChangeState(SCAN_STATE_SWITCHING);
   }
+}
 
-  // Проверка на "думание" о squelch
-  if (vfo->msm.open && !vfo->is_open) {
-    Measurement *m = &vfo->msm;
-    // SQL s = GetSql(vfo->context.squelch.value);
-    Log("P2");
-    SYSTICK_DelayMs(SQL_DELAY);
+static void HandleStateDeciding(void) {
+  uint32_t elapsed = Now() - scan.stateEnteredAt;
+
+  if (elapsed >= scan.sqlDelayMs) {
+    // Аппаратная проверка squelch
     RADIO_UpdateSquelch(gRadioState);
-    /* Log("GOT f=%u op=%u(%u), RNG %u(%u) %u(%u) %u(%u)", m->f, vfo->is_open,
-        m->open, //
-        m->rssi, s.ro, m->noise, s.no, m->glitch, s.go); */
+    scan.isOpen = vfo->is_open;
 
-    if (!vfo->msm.open) {
-      scan.squelchLevel++;
-    }
-  }
+    scan.measurement.open = scan.isOpen;
+    LOOT_Update(&scan.measurement);
+    SP_AddPoint(&scan.measurement);
 
-  LOOT_Update(&vfo->msm);
+    if (scan.isOpen) {
+      // Сигнал подтверждён
+      gRedrawScreen = true;
 
-  // Автокоррекция squelch
-  if (vfo->is_open && !vfo->msm.open) {
-    scan.squelchLevel = SP_GetNoiseFloor();
-  }
-
-  // Логика таймаутов
-  if (scan.lastListenState != vfo->is_open) {
-    scan.lastListenState = vfo->is_open;
-    gRedrawScreen = true;
-
-    if (vfo->is_open) {
-      SetTimeout(&scan.scanListenTimeout,
-                 SCAN_TIMEOUTS[gSettings.sqOpenedTimeout]);
-      SetTimeout(&scan.stayAtTimeout, UINT32_MAX);
-
-      // В командном режиме - проверяем флаги
+      // Auto-whitelist
       if (scan.cmdCtx) {
         SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
         if (cmd && (cmd->flags & SCMD_FLAG_AUTO_WHITELIST)) {
           LOOT_WhitelistLast();
-          Log("[SCAN] Auto-whitelisted (NO) %u Hz", vfo->msm.f);
+          Log("[SCAN] Auto-whitelisted %u Hz", scan.currentF);
         }
       }
+
+      ChangeState(SCAN_STATE_LISTENING);
     } else {
-      SetTimeout(&scan.stayAtTimeout, SCAN_TIMEOUTS[gSettings.sqClosedTimeout]);
+      // Ложное срабатывание - повышаем порог
+      scan.squelchLevel++;
+      ChangeState(SCAN_STATE_SWITCHING);
     }
-  }
-
-  // Проверка таймаутов и переход
-  if ((CheckTimeout(&scan.scanListenTimeout) && vfo->is_open) ||
-      CheckTimeout(&scan.stayAtTimeout)) {
-    NextFrequency();
   }
 }
 
-// ============================================================================
-// API функций
-// ============================================================================
+static void HandleStateListening(void) {
+  // Обновляем состояние squelch
+  RADIO_UpdateSquelch(gRadioState);
+  bool wasOpen = scan.isOpen;
+  scan.isOpen = vfo->is_open;
 
-const char *SCAN_MODE_NAMES[] = {
-    [SCAN_MODE_SINGLE] = "VFO",
-    [SCAN_MODE_FREQUENCY] = "Scan",
-    [SCAN_MODE_CHANNEL] = "CH Scan",
-    [SCAN_MODE_ANALYSER] = "Band scan",
-};
-
-SCMD_Context cmdctx;
-
-void SCAN_LoadCommandFile(const char *filename) {
-  if (!scan.cmdCtx) {
-    scan.cmdCtx = &cmdctx;
-    if (!scan.cmdCtx) {
-      Log("[SCAN] Failed to allocate command context");
-      return;
-    }
-    memset(scan.cmdCtx, 0, sizeof(SCMD_Context));
+  if (wasOpen != scan.isOpen) {
+    gRedrawScreen = true;
   }
 
-  SCMD_DebugDumpFile(filename);
+  uint32_t elapsed = Now() - scan.stateEnteredAt;
 
-  if (SCMD_Init(scan.cmdCtx, filename)) {
-    scan.mode = SCAN_MODE_FREQUENCY;
-    scan.range.active = false; // Команда установит диапазон
-    Log("[SCAN] Loaded command file: %s", filename);
+  if (scan.isOpen) {
+    // Проверка таймаута прослушивания
+    if (elapsed >= SCAN_TIMEOUTS[gSettings.sqOpenedTimeout]) {
+      Log("[SCAN] Listen timeout");
+      ChangeState(SCAN_STATE_SWITCHING);
+      gRedrawScreen = true;
+    }
   } else {
-    scan.cmdCtx = NULL;
-    Log("[SCAN] Failed to load: %s", filename);
+    // Squelch закрылся - ждём таймаут закрытия
+    if (elapsed >= SCAN_TIMEOUTS[gSettings.sqClosedTimeout]) {
+      Log("[SCAN] Close timeout");
+      ChangeState(SCAN_STATE_SWITCHING);
+      gRedrawScreen = true;
+    }
   }
 }
 
-void SCAN_SetCommandMode(bool enabled) {
-  if (!enabled && scan.cmdCtx) {
-    SCMD_Close(scan.cmdCtx);
-    scan.cmdCtx = NULL;
-    scan.range.active = false;
-    Log("[SCAN] Command mode disabled");
+// ============================================================================
+// State Machine - Single VFO (мониторинг)
+// ============================================================================
+
+static void HandleModeSingle(void) {
+  static uint32_t radioTimer = 0;
+  uint32_t now = Now();
+
+  RADIO_UpdateSquelch(gRadioState);
+
+  scan.measurement.f = ctx->frequency;
+  scan.measurement.rssi = RADIO_GetRSSI(ctx);
+  scan.isOpen = vfo->is_open;
+  scan.measurement.open = scan.isOpen;
+
+  static bool lastOpen = false;
+  if (lastOpen != scan.isOpen) {
+    lastOpen = scan.isOpen;
+    gRedrawScreen = true;
+  }
+
+  RADIO_CheckAndSaveVFO(gRadioState);
+
+  if (now - radioTimer >= SQL_DELAY) {
+    RADIO_UpdateSquelch(gRadioState);
+    SP_ShiftGraph(-1);
+    SP_AddGraphPoint(&scan.measurement);
+    radioTimer = now;
   }
 }
 
-bool SCAN_IsCommandMode(void) { return scan.cmdCtx != NULL; }
+// ============================================================================
+// Главная функция
+// ============================================================================
 
-void SCAN_CommandForceNext(void) {
-  if (!scan.cmdCtx)
+void SCAN_Check(void) {
+  // Multiwatch обрабатывается отдельно
+  RADIO_UpdateMultiwatch(gRadioState);
+
+  // Single mode - отдельная логика
+  if (scan.mode == SCAN_MODE_SINGLE) {
+    HandleModeSingle();
     return;
-
-  Log("[SCAN] Force advancing to next command");
-  if (!SCMD_Advance(scan.cmdCtx)) {
-    SCMD_Rewind(scan.cmdCtx);
-    Log("[SCAN] Restarted command sequence");
   }
 
-  scan.range.active = false;
-  SetTimeout(&scan.scanListenTimeout, 0);
-  SetTimeout(&scan.stayAtTimeout, 0);
-  scan.lastListenState = false;
-  gRedrawScreen = true;
+  // State machine для частотного сканирования
+  switch (scan.state) {
+  case SCAN_STATE_IDLE:
+    HandleStateIdle();
+    break;
+
+  case SCAN_STATE_SWITCHING:
+    HandleStateSwitching();
+    break;
+
+  case SCAN_STATE_WARMUP:
+    HandleStateWarmup();
+    break;
+
+  case SCAN_STATE_MEASURING:
+    HandleStateMeasuring();
+    break;
+
+  case SCAN_STATE_DECIDING:
+    HandleStateDeciding();
+    break;
+
+  case SCAN_STATE_LISTENING:
+    HandleStateListening();
+    break;
+  }
 }
+
+// ============================================================================
+// API функции
+// ============================================================================
 
 void SCAN_SetMode(ScanMode mode) {
   if (scan.cmdCtx && mode != scan.mode) {
@@ -441,12 +395,11 @@ void SCAN_SetMode(ScanMode mode) {
 
   scan.scanCycles = 0;
   scan.squelchLevel = 0;
-  SetTimeout(&scan.stayAtTimeout, 0);
-  SetTimeout(&scan.scanListenTimeout, 0);
+  ChangeState(SCAN_STATE_IDLE);
 
   switch (mode) {
   case SCAN_MODE_SINGLE:
-    scan.range.active = false;
+    scan.rangeActive = false;
     break;
 
   case SCAN_MODE_FREQUENCY:
@@ -459,12 +412,23 @@ void SCAN_SetMode(ScanMode mode) {
   case SCAN_MODE_CHANNEL:
     // TODO: channel mode
     break;
+
+  case SCAN_MODE_MULTIWATCH:
+    // Handled by RADIO_UpdateMultiwatch
+    break;
   }
 }
 
 ScanMode SCAN_GetMode(void) { return scan.mode; }
 
-uint32_t SCAN_GetCps(void) { return scan.currentCps; }
+void SCAN_Init(bool multiband) {
+  scan.lastCpsTime = Now();
+  scan.scanCycles = 0;
+  scan.currentCps = 0;
+
+  ApplyBandSettings();
+  BK4819_WriteRegister(BK4819_REG_3F, 0);
+}
 
 void SCAN_setBand(Band b) {
   gCurrentBand = b;
@@ -500,7 +464,7 @@ void SCAN_setRange(uint32_t fs, uint32_t fe) {
   }
 }
 
-void SCAN_Next(void) { NextFrequency(); }
+void SCAN_Next(void) { ChangeState(SCAN_STATE_SWITCHING); }
 
 void SCAN_NextBlacklist(void) {
   LOOT_BlacklistLast();
@@ -512,20 +476,59 @@ void SCAN_NextWhitelist(void) {
   SCAN_Next();
 }
 
-void SCAN_Init(bool multiband) {
-  scan.isMultiband = multiband;
-  vfo->msm.snr = 0;
-  scan.lastCpsTime = Now();
-  scan.scanCycles = 0;
-  scan.currentCps = 0;
-
-  ApplyBandSettings();
-  BK4819_WriteRegister(BK4819_REG_3F, 0);
-}
-
 void SCAN_SetDelay(uint32_t delay) { scan.scanDelayUs = delay; }
 
 uint32_t SCAN_GetDelay(void) { return scan.scanDelayUs; }
+
+uint32_t SCAN_GetCps(void) { return scan.currentCps; }
+
+// ============================================================================
+// Командный режим
+// ============================================================================
+
+void SCAN_LoadCommandFile(const char *filename) {
+  if (!scan.cmdCtx) {
+    scan.cmdCtx = &cmdctx;
+    memset(scan.cmdCtx, 0, sizeof(SCMD_Context));
+  }
+
+  SCMD_DebugDumpFile(filename);
+
+  if (SCMD_Init(scan.cmdCtx, filename)) {
+    scan.mode = SCAN_MODE_FREQUENCY;
+    scan.rangeActive = false;
+    ChangeState(SCAN_STATE_IDLE);
+    Log("[SCAN] Loaded command file: %s", filename);
+  } else {
+    scan.cmdCtx = NULL;
+    Log("[SCAN] Failed to load: %s", filename);
+  }
+}
+
+void SCAN_SetCommandMode(bool enabled) {
+  if (!enabled && scan.cmdCtx) {
+    SCMD_Close(scan.cmdCtx);
+    scan.cmdCtx = NULL;
+    scan.rangeActive = false;
+    Log("[SCAN] Command mode disabled");
+  }
+}
+
+bool SCAN_IsCommandMode(void) { return scan.cmdCtx != NULL; }
+
+void SCAN_CommandForceNext(void) {
+  if (!scan.cmdCtx)
+    return;
+
+  Log("[SCAN] Force next command");
+  if (!SCMD_Advance(scan.cmdCtx)) {
+    SCMD_Rewind(scan.cmdCtx);
+  }
+
+  scan.rangeActive = false;
+  ChangeState(SCAN_STATE_IDLE);
+  gRedrawScreen = true;
+}
 
 SCMD_Command *SCAN_GetCurrentCommand(void) {
   return scan.cmdCtx ? SCMD_GetCurrent(scan.cmdCtx) : NULL;
@@ -542,3 +545,5 @@ uint16_t SCAN_GetCommandIndex(void) {
 uint16_t SCAN_GetCommandCount(void) {
   return scan.cmdCtx ? SCMD_GetCommandCount(scan.cmdCtx) : 0;
 }
+
+uint16_t SCAN_GetSquelchLevel() { return scan.squelchLevel; }

@@ -316,6 +316,8 @@ void SCANER_render(void) {
   }
 
   REGSMENU_Draw();
+
+  SP_RenderLine(SCAN_GetSquelchLevel(), minMaxRssi);
 }
 
 void SCANER_deinit(void) {}
