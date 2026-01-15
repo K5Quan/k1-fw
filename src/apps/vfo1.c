@@ -181,11 +181,11 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
       RADIO_SaveVFOToStorage(gRadioState, vfoN, &gChEd);
       gChNum = -1;
       APPS_run(APP_CH_CFG);
-      return true;
-
-    case KEY_STAR:
-      APPS_run(APP_LOOT_LIST);
       return true; */
+
+  case KEY_STAR:
+    APPS_run(APP_LOOTLIST);
+    return true;
 
   case KEY_SIDE1:
     gMonitorMode = !gMonitorMode;

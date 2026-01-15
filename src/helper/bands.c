@@ -714,7 +714,6 @@ static Band rangesStack[RANGES_STACK_SIZE] = {0};
 static int8_t rangesStackIndex = -1;
 
 void BANDS_Recreate() {
-  STORAGE_INIT("Bands.bnd", Band, MAX_BANDS);
   for (uint8_t i = 0; i < MAX_BANDS; ++i) {
     STORAGE_SAVE("Bands.bnd", i, &defaultBands[i]);
   }

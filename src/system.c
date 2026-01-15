@@ -96,11 +96,6 @@ static void reset() {
   lfs_format(&gLfs, &gStorage.config);
   lfs_mount(&gLfs, &gStorage.config);
 
-  STORAGE_INIT("Settings.set", Settings, 1);
-  STORAGE_SAVE("Settings.set", 0, &gSettings);
-
-  BANDS_Recreate();
-
   UI_ClearScreen();
   PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "Release key 0!");
   ST7565_Blit();
@@ -114,9 +109,14 @@ static void reset() {
 
 static void loadSettingsOrReset() {
   if (!lfs_file_exists("Settings.set")) {
-    reset();
+    STORAGE_INIT("Settings.set", Settings, 1);
+    STORAGE_SAVE("Settings.set", 0, &gSettings);
   }
   STORAGE_LOAD("Settings.set", 0, &gSettings);
+
+  if (!lfs_file_exists("Bands.bnd")) {
+    STORAGE_INIT("Bands.bnd", Band, MAX_BANDS);
+  }
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {

@@ -199,8 +199,6 @@ static void HandleStateSwitching(void) {
   // scan.measurement.glitch = RADIO_GetGlitch(ctx);
   // scan.measurement.snr = RADIO_GetSNR(ctx);
 
-  LOOT_Replace(&scan.measurement, scan.currentF);
-
   scan.scanCycles++;
   scan.scanCyclesSql++;
   if (scan.scanCyclesSql >= 32) {
@@ -211,7 +209,6 @@ static void HandleStateSwitching(void) {
 
   // Быстрая программная проверка для анализатора
   if (scan.mode == SCAN_MODE_ANALYSER) {
-    scan.measurement.open = (scan.measurement.rssi > 0);
     SP_AddPoint(&scan.measurement);
     ChangeState(SCAN_STATE_SWITCHING);
     return;

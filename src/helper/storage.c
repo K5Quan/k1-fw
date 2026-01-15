@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "../driver/lfs.h"
 #include "../external/printf/printf.h"
+#include "../ui/graphics.h"
 #include <string.h>
 
 // Статические буферы для кеша файлов (не используем malloc)
@@ -12,6 +13,14 @@ static uint8_t temp_buf[32];
 bool Storage_Init(const char *name, size_t item_size, uint16_t max_items) {
   lfs_file_t file;
   struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
+
+  if (lfs_file_exists(name)) {
+    return false;
+  }
+  UI_ClearScreen();
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER - 4, POS_C, C_FILL, "Creating");
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER + 4, POS_C, C_FILL, "%s", name);
+  ST7565_Blit();
 
   // Используем lfs_file_opencfg с нашим буфером
   int err = lfs_file_opencfg(&gLfs, &file, name,
@@ -44,6 +53,9 @@ bool Storage_Init(const char *name, size_t item_size, uint16_t max_items) {
 
   lfs_file_close(&gLfs, &file);
   printf("[Storage_Init] File '%s' created, size: %lu\n", name, total_size);
+
+  gRedrawScreen = true;
+
   return true;
 }
 

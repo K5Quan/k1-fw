@@ -191,9 +191,9 @@ static bool handleRelease(KEY_Code_t key) {
     SCAN_NextWhitelist();
     return true;
 
-    /* case KEY_STAR:
-      APPS_run(APP_LOOT_LIST);
-      return true; */
+  case KEY_STAR:
+    APPS_run(APP_LOOTLIST);
+    return true;
 
   case KEY_2:
     BANDS_RangePush(CUR_GetRange(BANDS_RangePeek(), step));

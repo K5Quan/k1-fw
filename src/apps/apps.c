@@ -11,6 +11,7 @@
 #include "cmdscan.h"
 #include "fc.h"
 #include "files.h"
+#include "lootlist.h"
 #include "scaner.h"
 #include "settings.h"
 #include "vfo1.h"
@@ -74,6 +75,8 @@ const App apps[APPS_COUNT] = {
                      CMDSCAN_key, CMDSCAN_deinit, true},
     [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
                      CMDEDIT_key, NULL, true},
+    [APP_LOOTLIST] = {"Lootlist", LOOTLIST_init, NULL, LOOTLIST_render,
+                      LOOTLIST_key, NULL, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
     [APP_ABOUT] = {"ABOUT", NULL, NULL, ABOUT_Render, NULL, NULL},
 };
