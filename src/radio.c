@@ -444,7 +444,6 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
     LogC(LOG_C_BRIGHT_YELLOW, "BK4819 on");
     BK4819_RX_TurnOn(); // Reset state
     hw_state->bk4819_enabled = true;
-    Log("[RADIO] BK4819 RX ON");
     break;
 
   case RADIO_BK1080:
@@ -461,12 +460,10 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
       BK1080_Mute(false);
       BK1080_Init(ctx->frequency, true);
       hw_state->bk1080_enabled = true;
-      Log("[RADIO] BK1080 init");
     } else {
       BK4819_SelectFilter(ctx->frequency);
       BK1080_SetFrequency(ctx->frequency);
       BK1080_Mute(false);
-      Log("[RADIO] BK1080 freq update");
     }
     break;
 
@@ -486,10 +483,8 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
       }
       hw_state->si4732_enabled = true;
       isSi4732On = true;
-      Log("[RADIO] SI4732 power up");
     } else {
       SI47XX_SetVolume(63);
-      Log("[RADIO] SI4732 volume restore");
     }
     break;
 
@@ -506,7 +501,6 @@ static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
       LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
       BK4819_Idle();
       hw_state->bk4819_enabled = false;
-      Log("[RADIO] BK4819 -> Idle");
     }
     break;
 
@@ -515,7 +509,6 @@ static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
       LogC(LOG_C_BRIGHT_YELLOW, "BK1080 init false");
       BK1080_Init(0, false);
       hw_state->bk1080_enabled = false;
-      Log("[RADIO] BK1080 powered down");
     }
     break;
 
@@ -525,10 +518,8 @@ static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
         SI47XX_PowerDown();
         isSi4732On = false;
         hw_state->si4732_enabled = false;
-        Log("[RADIO] SI4732 powered down");
       } else {
         SI47XX_SetVolume(0);
-        Log("[RADIO] SI4732 muted");
       }
     }
     break;

@@ -182,8 +182,6 @@ static void HandleStateIdle(void) {
 }
 
 static void HandleStateSwitching(void) {
-  // Переключаем частоту
-  scan.currentF += scan.stepF;
 
   if (scan.currentF > scan.endF) {
     HandleEndOfRange();
@@ -210,6 +208,7 @@ static void HandleStateSwitching(void) {
   // Быстрая программная проверка для анализатора
   if (scan.mode == SCAN_MODE_ANALYSER) {
     SP_AddPoint(&scan.measurement);
+    scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_SWITCHING);
     return;
   }
@@ -223,11 +222,13 @@ static void HandleStateSwitching(void) {
 
   if (programOpen) {
     // Потенциально есть сигнал - точная проверка
+    scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_DECIDING);
   } else {
     // Точно нет сигнала - на следующую частоту
     scan.measurement.open = false;
     SP_AddPoint(&scan.measurement);
+    scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_SWITCHING);
   }
 }
