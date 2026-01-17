@@ -330,10 +330,16 @@ void SP_RenderLine(uint16_t rssi, VMinMax v) {
   uint8_t yVal = ConvertDomain(rssi, v.vMin, v.vMax, 0, SPECTRUM_H);
   DrawHLine(0, S_BOTTOM - yVal, filledPoints, C_FILL);
 }
+void SP_RenderPoint(Measurement *m, uint8_t i, uint8_t n, Band *b, VMinMax r,
+                    Color c) {
+  uint8_t yVal = ConvertDomain(m->rssi, r.vMin, r.vMax, 0, SPECTRUM_H);
+  PutPixel(i, S_BOTTOM - yVal, c);
+}
 
 uint16_t SP_GetNoiseFloor() { return Std(rssiHistory, filledPoints); }
 uint16_t SP_GetRssiMax() { return Max(rssiHistory, filledPoints); }
 
+uint16_t SP_GetPointRSSI(uint8_t i) { return rssiHistory[i]; }
 uint16_t SP_GetLastGraphValue() { return rssiHistory[MAX_POINTS - 1]; }
 
 void SP_RenderGraph(uint16_t min, uint16_t max) {

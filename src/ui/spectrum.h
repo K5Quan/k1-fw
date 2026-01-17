@@ -2,6 +2,7 @@
 #define UI_SPECTRUM_H
 
 #include "../inc/band.h"
+#include "graphics.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -37,7 +38,12 @@ void SP_Shift(int16_t n);
 void SP_ShiftGraph(int16_t n);
 uint16_t SP_GetLastGraphValue();
 
+uint16_t SP_GetPointRSSI(uint8_t i);
+void SP_RenderPoint(Measurement *m, uint8_t i, uint8_t n, Band *b, VMinMax r,
+                    Color c);
+
 uint8_t SP_F2X(uint32_t f);
+uint32_t SP_X2F(uint8_t x);
 
 void CUR_Render();
 bool CUR_Move(bool up);

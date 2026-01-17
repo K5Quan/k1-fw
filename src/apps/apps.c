@@ -6,6 +6,7 @@
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "about.h"
+#include "analyzer.h"
 #include "appslist.h"
 #include "cmdedit.h"
 #include "cmdscan.h"
@@ -52,12 +53,13 @@ AppType_t APPS_Peek(void) {
 }
 
 const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
-    APP_VFO1,    //
-    APP_CMDSCAN, //
-    APP_SCANER,  //
-    APP_FC,      //
-    APP_FILES,   //
-    APP_ABOUT,   //
+    APP_VFO1,     //
+    APP_CMDSCAN,  //
+    APP_SCANER,   //
+    APP_ANALYZER, //
+    APP_FC,       //
+    APP_FILES,    //
+    APP_ABOUT,    //
 };
 
 const App apps[APPS_COUNT] = {
@@ -75,6 +77,8 @@ const App apps[APPS_COUNT] = {
                      CMDSCAN_key, CMDSCAN_deinit, true},
     [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
                      CMDEDIT_key, NULL, true},
+    [APP_ANALYZER] = {"Analyzer", ANALYZER_init, ANALYZER_update,
+                      ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
     [APP_LOOTLIST] = {"Lootlist", LOOTLIST_init, NULL, LOOTLIST_render,
                       LOOTLIST_key, NULL, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
