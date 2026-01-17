@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SQL_DELAY 90
+#define SQL_DELAY 30
 #define GARBAGE_FREQUENCY_MOD (13 * MHZ)
 
 #define MAX_VFOS 4
@@ -156,10 +156,17 @@ typedef struct {
   bool is_open;
 } ExtendedVFOContext;
 
+typedef struct {
+  bool bk4819_enabled;
+  bool bk1080_enabled;
+  bool si4732_enabled;
+} RadioHardwareState;
+
 // Global radio state
 typedef struct {
   ExtendedVFOContext vfos[MAX_VFOS]; // Array of VFOs
   RadioScanState scan_state; // Состояние сканирования
+  RadioHardwareState hw_state;
   uint32_t last_scan_time;   // Last scan time
   uint8_t num_vfos;          // Number of configured VFOs
   uint8_t active_vfo_index;  // Currently active VFO

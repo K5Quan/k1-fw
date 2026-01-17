@@ -472,10 +472,11 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
 
-  if (precise) {
+  if (false && precise) {
     BK4819_WriteRegister(BK4819_REG_30, 0x0200);
   } else {
     BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
+    SYSTICK_DelayUs(300);
   }
 
   BK4819_WriteRegister(BK4819_REG_30, reg);

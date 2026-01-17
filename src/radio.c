@@ -167,7 +167,7 @@ static const FreqBand bk4819_bands[] = {
         .max_freq = BK4819_F_MAX,
         .num_available_mods = 4,
         .num_available_bandwidths = 10,
-        .available_mods = {MOD_FM, MOD_AM, MOD_LSB, MOD_USB},
+        .available_mods = {MOD_FM, MOD_AM, MOD_LSB, MOD_USB, MOD_WFM},
         .available_bandwidths =
             {
                 BK4819_FILTER_BW_6k,  //  "U 6K"
@@ -414,58 +414,8 @@ static void toggleBK4819(bool on) {
   } else {
     AUDIO_ToggleSpeaker(false);
     SYSTICK_DelayMs(8);
-    BK4819_ToggleAFDAC(false);
     BK4819_ToggleAFBit(false);
-  }
-}
-
-static void rxTurnOff(Radio r) {
-  Log("RX OFF %s", RADIO_NAMES[r]);
-  switch (r) {
-  case RADIO_BK4819:
-    BK4819_Idle();
-    break;
-  case RADIO_BK1080:
-    BK1080_Mute(true);
-    break;
-  case RADIO_SI4732:
-    if (isSi4732On) {
-      if (gSettings.si4732PowerOff) {
-        SI47XX_PowerDown();
-      } else {
-        SI47XX_SetVolume(0);
-      }
-    }
-    break;
-  default:
-    break;
-  }
-}
-
-static void rxTurnOn(const VFOContext *ctx) {
-  switch (ctx->radio_type) {
-  case RADIO_BK4819:
-    BK4819_RX_TurnOn();
-    break;
-  case RADIO_BK1080:
-    BK4819_Idle();
-    BK1080_Mute(false);
-    BK1080_Init(ctx->frequency, true);
-    break;
-  case RADIO_SI4732:
-    BK4819_Idle();
-    if (gSettings.si4732PowerOff || !isSi4732On) {
-      if (RADIO_IsSSB(ctx)) {
-        SI47XX_PatchPowerUp();
-      } else {
-        SI47XX_PowerUp();
-      }
-    } else {
-      SI47XX_SetVolume(63);
-    }
-    break;
-  default:
-    break;
+    BK4819_ToggleAFDAC(false);
   }
 }
 
@@ -485,47 +435,148 @@ static void toggleBK1080SI4732(bool on) {
   }
 }
 
-// функция переключения аудио на конкретный VFO
+// Функция включения конкретного приёмника
+static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
+  Radio target = ctx->radio_type;
+
+  switch (target) {
+  case RADIO_BK4819:
+    BK4819_RX_TurnOn(); // Reset state
+    hw_state->bk4819_enabled = true;
+    Log("[RADIO] BK4819 RX ON");
+    break;
+
+  case RADIO_BK1080:
+    // Переводим BK4819 в Idle только если он был активен
+    if (hw_state->bk4819_enabled) {
+      BK4819_Idle();
+      hw_state->bk4819_enabled = false;
+    }
+
+    if (!hw_state->bk1080_enabled) {
+      BK4819_SelectFilter(ctx->frequency);
+      BK1080_Mute(false);
+      BK1080_Init(ctx->frequency, true);
+      hw_state->bk1080_enabled = true;
+      Log("[RADIO] BK1080 init");
+    } else {
+      BK4819_SelectFilter(ctx->frequency);
+      BK1080_SetFrequency(ctx->frequency);
+      BK1080_Mute(false);
+      Log("[RADIO] BK1080 freq update");
+    }
+    break;
+
+  case RADIO_SI4732:
+    // Переводим BK4819 в Idle только если он был активен
+    if (hw_state->bk4819_enabled) {
+      BK4819_Idle();
+      hw_state->bk4819_enabled = false;
+    }
+
+    if (!hw_state->si4732_enabled || gSettings.si4732PowerOff || !isSi4732On) {
+      if (RADIO_IsSSB(ctx)) {
+        SI47XX_PatchPowerUp();
+      } else {
+        SI47XX_PowerUp();
+      }
+      hw_state->si4732_enabled = true;
+      isSi4732On = true;
+      Log("[RADIO] SI4732 power up");
+    } else {
+      SI47XX_SetVolume(63);
+      Log("[RADIO] SI4732 volume restore");
+    }
+    break;
+
+  default:
+    break;
+  }
+}
+
+// Упрощённая функция выключения
+static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
+  switch (r) {
+  case RADIO_BK4819:
+    if (hw_state->bk4819_enabled) {
+      BK4819_Idle();
+      hw_state->bk4819_enabled = false;
+      Log("[RADIO] BK4819 -> Idle");
+    }
+    break;
+
+  case RADIO_BK1080:
+    if (hw_state->bk1080_enabled) {
+      BK1080_Init(0, false);
+      hw_state->bk1080_enabled = false;
+      Log("[RADIO] BK1080 powered down");
+    }
+    break;
+
+  case RADIO_SI4732:
+    if (hw_state->si4732_enabled) {
+      if (gSettings.si4732PowerOff) {
+        SI47XX_PowerDown();
+        isSi4732On = false;
+        hw_state->si4732_enabled = false;
+        Log("[RADIO] SI4732 powered down");
+      } else {
+        SI47XX_SetVolume(0);
+        Log("[RADIO] SI4732 muted");
+      }
+    }
+    break;
+
+  default:
+    break;
+  }
+}
+
 void RADIO_SwitchAudioToVFO(RadioState *state, uint8_t vfo_index) {
   if (vfo_index >= state->num_vfos)
     return;
 
-  Log("SW AUD");
+  Log("[RADIO] SW AUD to VFO %u", vfo_index);
 
-  const ExtendedVFOContext *vfo = &state->vfos[vfo_index];
+  const ExtendedVFOContext *new_vfo = &state->vfos[vfo_index];
+  Radio new_radio = new_vfo->context.radio_type;
 
-  switch (vfo->context.radio_type) {
+  // Сначала выключаем аудио со всех приёмников
+  toggleBK4819(false);
+  toggleBK1080SI4732(false);
+
+  // Выключаем ненужные приёмники
+  if (new_radio != RADIO_BK4819) {
+    rxTurnOff(RADIO_BK4819, &state->hw_state);
+  }
+
+  if (new_radio != RADIO_BK1080) {
+    rxTurnOff(RADIO_BK1080, &state->hw_state);
+  }
+
+  if (new_radio != RADIO_SI4732) {
+    rxTurnOff(RADIO_SI4732, &state->hw_state);
+  }
+
+  // Включаем нужный приёмник (это может включить BK4819_RX_TurnOn!)
+  rxTurnOn(&new_vfo->context, &state->hw_state);
+
+  // Включаем аудио для активного приёмника
+  switch (new_radio) {
   case RADIO_BK4819:
-    rxTurnOff(RADIO_HasSi() ? RADIO_SI4732 : RADIO_BK1080);
-    toggleBK1080SI4732(false);
+    toggleBK4819(new_vfo->is_open);
     break;
   case RADIO_SI4732:
-    toggleBK4819(false);
-    rxTurnOff(RADIO_BK4819);
-    break;
   case RADIO_BK1080:
-    toggleBK4819(false);
-    rxTurnOff(RADIO_BK4819);
+    toggleBK1080SI4732(new_vfo->is_open);
     break;
   default:
     break;
   }
 
-  rxTurnOn(&vfo->context);
+  BOARD_ToggleGreen(new_vfo->is_open);
 
-  switch (vfo->context.radio_type) {
-  case RADIO_BK4819:
-    toggleBK4819(vfo->is_open);
-    break;
-  case RADIO_SI4732:
-  case RADIO_BK1080:
-    toggleBK1080SI4732(vfo->is_open);
-    break;
-  default:
-    break;
-  }
-  BOARD_ToggleGreen(vfo->is_open);
-  if (vfo->is_open) {
+  if (new_vfo->is_open) {
     if (gSettings.backlightOnSquelch != BL_SQL_OFF) {
       BACKLIGHT_TurnOn();
     }
@@ -534,9 +585,6 @@ void RADIO_SwitchAudioToVFO(RadioState *state, uint8_t vfo_index) {
       BACKLIGHT_TurnOff();
     }
   }
-
-  // Устанавливаем громкость для выбранного VFO
-  // AUDIO_SetVolume(vfo->context.volume);
 }
 
 static bool setParamBK4819(VFOContext *ctx, ParamType p) {
@@ -680,6 +728,7 @@ static bool setParamSI4732(VFOContext *ctx, ParamType p) {
 
 static bool setParamBK1080(VFOContext *ctx, ParamType p) {
   if (p == PARAM_FREQUENCY) {
+    BK4819_SelectFilter(ctx->frequency);
     BK1080_SetFrequency(ctx->frequency);
     return true;
   }
@@ -1325,7 +1374,7 @@ void RADIO_ApplySettings(VFOContext *ctx) {
 
     if (ctx->radio_type != RADIO_BK4819) {
       // printf("RADIO IS BC\n");
-      rxTurnOn(ctx);
+      rxTurnOn(ctx, &gRadioState->hw_state);
     }
   }
 
@@ -1359,8 +1408,8 @@ void RADIO_ApplySettings(VFOContext *ctx) {
 
     if (!setParamForRadio[ctx->radio_type](ctx, p)) {
 #ifdef DEBUG_PARAMS
-      LogC(LOG_C_YELLOW, "[W] Param %s not set for %s", PARAM_NAMES[p],
-           RADIO_NAMES[ctx->radio_type]);
+      /* LogC(LOG_C_YELLOW, "[W] Param %s not set for %s", PARAM_NAMES[p],
+           RADIO_NAMES[ctx->radio_type]); */
 #endif
       continue;
     }
@@ -1895,19 +1944,29 @@ void RADIO_UpdateMultiwatch(RadioState *state) {
 void RADIO_LoadVFOs(RadioState *state) {
   Log("[RADIO] LoadVFOs");
 
-  // TODO: init each radio separately
+  // Инициализируем состояние железа
+  memset(&state->hw_state, 0, sizeof(RadioHardwareState));
+
+  // Инициализируем все доступные приёмники один раз
   BK4819_Init();
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   BK4819_RX_TurnOn();
+  state->hw_state.bk4819_enabled = true;
 
   BK1080_Init(0, false);
+  BK1080_Mute(true);
+  state->hw_state.bk1080_enabled = false;
 
+  // SI4732 не включаем сразу, включится при необходимости
+  state->hw_state.si4732_enabled = false;
+
+  // Загружаем VFO
   uint8_t vfoIdx = 0;
   for (uint8_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
-
     VFO vfo;
     loadVfo(i, &vfo);
+
     if (vfo.isChMode) {
       RADIO_LoadChannelToVFO(state, vfoIdx, vfo.channel);
     } else {
@@ -1923,7 +1982,6 @@ void RADIO_LoadVFOs(RadioState *state) {
   }
 
   RADIO_ApplySettings(ctx);
-
   updateContext();
 }
 

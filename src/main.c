@@ -1,4 +1,6 @@
 #include "board.h"
+#include "driver/audio.h"
+#include "driver/bk1080.h"
 #include "driver/bk4829.h"
 #include "driver/lfs.h"
 #include "driver/systick.h"
@@ -127,29 +129,17 @@ void ch_measure_scan() {
   Log("SCAN %u channels, t=%ums", i, Now() - start);
 }
 
+void BK1080_DumpRegisters(void) {
+  for (int i = 0; i <= 0x25; i++) {
+    uint16_t val = BK1080_ReadRegister(i);
+    Log("Reg[0x%02X] = 0x%04X", i, val);
+    SYSTICK_DelayMs(10);
+  }
+}
+
 int main(void) {
   SYSTICK_Init();
   BOARD_Init();
-
-  SCMD_CreateExampleScan();
-
-  /* ch_init();
-  ch_prepare_sl();
-  ch_show_scanlists();
-
-  ch_measure_scan();
-
-  BOARD_USBInit();
-
-  for (;;) {
-  } */
-
-  /* for (;;) {
-    printf("%lu\n", Now());
-    SYSTICK_DelayMs(1000);
-  } */
-
-  // check_fat_consistency();
 
   SYS_Main();
 }
