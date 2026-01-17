@@ -169,11 +169,11 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
   case KEY_9:
     gFInputCallback = tuneTo;
     FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
-    FINPUT_key(key, state);
     gFInputValue1 = 0;
     gFInputValue2 = 0;
     FINPUT_init();
     gFInputActive = true;
+    FINPUT_key(key, state);
 
     return true;
 

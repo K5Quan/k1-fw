@@ -441,6 +441,7 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
 
   switch (target) {
   case RADIO_BK4819:
+    LogC(LOG_C_BRIGHT_YELLOW, "BK4819 on");
     BK4819_RX_TurnOn(); // Reset state
     hw_state->bk4819_enabled = true;
     Log("[RADIO] BK4819 RX ON");
@@ -449,10 +450,12 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
   case RADIO_BK1080:
     // Переводим BK4819 в Idle только если он был активен
     if (hw_state->bk4819_enabled) {
+      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
       BK4819_Idle();
       hw_state->bk4819_enabled = false;
     }
 
+    LogC(LOG_C_BRIGHT_YELLOW, "BK1080 on");
     if (!hw_state->bk1080_enabled) {
       BK4819_SelectFilter(ctx->frequency);
       BK1080_Mute(false);
@@ -470,6 +473,7 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
   case RADIO_SI4732:
     // Переводим BK4819 в Idle только если он был активен
     if (hw_state->bk4819_enabled) {
+      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
       BK4819_Idle();
       hw_state->bk4819_enabled = false;
     }
@@ -499,6 +503,7 @@ static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
   switch (r) {
   case RADIO_BK4819:
     if (hw_state->bk4819_enabled) {
+      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
       BK4819_Idle();
       hw_state->bk4819_enabled = false;
       Log("[RADIO] BK4819 -> Idle");
@@ -507,6 +512,7 @@ static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
 
   case RADIO_BK1080:
     if (hw_state->bk1080_enabled) {
+      LogC(LOG_C_BRIGHT_YELLOW, "BK1080 init false");
       BK1080_Init(0, false);
       hw_state->bk1080_enabled = false;
       Log("[RADIO] BK1080 powered down");
@@ -1346,9 +1352,25 @@ bool RADIO_IncDecParam(VFOContext *ctx, ParamType param, bool inc,
   }
   if (param == PARAM_RADIO) {
     v = RADIO_GetParam(ctx, PARAM_RADIO);
+    Radio old_radio = v; // Сохраняем старый тип приёмника
     v = v == RADIO_BK4819 ? (RADIO_HasSi() ? RADIO_SI4732 : RADIO_BK1080)
                           : RADIO_BK4819;
-    RADIO_SetParam(ctx, param, v, save_to_eeprom);
+
+    // Если тип приёмника действительно меняется
+    if (old_radio != v) {
+      // 1. Выключаем аудио с текущего приёмника
+      vfo->is_open = false;
+      RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
+
+      // 2. Устанавливаем новый тип приёмника
+      RADIO_SetParam(ctx, param, v, save_to_eeprom);
+
+      // 3. Применяем настройки (переключит hardware)
+      RADIO_ApplySettings(ctx);
+
+      // 4. Проверяем и обновляем шумодав на новом приёмнике
+      RADIO_UpdateSquelch(gRadioState);
+    }
     return true;
   }
   if (param == PARAM_DEV) {
@@ -1372,10 +1394,7 @@ void RADIO_ApplySettings(VFOContext *ctx) {
          RADIO_GetParamValueString(ctx, PARAM_RADIO));
     ctx->dirty[PARAM_RADIO] = false;
 
-    if (ctx->radio_type != RADIO_BK4819) {
-      // printf("RADIO IS BC\n");
-      rxTurnOn(ctx, &gRadioState->hw_state);
-    }
+    rxTurnOn(ctx, &gRadioState->hw_state);
   }
 
   const bool needSetupToneDetection =
