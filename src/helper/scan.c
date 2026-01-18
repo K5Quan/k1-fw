@@ -321,7 +321,7 @@ static void HandleModeSingle(void) {
 
   if (now - radioTimer >= SQL_DELAY) {
     RADIO_UpdateSquelch(gRadioState);
-    SP_ShiftGraph(-1);
+    SP_ShiftGraph(-1); // TODO: second buffer =)
     SP_AddGraphPoint(&scan.measurement);
     radioTimer = now;
   }

@@ -220,4 +220,8 @@ bool BK4819_IsSquelchOpen();
 XtalMode BK4819_XtalGet();
 void BK4819_XtalSet(XtalMode mode);
 
+extern uint32_t d1;
+extern uint32_t d2;
+extern uint32_t d3;
+
 #endif

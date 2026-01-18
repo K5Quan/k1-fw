@@ -471,13 +471,9 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
   gLastFrequency = freq;
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
-
-  if (false && precise) {
-    BK4819_WriteRegister(BK4819_REG_30, 0x0200);
-  } else {
-    BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
-  }
-
+  BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
+  BK4819_WriteRegister(BK4819_REG_30, 0);
+  SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
 
@@ -1344,6 +1340,8 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
 
+  RF_SetXtal(XTAL26M);
+
   BK4819_WriteRegister(0x40, 0x3516);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
@@ -1358,15 +1356,19 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(BK4819_REG_1F, 0xC65A);
   BK4819_WriteRegister(BK4819_REG_3E, 0x94C6);
 
-  BK4819_WriteRegister(0x73, 0x4691);
+  BK4819_WriteRegister(0x73, 0x4691); // AFC DIS
   BK4819_WriteRegister(0x77, 0x88EF);
-  BK4819_WriteRegister(BK4819_REG_19, 0x104E);
-  BK4819_WriteRegister(BK4819_REG_28, 0x0B40);
-  BK4819_WriteRegister(BK4819_REG_29, 0xAA00);
+
+  BK4819_WriteRegister(BK4819_REG_19, 0x104E); // MIC AGC on
+  BK4819_WriteRegister(BK4819_REG_28, 0x0B40); // RX noise gate
+  BK4819_WriteRegister(BK4819_REG_29, 0xAA00); // TX noise gate
+
+  // audio settings
   BK4819_WriteRegister(0x2A, 0x6600);
   BK4819_WriteRegister(0x2C, 0x1822);
   BK4819_WriteRegister(0x2F, 0x9890);
   BK4819_WriteRegister(0x53, 0x2028);
+
   BK4819_WriteRegister(BK4819_REG_7E, 0x303E);
   BK4819_WriteRegister(BK4819_REG_46, 0x600A);
   BK4819_WriteRegister(0x4A, 0x5430);
@@ -1384,5 +1386,6 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(0x40, (BK4819_ReadRegister(0x40) & ~(0x7FF)) |
                                  (gSettings.deviation * 10) | (1 << 12));
+
   isInitialized = true;
 }
