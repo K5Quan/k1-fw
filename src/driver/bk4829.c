@@ -456,6 +456,12 @@ void BK4819_SetFrequency(uint32_t freq) {
   }
 
   if (high != prev_high) {
+    if (high > 914) { // 599M
+      BK4819_WriteRegister(0x3E, 0xA037);
+    } else {
+      BK4819_WriteRegister(0x3E, 0x94c6);
+    }
+
     BK4819_WriteRegister(BK4819_REG_39, high);
     prev_high = high;
   }

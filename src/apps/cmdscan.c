@@ -19,7 +19,6 @@
 // =============================
 typedef struct {
   bool isActive;      // Приложение активно
-  bool showInfo;      // Показать информацию о команде
   uint8_t profileNum; // Текущий профиль (1-4)
   uint16_t cmdIndex;  // Индекс текущей команды
   uint32_t execCount; // Счетчик выполненных команд
@@ -27,7 +26,6 @@ typedef struct {
 } CmdScanState;
 
 static CmdScanState cmdState = {.isActive = false,
-                                .showInfo = true,
                                 .profileNum = 1,
                                 .cmdIndex = 0,
                                 .execCount = 0,
@@ -66,9 +64,6 @@ static void LoadProfile(uint8_t num) {
 
 // Отобразить информацию о текущей команде
 static void RenderCommandInfo(void) {
-  if (!cmdState.showInfo)
-    return;
-
   // Используем API из scan.c для получения текущей команды
   SCMD_Command *cmd = SCAN_GetCurrentCommand();
   if (!cmd)
@@ -79,11 +74,9 @@ static void RenderCommandInfo(void) {
   int y = 30;
 
   // Тип команды
-  const char *typeNames[] = {"CH", "RG", "JU", "CJ", "PA", "BO", "MK", "CL",
-                             "RT", "SP", "SM", "PW", "GN", "RC", "SR", "TR"};
 
-  PrintSmallEx(2, y, POS_L, C_FILL, "CMD: %s P:%d", typeNames[cmd->type % 16],
-               cmd->priority);
+  PrintSmallEx(2, y, POS_L, C_FILL, "CMD: %s P:%d",
+               SCMD_NAMES_SHORT[cmd->type % 16], cmd->priority);
   y += 8;
 
   // Параметры в зависимости от типа
@@ -171,6 +164,9 @@ void CMDSCAN_update(void) {
 }
 
 bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
+  if (REGSMENU_Key(key, state)) {
+    return true;
+  }
   if (state == KEY_RELEASED) {
     switch (key) {
     // Цифры 1-4: выбор профиля
@@ -212,20 +208,11 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
         return true; */
 
     case KEY_SIDE1:
-      // Пауза/продолжить - нужно добавить API в scan.c
-      // Пока просто переключаем командный режим
-      if (SCAN_IsCommandMode()) {
-        // Будем считать, что закрытие файла = пауза
-        SCAN_SetCommandMode(false);
-      } else {
-        // Восстанавливаем из текущего профиля
-        LoadProfile(cmdState.profileNum);
-      }
+      LOOT_BlacklistLast();
       return true;
 
     case KEY_SIDE2:
-      // Показать/скрыть информацию
-      cmdState.showInfo = !cmdState.showInfo;
+      LOOT_WhitelistLast();
       return true;
 
     case KEY_STAR:
@@ -311,4 +298,5 @@ void CMDSCAN_render(void) {
   if (gLastActiveLoot) {
     UI_DrawLoot(gLastActiveLoot, LCD_XCENTER, 40, POS_C);
   }
+  REGSMENU_Draw();
 }

@@ -86,7 +86,7 @@ static void ApplyBandSettings(void) {
   }
 }
 
-static void SetScanRange(uint32_t start, uint32_t end, uint32_t step) {
+static void SetScanRange(uint32_t start, uint32_t end, uint16_t step) {
   scan.startF = start;
   scan.endF = end;
   scan.currentF = start;
@@ -116,9 +116,6 @@ static void ApplyCommand(SCMD_Command *cmd) {
 
   case SCMD_RANGE: {
     uint32_t step = cmd->step;
-    if (step == 0) {
-      step = StepFrequencyTable[gCurrentBand.step];
-    }
     SetScanRange(cmd->start, cmd->end, step);
     break;
   }

@@ -35,7 +35,7 @@ typedef struct {
   uint32_t currentF;
   uint32_t startF;
   uint32_t endF;
-  uint32_t stepF;
+  uint16_t stepF;
   bool rangeActive;
 
   // Squelch и измерения

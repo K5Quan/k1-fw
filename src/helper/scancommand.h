@@ -21,7 +21,35 @@ typedef enum {
   SCMD_MARKER,  // Метка для переходов
   SCMD_SETPRIO, // Установка приоритета
   SCMD_SETMODE, // Установка режима
+
+  SCMD_COUNT,
 } SCMD_Type;
+
+static const char *SCMD_NAMES[SCMD_COUNT] = {
+    [SCMD_CHANNEL] = "CHANNEL", // Одиночный канал
+    [SCMD_RANGE] = "RANGE",     // Диапазон частот
+    [SCMD_JUMP] = "JUMP",       // Безусловный переход
+    [SCMD_CJUMP] = "CJUMP", // Условный переход (если сигнал)
+    [SCMD_PAUSE] = "PAUSE",     // Пауза
+    [SCMD_CALL] = "CALL",       // Вызов подпрограммы
+    [SCMD_RETURN] = "RETURN",   // Возврат из подпрограммы
+    [SCMD_MARKER] = "MARKER",   // Метка для переходов
+    [SCMD_SETPRIO] = "SETPRIO", // Установка приоритета
+    [SCMD_SETMODE] = "SETMODE", // Установка режима
+};
+
+static const char *SCMD_NAMES_SHORT[SCMD_COUNT] = {
+    [SCMD_CHANNEL] = "CH", // Одиночный канал
+    [SCMD_RANGE] = "RNG",  // Диапазон частот
+    [SCMD_JUMP] = "JMP",   // Безусловный переход
+    [SCMD_CJUMP] = "CJMP", // Условный переход (если сигнал)
+    [SCMD_PAUSE] = "PAUS",  // Пауза
+    [SCMD_CALL] = "CALL",   // Вызов подпрограммы
+    [SCMD_RETURN] = "RET",  // Возврат из подпрограммы
+    [SCMD_MARKER] = "MRK",  // Метка для переходов
+    [SCMD_SETPRIO] = "PRI", // Установка приоритета
+    [SCMD_SETMODE] = "MOD", // Установка режима
+};
 
 // Флаги команд
 #define SCMD_FLAG_IGNORE_BLACK (1 << 0) // Игнорировать черный список
