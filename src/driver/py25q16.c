@@ -19,6 +19,8 @@
 #define SECTOR_SIZE 4096
 #define PAGE_SIZE 0x100
 
+bool gEepromWrite = false;
+
 static uint32_t SectorCacheAddr = 0x1000000;
 static uint8_t SectorCache[SECTOR_SIZE];
 static uint8_t BlackHole[1];
@@ -129,6 +131,7 @@ static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size) {
 
 // УПРОЩЕННАЯ функция SPI_WriteBuf без таймаута в основном цикле
 static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size) {
+  gEepromWrite = true;
   LL_SPI_Disable(SPIx);
   LL_DMA_DisableChannel(DMA1, CHANNEL_RD);
   LL_DMA_DisableChannel(DMA1, CHANNEL_WR);
@@ -287,6 +290,7 @@ static bool PageProgram(uint32_t Addr, const uint8_t *Buf, uint32_t Size) {
   SPI_WriteByte(0x02); // Page Program command
   WriteAddr(Addr);
 
+  gEepromWrite = true;
   // Простая байтовая запись
   for (uint32_t i = 0; i < Size; i++) {
     SPI_WriteByte(Buf[i]);
@@ -416,6 +420,7 @@ void PY25Q16_SectorErase(uint32_t Address) {
 
   // Выполняем стирание
   WriteEnable();
+  gEepromWrite = true;
 
   CS_Assert();
   SPI_WriteByte(0x20); // Sector Erase (4KB)

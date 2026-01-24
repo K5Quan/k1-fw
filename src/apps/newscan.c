@@ -1,0 +1,184 @@
+#include "newscan.h"
+#include "../driver/systick.h"
+#include "../driver/uart.h"
+#include "../helper/lootlist.h"
+#include "../helper/regs-menu.h"
+#include "../helper/scan.h"
+#include "../ui/finput.h"
+#include "../ui/spectrum.h"
+#include "../ui/statusline.h"
+#include "apps.h"
+#include <stdbool.h>
+
+static Band range;
+static Measurement *msm;
+static VMinMax minMax;
+
+static uint32_t delay = 1200;
+static uint16_t rssi;
+
+static SQL sq;
+
+static void setRange(uint32_t fs, uint32_t fe) {
+  range.start = fs;
+  range.end = fe;
+  msm->f = range.start;
+  SP_Init(&range);
+}
+
+bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
+  if (REGSMENU_Key(key, state)) {
+    return true;
+  }
+  if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
+    switch (key) {
+    case KEY_5:
+      gFInputCallback = setRange;
+      FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, true);
+      gFInputValue1 = 0;
+      gFInputValue1 = 0;
+      FINPUT_init();
+      gFInputActive = true;
+      return true;
+
+    case KEY_SIDE1:
+      LOOT_BlacklistLast();
+      return true;
+
+    case KEY_SIDE2:
+      LOOT_WhitelistLast();
+      return true;
+
+    case KEY_STAR:
+      APPS_run(APP_LOOTLIST);
+      return true;
+
+    case KEY_UP:
+    case KEY_DOWN:
+      delay = AdjustU(delay, 0, 10000, key == KEY_UP ? 100 : -100);
+      return true;
+
+    case KEY_1:
+    case KEY_7:
+      sq.ro = IncDecU(sq.ro, 0, 255, key == KEY_1);
+      return true;
+    case KEY_2:
+    case KEY_8:
+      sq.no = IncDecU(sq.no, 0, 255, key == KEY_2);
+      return true;
+    case KEY_3:
+    case KEY_9:
+      sq.go = IncDecU(sq.go, 0, 255, key == KEY_3);
+      return true;
+    }
+  }
+  return false;
+}
+
+void NEWSCAN_init(void) {
+  SPECTRUM_Y = 8;
+  SPECTRUM_H = 44;
+
+  range.step = STEP_25_0kHz;
+  range.start = 43307500;
+  range.end = range.start + StepFrequencyTable[range.step] * LCD_WIDTH;
+  msm = &vfo->msm;
+  msm->f = range.start;
+
+  sq = GetSql(4);
+
+  SCAN_SetMode(SCAN_MODE_NONE);
+  SP_Init(&range);
+
+  BK4819_SetModulation(MOD_FM);
+  BK4819_SetAFC(0);
+  BK4819_SetAGC(true, 1);
+}
+
+void NEWSCAN_deinit(void) {}
+
+void measure() {
+  msm->rssi = BK4819_GetRSSI();
+  msm->noise = BK4819_GetNoise();
+  msm->glitch = BK4819_GetGlitch();
+
+  msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
+
+  if (msm->f == 434 * MHZ) {
+    rssi = msm->rssi;
+  }
+}
+
+void updateListening() {
+  static uint32_t lastListenUpdate;
+  if (Now() - lastListenUpdate >= SQL_DELAY) {
+    measure();
+    lastListenUpdate = Now();
+  }
+}
+
+void updateScan() {
+  BK4819_TuneTo(msm->f, false);
+  SYSTICK_DelayUs(delay);
+
+  measure();
+  /* Log("%u-%u %u-%u %u-%u", msm->rssi, sq.ro, msm->noise, sq.no, msm->glitch,
+      sq.go); */
+  SP_AddPoint(msm);
+  LOOT_Update(msm);
+
+  msm->f += StepFrequencyTable[range.step];
+
+  if (msm->f > range.end) {
+    msm->f = range.start;
+    gRedrawScreen = true;
+  }
+}
+
+void NEWSCAN_update(void) {
+  if (vfo->is_open) {
+    updateListening();
+  } else {
+    updateScan();
+  }
+  if (vfo->is_open != msm->open) {
+    Log("OPEN=%u", msm->open);
+    vfo->is_open = msm->open;
+    gRedrawScreen = true;
+    vfo->is_open = vfo->msm.open;
+  }
+}
+static void renderBottomFreq() {
+  uint32_t leftF = range.start;
+  uint32_t centerF = msm->f;
+  uint32_t rightF = range.end;
+
+  FSmall(1, LCD_HEIGHT - 2, POS_L, leftF);
+  FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, centerF);
+  FSmall(LCD_WIDTH - 1, LCD_HEIGHT - 2, POS_R, rightF);
+}
+
+void NEWSCAN_render(void) {
+  STATUSLINE_RenderRadioSettings();
+  /* minMax.vMin = DBm2Rssi(-135);
+  minMax.vMax = DBm2Rssi(-40); */
+  minMax = SP_GetMinMax();
+  SP_Render(&range, minMax);
+  PrintSmall(0, 16 + 6 * 0, "R %u", sq.ro);
+  PrintSmall(0, 16 + 6 * 1, "N %u", sq.no);
+  PrintSmall(0, 16 + 6 * 2, "G %u", sq.go);
+
+  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 0, POS_R, C_FILL, "%u", SP_GetRssiMax());
+  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 1, POS_R, C_FILL, "%u",
+               SP_GetNoiseFloor());
+  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 2, POS_R, C_FILL, "%uus", delay);
+  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 3, POS_R, C_FILL, "%s",
+               vfo->is_open ? "OPEN" : "...");
+
+  PrintSmallEx(LCD_XCENTER, 16 + 6 * 0, POS_C, C_FILL, "%u %d", rssi,
+               Rssi2DBm(rssi));
+
+  renderBottomFreq();
+
+  REGSMENU_Draw();
+}

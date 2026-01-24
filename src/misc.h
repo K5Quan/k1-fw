@@ -16,6 +16,8 @@
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 
+#define ABS(v) (v < 0 ? -v : v)
+
 char IsPrintable(char ch);
 unsigned int SQRT16(unsigned int value);
 

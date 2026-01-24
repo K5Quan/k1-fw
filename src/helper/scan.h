@@ -17,11 +17,12 @@ typedef enum {
 
 // Режимы сканирования
 typedef enum {
-  SCAN_MODE_SINGLE,    // Одна частота (мониторинг)
-  SCAN_MODE_FREQUENCY, // Частотное сканирование
-  SCAN_MODE_CHANNEL,   // Канальное сканирование
-  SCAN_MODE_ANALYSER,  // Анализатор спектра
-  SCAN_MODE_MULTIWATCH // Мультивотч VFO (из radio.c)
+  SCAN_MODE_SINGLE,     // Одна частота (мониторинг)
+  SCAN_MODE_FREQUENCY,  // Частотное сканирование
+  SCAN_MODE_CHANNEL,    // Канальное сканирование
+  SCAN_MODE_ANALYSER,   // Анализатор спектра
+  SCAN_MODE_MULTIWATCH, // Мультивотч VFO (из radio.c)
+  SCAN_MODE_NONE,
 } ScanMode;
 
 // Контекст сканирования

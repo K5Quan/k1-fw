@@ -4,6 +4,7 @@
 #include "components.h"
 #include "graphics.h"
 #include <stdint.h>
+#include <string.h>
 
 #define MAX_POINTS 128
 
@@ -166,7 +167,7 @@ static uint16_t MinRSSI(const uint16_t *array, size_t n) {
 } */
 #define _MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define _MAX(a, b) (((a) > (b)) ? (a) : (b))
-
+/*
 VMinMax SP_GetMinMax() {
   const uint16_t rssiMin = MinRSSI(rssiHistory, filledPoints);
   const uint16_t rssiMax = Max(rssiHistory, filledPoints);
@@ -183,6 +184,66 @@ VMinMax SP_GetMinMax() {
   }
 
   return (VMinMax){.vMin = vMin, .vMax = vMax};
+} */
+
+VMinMax SP_GetMinMax() {
+  if (filledPoints == 0) {
+    return (VMinMax){.vMin = 50, .vMax = 150}; // fallback
+  }
+
+  // 1. Находим текущие характеристики за весь скан (или последние N точек)
+  uint16_t rssiMax = Max(rssiHistory, filledPoints);
+  uint16_t noiseFloor =
+      SP_GetNoiseFloor(); // уже есть — медиана или std-подобная оценка
+  uint16_t rssiMin = MinRSSI(rssiHistory, filledPoints);
+
+  // 2. Более устойчивая оценка шумового пола (важно для слабых сигналов)
+  uint16_t reliableFloor = noiseFloor;
+  if (noiseFloor < 40 || noiseFloor > rssiMax - 10) {
+    reliableFloor = rssiMin + (rssiMax - rssiMin) / 10; // защита от выбросов
+  }
+
+  // 3. Целевые границы с запасом
+  uint16_t targetMin =
+      reliableFloor - 12; // чуть ниже пола — чтобы видеть слабые сигналы
+  uint16_t targetMax = rssiMax + 18; // запас сверху 18–25 дБ
+
+  // 4. Минимальный динамический диапазон (чтобы не было слишком узкого окна)
+  uint16_t minSpan = 50; // минимум 50 единиц (~25–30 дБ)
+  if (targetMax - targetMin < minSpan) {
+    targetMax = targetMin + minSpan;
+  }
+
+  // 5. Максимальный динамический диапазон (не растягивать слишком сильно)
+  uint16_t maxSpan = 120; // ~60–70 дБ — комфортно для большинства дисплеев
+  if (targetMax - targetMin > maxSpan) {
+    targetMax = targetMin + maxSpan;
+  }
+
+  // 6. Плавность: применяем лёгкое сглаживание (exponential moving average)
+  //    или гистерезис — изменения применяются только если разница > порога
+  static uint16_t prevMin = 0;
+  static uint16_t prevMax = 0;
+
+  if (prevMin == 0 || prevMax == 0) { // первый раз
+    prevMin = targetMin;
+    prevMax = targetMax;
+  }
+
+#define HYST 8 // гистерезис в единицах RSSI (~4–5 дБ)
+#define ALPHA 0.65 // коэффициент сглаживания (0.6–0.8 — хороший компромисс)
+
+  int16_t diffMin = (int16_t)targetMin - (int16_t)prevMin;
+  int16_t diffMax = (int16_t)targetMax - (int16_t)prevMax;
+
+  if (ABS(diffMin) > HYST) {
+    prevMin = (uint16_t)(prevMin * (1.0 - ALPHA) + targetMin * ALPHA + 0.5);
+  }
+  if (ABS(diffMax) > HYST) {
+    prevMax = (uint16_t)(prevMax * (1.0 - ALPHA) + targetMax * ALPHA + 0.5);
+  }
+
+  return (VMinMax){.vMin = prevMin, .vMax = prevMax};
 }
 
 void SP_Render(const Band *p, VMinMax v) {
@@ -336,7 +397,25 @@ void SP_RenderPoint(Measurement *m, uint8_t i, uint8_t n, Band *b, VMinMax r,
   PutPixel(i, S_BOTTOM - yVal, c);
 }
 
-uint16_t SP_GetNoiseFloor() { return Std(rssiHistory, filledPoints); }
+// uint16_t SP_GetNoiseFloor() { return Std(rssiHistory, filledPoints); }
+uint16_t SP_GetNoiseFloor() {
+  if (filledPoints < 10)
+    return 0;
+
+  uint16_t temp[MAX_POINTS];
+  memcpy(temp, rssiHistory, sizeof(uint16_t) * filledPoints);
+  // Простая сортировка (можно bubble или qsort)
+  for (uint8_t i = 0; i < filledPoints - 1; i++)
+    for (uint8_t j = i + 1; j < filledPoints; j++)
+      if (temp[i] > temp[j]) {
+        uint16_t t = temp[i];
+        temp[i] = temp[j];
+        temp[j] = t;
+      }
+
+  // Берём ~25% перцентиль (шум без пиков)
+  return temp[filledPoints / 4];
+}
 uint16_t SP_GetRssiMax() { return Max(rssiHistory, filledPoints); }
 
 uint16_t SP_GetPointRSSI(uint8_t i) { return rssiHistory[i]; }

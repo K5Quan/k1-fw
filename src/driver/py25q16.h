@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+extern bool gEepromWrite;
+
 void PY25Q16_Init();
 void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size);
 void PY25Q16_WriteBuffer(uint32_t Address, const void *pBuffer, uint32_t Size,

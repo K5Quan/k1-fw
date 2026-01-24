@@ -4,7 +4,6 @@
 #include "../settings.h"
 #include "../system.h"
 #include "audio.h"
-#include "eeprom.h"
 #include "gpio.h"
 #include "i2c.h"
 #include "systick.h"
@@ -72,7 +71,7 @@ void waitToSend() {
 #include "../ui/graphics.h" // X_X
 void SI47XX_downloadPatch() {
   // Log("DL patch");
-  FillRect(0, LCD_YCENTER - 4, LCD_WIDTH, 9, C_FILL);
+  /* FillRect(0, LCD_YCENTER - 4, LCD_WIDTH, 9, C_FILL);
   PrintMediumBoldEx(LCD_XCENTER, LCD_YCENTER + 3, POS_C, C_INVERT, "WAIT...");
   ST7565_Blit();
 
@@ -89,7 +88,7 @@ void SI47XX_downloadPatch() {
       waitToSend();
       SI47XX_WriteBuffer(buf + i, 8);
     }
-  }
+  } */
   // Log("DL patch OK");
 }
 

@@ -13,6 +13,7 @@
 #include "fc.h"
 #include "files.h"
 #include "lootlist.h"
+#include "newscan.h"
 #include "scaner.h"
 #include "settings.h"
 #include "vfo1.h"
@@ -56,6 +57,7 @@ const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_VFO1,     //
     APP_CMDSCAN,  //
     APP_SCANER,   //
+    APP_NEWSCAN,  //
     APP_ANALYZER, //
     APP_FC,       //
     APP_FILES,    //
@@ -79,6 +81,8 @@ const App apps[APPS_COUNT] = {
                      CMDEDIT_key, NULL, true},
     [APP_ANALYZER] = {"Analyzer", ANALYZER_init, ANALYZER_update,
                       ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
+    [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
+                     NEWSCAN_key, NEWSCAN_deinit, true},
     [APP_LOOTLIST] = {"Lootlist", LOOTLIST_init, NULL, LOOTLIST_render,
                       LOOTLIST_key, NULL, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},

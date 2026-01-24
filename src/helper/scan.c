@@ -11,6 +11,7 @@
 #include "../ui/spectrum.h"
 #include "bands.h"
 #include "measurements.h"
+#include <stdbool.h>
 
 // ============================================================================
 // Глобальный контекст
@@ -305,6 +306,9 @@ static void HandleModeSingle(void) {
 
   scan.measurement.f = ctx->frequency;
   scan.measurement.rssi = RADIO_GetRSSI(ctx);
+  scan.measurement.noise = RADIO_GetNoise(ctx);
+  scan.measurement.glitch = RADIO_GetGlitch(ctx);
+  scan.measurement.snr = RADIO_GetSNR(ctx);
   scan.isOpen = vfo->is_open;
   scan.measurement.open = scan.isOpen;
 
@@ -329,6 +333,9 @@ static void HandleModeSingle(void) {
 // ============================================================================
 
 void SCAN_Check(void) {
+  if (scan.mode == SCAN_MODE_NONE) {
+    return;
+  }
   // Multiwatch обрабатывается отдельно
   RADIO_UpdateMultiwatch(gRadioState);
 
@@ -405,6 +412,8 @@ void SCAN_Init(bool multiband) {
 
   ApplyBandSettings();
   BK4819_WriteRegister(BK4819_REG_3F, 0);
+  vfo->is_open = false;
+  RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
 }
 
 void SCAN_setBand(Band b) {
@@ -441,7 +450,11 @@ void SCAN_setRange(uint32_t fs, uint32_t fe) {
   }
 }
 
-void SCAN_Next(void) { ChangeState(SCAN_STATE_SWITCHING); }
+void SCAN_Next(void) {
+  vfo->is_open = false;
+  RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
+  ChangeState(SCAN_STATE_SWITCHING);
+}
 
 void SCAN_NextBlacklist(void) {
   LOOT_BlacklistLast();

@@ -27,7 +27,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define RADIO_SAVE_DELAY_MS 1000
+#define RADIO_SAVE_DELAY_MS 2000
 
 // #define DEBUG_PARAMS 1
 
@@ -165,7 +165,7 @@ static const FreqBand bk4819_bands[] = {
     {
         .min_freq = BK4819_F_MIN,
         .max_freq = BK4819_F_MAX,
-        .num_available_mods = 4,
+        .num_available_mods = 5,
         .num_available_bandwidths = 10,
         .available_mods = {MOD_FM, MOD_AM, MOD_LSB, MOD_USB, MOD_WFM},
         .available_bandwidths =
@@ -1027,6 +1027,29 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
       }
     }
     ctx->dirty[PARAM_MODULATION] = true;
+
+    switch (ctx->modulation) {
+    case MOD_LSB:
+    case MOD_USB:
+      RADIO_SetParam(ctx, PARAM_AFC, 0, save_to_eeprom);
+      break;
+    default:
+      RADIO_SetParam(ctx, PARAM_AFC, 8, save_to_eeprom);
+      break;
+    }
+
+    switch (ctx->modulation) {
+    case MOD_LSB:
+    case MOD_USB:
+    case MOD_AM:
+      RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_6k, save_to_eeprom);
+      break;
+    default:
+      RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_12k,
+                     save_to_eeprom);
+      break;
+    }
+
     break;
 
   case PARAM_BANDWIDTH:
@@ -1660,7 +1683,7 @@ static void setCommonParamsFromCh(VFOContext *ctx, const VFO *storage) {
   RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
   RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
   RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
-  RADIO_SetParam(ctx, PARAM_AFC, 8, false);
+  RADIO_SetParam(ctx, PARAM_AFC, 0, false);
   RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
   RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
 

@@ -1,11 +1,12 @@
 #include "statusline.h"
 #include "../apps/apps.h"
 #include "../driver/battery.h"
-#include "../driver/eeprom.h"
+#include "../driver/py25q16.h"
 #include "../driver/si473x.h"
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
 #include "../helper/numnav.h"
+#include "../settings.h"
 #include "components.h"
 #include "graphics.h"
 #include <string.h>

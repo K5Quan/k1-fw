@@ -1,5 +1,6 @@
 #include "bk4829.h"
 
+#include "../external/printf/printf.h"
 #include "../settings.h"
 #include "bk4819-regs.h"
 #include "gpio.h"
@@ -183,6 +184,7 @@ uint16_t BK4819_ReadRegister(BK4819_REGISTER_t reg) {
 }
 
 void BK4819_WriteRegister(BK4819_REGISTER_t reg, uint16_t Data) {
+  // printf("W R 0x%x\n", reg);
   if (reg == BK4819_REG_30) {
     reg30state = Data;
   }
@@ -341,16 +343,17 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   const bool enableAgc = (gainIndex == AUTO_GAIN_INDEX);
   uint16_t regVal = BK4819_ReadRegister(BK4819_REG_7E);
 
-  /* BK4819_WriteRegister(BK4819_REG_7E,
+  BK4819_WriteRegister(BK4819_REG_7E,
                        (regVal & ~(1 << 15) & ~(0b111 << 12)) |
                            (!enableAgc << 15) | // AGC fix mode
                            (3u << 12) |         // AGC fix index
                            (5u << 3) |          // Default DC
-                           (6u << 0)); */
-  BK4819_WriteRegister(BK4819_REG_7E, (regVal & ~(1 << 15) & ~(0b111 << 12)) |
+                           (6u << 0));
+  /* BK4819_WriteRegister(BK4819_REG_7E, (regVal & ~(1 << 15) & ~(0b111 << 12))
+  |
                                           (!enableAgc << 15) // 0  AGC fix mode
                                           | (3u << 12)       // 3  AGC fix index
-  );
+  ); */
 
   if (enableAgc) {
     BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
@@ -370,6 +373,79 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   BK4819_WriteRegister(BK4819_REG_49, (config->lo << 14) | (config->high << 7) |
                                           (config->low << 0));
   BK4819_WriteRegister(BK4819_REG_7B, 0x8420);
+}
+
+#define XTAL26M 0
+#define XTAL13M 1
+#define XTAL19M2 2
+#define XTAL12M8 3
+#define XTAL25M6 4
+#define XTAL38M4 5
+#define DEVIATION                                                              \
+  0x4F0 // 0~0xFFF, 0x5D0 for 13M/12.8M, 0x53A for 19.2M 0x3D0 for 38.4M
+
+void RF_SetXtal(uint8_t mode) {
+#define REG_40 0x3000
+  switch (mode) {
+  case XTAL26M:
+    BK4819_WriteRegister(0x40, REG_40 | DEVIATION);
+    break;
+
+  case XTAL13M:
+    BK4819_WriteRegister(0x40,
+                         REG_40 | DEVIATION); // DEVIATION=0x5D0 for example
+    BK4819_WriteRegister(0x41, 0x81C1);
+    BK4819_WriteRegister(0x3B, 0xAC40);
+    BK4819_WriteRegister(0x3C, 0x2708);
+    // BK4819_WriteRegister(0x3D,0x3555);
+    BK4819_WriteRegister(0x1D, 0x3555); // BPF
+    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
+    // BK4819_WriteRegister(0x1D,0xeaab); //LPF
+    break;
+
+  case XTAL19M2:
+    BK4819_WriteRegister(0x40,
+                         REG_40 | DEVIATION); // DEVIATION=0x53A for example
+    BK4819_WriteRegister(0x41, 0x81C2);
+    BK4819_WriteRegister(0x3B, 0x9800);
+    BK4819_WriteRegister(0x3C, 0x3A48);
+    // BK4819_WriteRegister(0x3D,0x2E39);
+    BK4819_WriteRegister(0x1D, 0x2E39); // BPF
+    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
+    // BK4819_WriteRegister(0x1D,0xe71d); //LPF
+    break;
+
+  case XTAL12M8:
+    BK4819_WriteRegister(0x40,
+                         REG_40 | DEVIATION); // DEVIATION=0x5D0 for example
+    BK4819_WriteRegister(0x41, 0x81C1);
+    BK4819_WriteRegister(0x3B, 0x1000);
+    BK4819_WriteRegister(0x3C, 0x2708);
+    // BK4819_WriteRegister(0x3D,0x3555);
+    BK4819_WriteRegister(0x1D, 0x3555); // BPF
+    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
+    // BK4819_WriteRegister(0x1D,0xeaab); //LPF
+    break;
+
+  case XTAL25M6:
+    BK4819_WriteRegister(0x3B, 0x2000);
+    BK4819_WriteRegister(0x3C, 0x4E88);
+    BK4819_WriteRegister(0x3C, 0x4E88);
+    // REG_1D the same as XTAL26M
+    break;
+
+  case XTAL38M4:
+    BK4819_WriteRegister(0x40,
+                         REG_40 | DEVIATION); // DEVIATION=0x43A for example
+    BK4819_WriteRegister(0x41, 0x81C5);
+    BK4819_WriteRegister(0x3B, 0x3000);
+    BK4819_WriteRegister(0x3C, 0x75C8);
+    // BK4819_WriteRegister(0x3D,0x261C);
+    BK4819_WriteRegister(0x1D, 0x261C); // BPF
+    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
+    // BK4819_WriteRegister(0x1D,0xe30e); //LPF
+    break;
+  }
 }
 
 // ============================================================================
@@ -478,7 +554,7 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
   BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
-  BK4819_WriteRegister(BK4819_REG_30, 0);
+  // BK4819_WriteRegister(BK4819_REG_30, 0);
   SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
@@ -526,11 +602,14 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_SetRegValue(RS_RF_FILT_BW_WEAK, 7);
     BK4819_SetRegValue(RS_BW_MODE, 3);
     BK4819_XtalSet(XTAL_0_13M);
+    // RF_SetXtal(XTAL12M8);
   } else if (isSsb) {
     BK4819_XtalSet(XTAL_3_38_4M);
+    // RF_SetXtal(XTAL38M4);
     BK4819_SetRegValue(RS_IF_F, 0);
   } else {
     BK4819_XtalSet(XTAL_2_26M);
+    // RF_SetXtal(XTAL26M);
   }
 
   uint16_t r31 = BK4819_ReadRegister(0x31);
@@ -538,14 +617,20 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_WriteRegister(0x31, r31 | 1);
     BK4819_WriteRegister(0x42, 0x6F5C);
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants
-    BK4819_WriteRegister(0x2B, 0x0500); // HPF300 & DE-EMPH bypass
+    BK4819_WriteRegister(0x2B, 0x0400);
     BK4819_WriteRegister(0x2F, 0x9990);
+
+    BK4819_WriteRegister(0x54, 0x9775);
+    BK4819_WriteRegister(0x55, 0x32c6);
   } else {
     BK4819_WriteRegister(0x31, r31 & 0xFFFE);
     BK4819_WriteRegister(0x42, 0x6B5A);
     BK4819_WriteRegister(0x2A, 0x7400);
     BK4819_WriteRegister(0x2B, 0x0000);
     BK4819_WriteRegister(0x2F, 0x9890);
+
+    BK4819_WriteRegister(0x54, 0x9009);
+    BK4819_WriteRegister(0x55, 0x31a9);
   }
 }
 
@@ -1010,79 +1095,6 @@ void BK4819_XtalSet(XtalMode mode) {
   BK4819_WriteRegister(0x3D, ifset);
 }
 
-#define XTAL26M 0
-#define XTAL13M 1
-#define XTAL19M2 2
-#define XTAL12M8 3
-#define XTAL25M6 4
-#define XTAL38M4 5
-#define DEVIATION                                                              \
-  0x4F0 // 0~0xFFF, 0x5D0 for 13M/12.8M, 0x53A for 19.2M 0x3D0 for 38.4M
-
-void RF_SetXtal(uint8_t mode) {
-#define REG_40 0x3000
-  switch (mode) {
-  case XTAL26M:
-    BK4819_WriteRegister(0x40, REG_40 | DEVIATION);
-    break;
-
-  case XTAL13M:
-    BK4819_WriteRegister(0x40,
-                         REG_40 | DEVIATION); // DEVIATION=0x5D0 for example
-    BK4819_WriteRegister(0x41, 0x81C1);
-    BK4819_WriteRegister(0x3B, 0xAC40);
-    BK4819_WriteRegister(0x3C, 0x2708);
-    // BK4819_WriteRegister(0x3D,0x3555);
-    BK4819_WriteRegister(0x1D, 0x3555); // BPF
-    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
-    // BK4819_WriteRegister(0x1D,0xeaab); //LPF
-    break;
-
-  case XTAL19M2:
-    BK4819_WriteRegister(0x40,
-                         REG_40 | DEVIATION); // DEVIATION=0x53A for example
-    BK4819_WriteRegister(0x41, 0x81C2);
-    BK4819_WriteRegister(0x3B, 0x9800);
-    BK4819_WriteRegister(0x3C, 0x3A48);
-    // BK4819_WriteRegister(0x3D,0x2E39);
-    BK4819_WriteRegister(0x1D, 0x2E39); // BPF
-    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
-    // BK4819_WriteRegister(0x1D,0xe71d); //LPF
-    break;
-
-  case XTAL12M8:
-    BK4819_WriteRegister(0x40,
-                         REG_40 | DEVIATION); // DEVIATION=0x5D0 for example
-    BK4819_WriteRegister(0x41, 0x81C1);
-    BK4819_WriteRegister(0x3B, 0x1000);
-    BK4819_WriteRegister(0x3C, 0x2708);
-    // BK4819_WriteRegister(0x3D,0x3555);
-    BK4819_WriteRegister(0x1D, 0x3555); // BPF
-    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
-    // BK4819_WriteRegister(0x1D,0xeaab); //LPF
-    break;
-
-  case XTAL25M6:
-    BK4819_WriteRegister(0x3B, 0x2000);
-    BK4819_WriteRegister(0x3C, 0x4E88);
-    BK4819_WriteRegister(0x3C, 0x4E88);
-    // REG_1D the same as XTAL26M
-    break;
-
-  case XTAL38M4:
-    BK4819_WriteRegister(0x40,
-                         REG_40 | DEVIATION); // DEVIATION=0x43A for example
-    BK4819_WriteRegister(0x41, 0x81C5);
-    BK4819_WriteRegister(0x3B, 0x3000);
-    BK4819_WriteRegister(0x3C, 0x75C8);
-    // BK4819_WriteRegister(0x3D,0x261C);
-    BK4819_WriteRegister(0x1D, 0x261C); // BPF
-    // BK4819_WriteRegister(0x1D,0x0000); //Zero_IF
-    // BK4819_WriteRegister(0x1D,0xe30e); //LPF
-    break;
-  }
-}
-
 // ============================================================================
 // AFC (Automatic Frequency Control)
 // ============================================================================
@@ -1346,9 +1358,9 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
 
-  RF_SetXtal(XTAL26M);
-
   BK4819_WriteRegister(0x40, 0x3516);
+  // BK4819_WriteRegister(0x40, 0x34F0);
+  // RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};

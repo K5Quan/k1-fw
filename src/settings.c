@@ -3,7 +3,6 @@
 #include "driver/backlight.h"
 #include "driver/battery.h"
 #include "driver/bk4829.h"
-#include "driver/eeprom.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
