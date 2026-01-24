@@ -170,7 +170,7 @@ typedef struct {
   bool si4732PowerOff : 1;
   uint8_t mWatch : 2;
 
-  uint8_t freqCorrection;
+  int16_t freqCorrection;
 
   BacklightOnSquelchMode backlightOnSquelch : 2;
   bool toneLocal : 1;

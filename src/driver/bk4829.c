@@ -7,7 +7,6 @@
 #include "py32f071_ll_spi.h"
 #include "systick.h"
 #include <stdint.h>
-#include <stdio.h>
 
 static uint16_t reg30state = 0xffff;
 
@@ -520,7 +519,7 @@ void BK4819_SetFrequency(uint32_t freq) {
   static uint16_t prev_low = 0;
   static uint16_t prev_high = 0;
 
-  // freq += (gSettings.freqCorrection - 127);
+  freq += (gSettings.freqCorrection - UINT16_MAX / 2);
   // printf("f=%u\n", freq);
 
   uint16_t low = freq & 0xFFFF;

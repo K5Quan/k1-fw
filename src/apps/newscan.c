@@ -33,9 +33,9 @@ static void setRange(uint32_t fs, uint32_t fe) {
 }
 
 bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
-  if (REGSMENU_Key(key, state)) {
+  /* if (REGSMENU_Key(key, state)) {
     return true;
-  }
+  } */
   if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
     switch (key) {
     case KEY_5:
@@ -78,15 +78,15 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
 
     case KEY_1:
     case KEY_7:
-      sq.ro = IncDecU(sq.ro, 0, 255, key == KEY_1);
+      sq.ro = AdjustU(sq.ro, 0, 255, key == KEY_1 ? stp : -stp);
       return true;
     case KEY_2:
     case KEY_8:
-      sq.no = IncDecU(sq.no, 0, 255, key == KEY_2);
+      sq.no = AdjustU(sq.no, 0, 255, key == KEY_2 ? stp : -stp);
       return true;
     case KEY_3:
     case KEY_9:
-      sq.go = IncDecU(sq.go, 0, 255, key == KEY_3);
+      sq.go = AdjustU(sq.go, 0, 255, key == KEY_3 ? stp : -stp);
       return true;
     case KEY_0:
       if (stp == 100) {
@@ -218,5 +218,5 @@ void NEWSCAN_render(void) {
 
   renderBottomFreq();
 
-  REGSMENU_Draw();
+  // REGSMENU_Draw();
 }

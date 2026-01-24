@@ -141,7 +141,7 @@ static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
 static void onKey(KEY_Code_t key, KEY_State_t state) {
   BACKLIGHT_TurnOn();
 
-  if (checkKeylock(state, key)) {
+  if (gCurrentApp != APP_SETTINGS && checkKeylock(state, key)) {
     gRedrawScreen = true;
     return;
   }

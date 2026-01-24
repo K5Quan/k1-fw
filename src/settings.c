@@ -11,6 +11,7 @@
 #include "helper/storage.h"
 #include "misc.h"
 #include "radio.h"
+#include <stdint.h>
 #include <string.h>
 
 static uint32_t saveTime;
@@ -244,7 +245,6 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
     break;
   case SETTING_BACKLIGHT:
     gSettings.backlight = v;
-    BACKLIGHT_SetBrightness(v);
     break;
   case SETTING_TXTIME:
     gSettings.txTime = v;
@@ -292,6 +292,7 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
     break;
   case SETTING_BRIGHTNESS_L:
     gSettings.brightnessLow = v;
+    BACKLIGHT_SetBrightness(v);
     break;
   case SETTING_CONTRAST:
     gSettings.contrast = v;
@@ -441,7 +442,7 @@ const char *SETTINGS_GetValueString(Setting s) {
     sprintf(buf, "%d", v - 8);
     break;
   case SETTING_FREQ_CORRECTION:
-    sprintf(buf, "%+dHz", (v - 127) * 10);
+    sprintf(buf, "%+dHz", (v - UINT16_MAX / 2) * 10);
     break;
 
   case SETTING_MIC:
@@ -536,7 +537,7 @@ void SETTINGS_IncDecValue(Setting s, bool inc) {
     ma = ARRAY_SIZE(FC_TIME_NAMES);
     break;
   case SETTING_FREQ_CORRECTION:
-    ma = 256;
+    ma = UINT16_MAX;
     break;
 
   case SETTING_BATTERYCALIBRATION:
