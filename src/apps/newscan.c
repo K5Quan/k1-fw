@@ -14,10 +14,16 @@ static Band range;
 static Measurement *msm;
 static VMinMax minMax;
 
+static uint32_t targetF = 434 * MHZ;
 static uint32_t delay = 1200;
-static uint16_t rssi;
+static Measurement rssi;
+
+static bool still;
+
+static uint8_t stp = 10;
 
 static SQL sq;
+static void setTargetF(uint32_t fs, uint32_t _) { targetF = fs; }
 
 static void setRange(uint32_t fs, uint32_t fe) {
   range.start = fs;
@@ -35,6 +41,14 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_5:
       gFInputCallback = setRange;
       FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, true);
+      gFInputValue1 = 0;
+      gFInputValue1 = 0;
+      FINPUT_init();
+      gFInputActive = true;
+      return true;
+    case KEY_6:
+      gFInputCallback = setTargetF;
+      FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
       gFInputValue1 = 0;
       gFInputValue1 = 0;
       FINPUT_init();
@@ -58,6 +72,10 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
       delay = AdjustU(delay, 0, 10000, key == KEY_UP ? 100 : -100);
       return true;
 
+    case KEY_4:
+      still = !still;
+      return true;
+
     case KEY_1:
     case KEY_7:
       sq.ro = IncDecU(sq.ro, 0, 255, key == KEY_1);
@@ -69,6 +87,13 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_3:
     case KEY_9:
       sq.go = IncDecU(sq.go, 0, 255, key == KEY_3);
+      return true;
+    case KEY_0:
+      if (stp == 100) {
+        stp = 1;
+      } else {
+        stp *= 10;
+      }
       return true;
     }
   }
@@ -104,8 +129,8 @@ void measure() {
 
   msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
 
-  if (msm->f == 434 * MHZ) {
-    rssi = msm->rssi;
+  if (msm->f == targetF) {
+    rssi = *msm;
   }
 }
 
@@ -127,6 +152,10 @@ void updateScan() {
   SP_AddPoint(msm);
   LOOT_Update(msm);
 
+  if (still) {
+    return;
+  }
+
   msm->f += StepFrequencyTable[range.step];
 
   if (msm->f > range.end) {
@@ -142,10 +171,11 @@ void NEWSCAN_update(void) {
     updateScan();
   }
   if (vfo->is_open != msm->open) {
-    Log("OPEN=%u", msm->open);
+    // Log("OPEN=%u", msm->open);
     vfo->is_open = msm->open;
     gRedrawScreen = true;
-    vfo->is_open = vfo->msm.open;
+    targetF = msm->f;
+    RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
   }
 }
 static void renderBottomFreq() {
@@ -154,29 +184,37 @@ static void renderBottomFreq() {
   uint32_t rightF = range.end;
 
   FSmall(1, LCD_HEIGHT - 2, POS_L, leftF);
-  FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, centerF);
+  FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, targetF);
   FSmall(LCD_WIDTH - 1, LCD_HEIGHT - 2, POS_R, rightF);
 }
 
 void NEWSCAN_render(void) {
+  if (still) {
+    PrintSmallEx(LCD_XCENTER, 12 + 6 * 3, POS_C, C_FILL, "%s", "STILL");
+  }
+
   STATUSLINE_RenderRadioSettings();
   /* minMax.vMin = DBm2Rssi(-135);
   minMax.vMax = DBm2Rssi(-40); */
   minMax = SP_GetMinMax();
   SP_Render(&range, minMax);
-  PrintSmall(0, 16 + 6 * 0, "R %u", sq.ro);
-  PrintSmall(0, 16 + 6 * 1, "N %u", sq.no);
-  PrintSmall(0, 16 + 6 * 2, "G %u", sq.go);
+  PrintSmall(0, 12 + 6 * 0, "R %u", sq.ro);
+  PrintSmall(0, 12 + 6 * 1, "N %u", sq.no);
+  PrintSmall(0, 12 + 6 * 2, "G %u", sq.go);
+  PrintSmall(0, 12 + 6 * 3, "STP %u", stp);
 
-  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 0, POS_R, C_FILL, "%u", SP_GetRssiMax());
-  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 1, POS_R, C_FILL, "%u",
+  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 0, POS_R, C_FILL, "%u", SP_GetRssiMax());
+  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 1, POS_R, C_FILL, "%u",
                SP_GetNoiseFloor());
-  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 2, POS_R, C_FILL, "%uus", delay);
-  PrintSmallEx(LCD_WIDTH - 1, 16 + 6 * 3, POS_R, C_FILL, "%s",
+
+  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 2, POS_R, C_FILL, "%uus", delay);
+  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 3, POS_R, C_FILL, "%s",
                vfo->is_open ? "OPEN" : "...");
 
-  PrintSmallEx(LCD_XCENTER, 16 + 6 * 0, POS_C, C_FILL, "%u %d", rssi,
-               Rssi2DBm(rssi));
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 0, POS_C, C_FILL, "%u %d", rssi.rssi,
+               Rssi2DBm(rssi.rssi));
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 1, POS_C, C_FILL, "%u", rssi.noise);
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 2, POS_C, C_FILL, "%u", rssi.glitch);
 
   renderBottomFreq();
 
