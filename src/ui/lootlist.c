@@ -48,19 +48,13 @@ static Sort sortType = SORT_LOT;
 static bool shortList = true;
 static bool sortRev = false;
 
-void BANDS_SetRadioParamsFromCurrentBand() {
-  RADIO_SetParam(ctx, PARAM_STEP, gCurrentBand.step, true);
-  RADIO_SetParam(ctx, PARAM_BANDWIDTH, gCurrentBand.bw, true);
-  RADIO_SetParam(ctx, PARAM_GAIN, gCurrentBand.gainIndex, true);
-  RADIO_SetParam(ctx, PARAM_MODULATION, gCurrentBand.modulation, true);
-  RADIO_SetParam(ctx, PARAM_SQUELCH_TYPE, gCurrentBand.squelch.type, true);
-  RADIO_SetParam(ctx, PARAM_SQUELCH_VALUE, gCurrentBand.squelch.value, true);
-  RADIO_SetParam(ctx, PARAM_RADIO, gCurrentBand.radio, true);
-  RADIO_ApplySettings(ctx);
-}
-
 static void tuneToLoot(const Loot *loot, bool save) {
-  BANDS_SetRadioParamsFromCurrentBand();
+  RADIO_SetParam(ctx, PARAM_BANDWIDTH, loot->bw, true);
+  RADIO_SetParam(ctx, PARAM_GAIN, loot->gainIndex, true);
+  RADIO_SetParam(ctx, PARAM_MODULATION, loot->modulation, true);
+  RADIO_SetParam(ctx, PARAM_SQUELCH_TYPE, loot->squelch.type, true);
+  RADIO_SetParam(ctx, PARAM_SQUELCH_VALUE, loot->squelch.value, true);
+  RADIO_SetParam(ctx, PARAM_RADIO, loot->radio, true);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, loot->f, save);
   RADIO_ApplySettings(ctx);
 }

@@ -1,9 +1,18 @@
 #ifndef LOOT_H
 #define LOOT_H
 
+#include "channel.h"
 #include <stdint.h>
 
 typedef struct {
+  int32_t ppm : 5;
+  uint8_t modulation : 4;
+  uint8_t bw : 4;
+  Radio radio : 2;
+  uint8_t scrambler : 4;
+  Squelch squelch;
+  uint8_t gainIndex : 5;
+
   uint32_t lastTimeOpen; // TODO: last seen minutes, ++ every min for each
   uint16_t duration;
   uint8_t code;

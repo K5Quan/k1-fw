@@ -189,6 +189,13 @@ void LOOT_UpdateEx(Loot *item, Measurement *msm) {
   if (msm->blacklist) {
     item->blacklist = true;
   }
+
+  item->modulation = RADIO_GetParam(ctx, PARAM_MODULATION);
+  item->bw = RADIO_GetParam(ctx, PARAM_BANDWIDTH);
+  item->gainIndex = RADIO_GetParam(ctx, PARAM_GAIN);
+  item->radio = RADIO_GetParam(ctx, PARAM_RADIO);
+  item->squelch.type = RADIO_GetParam(ctx, PARAM_SQUELCH_TYPE);
+  item->squelch.value = RADIO_GetParam(ctx, PARAM_SQUELCH_VALUE);
 }
 
 void LOOT_Update(Measurement *msm) {

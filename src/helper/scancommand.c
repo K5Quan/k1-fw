@@ -236,10 +236,8 @@ void SCMD_CreateExampleScan(void) {
       {SCMD_MARKER, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 
       // Диапазоны с автодобавлением в whitelist
-      {SCMD_RANGE, 5, SCMD_FLAG_AUTO_WHITELIST, 0, 20, 2000, 0, 0, 14400000,
-       17600000},
-      {SCMD_RANGE, 5, SCMD_FLAG_AUTO_WHITELIST, 0, 20, 2000, 0, 0, 40000000,
-       47000000},
+      {SCMD_RANGE, 5, 0, 0, 20, 2000, 0, 0, 14400000, 17600000},
+      {SCMD_RANGE, 5, 0, 0, 20, 2000, 0, 0, 40000000, 47000000},
 
       // Возврат к началу
       {SCMD_JUMP, 0, 0, 0, 0, 0, 0, 0, 0, 0},

@@ -12,7 +12,6 @@ typedef struct {
   OffsetDirection offsetDir : 2;
   bool allowTx : 1;
   uint8_t reserved2 : 2;
-  uint8_t step : 4;
   uint8_t modulation : 4;
   uint8_t bw : 4;
   Radio radio : 2;
@@ -20,7 +19,6 @@ typedef struct {
   uint8_t scrambler : 4;
   Squelch squelch;
   CodeRXTX code;
-  bool fixedBoundsMode : 1;
   uint8_t gainIndex : 5;
 } __attribute__((packed)) CH;
 
