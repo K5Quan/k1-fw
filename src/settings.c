@@ -86,6 +86,7 @@ Settings gSettings = {
     .batteryStyle = BAT_PERCENT,
     // .upconverter = 0,
     .deviation = 130, // 1300
+    .freqCorrection = UINT16_MAX / 2,
 };
 
 const uint32_t EEPROM_SIZES[6] = {

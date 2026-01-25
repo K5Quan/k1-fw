@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+extern bool gLootlistActive;
+
 void LOOTLIST_init();
 void LOOTLIST_update();
 bool LOOTLIST_key(KEY_Code_t key, Key_State_t state);

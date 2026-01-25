@@ -11,6 +11,7 @@
 #include "../settings.h"
 #include "../ui/components.h"
 #include "../ui/finput.h"
+#include "../ui/lootlist.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
 #include "apps.h"
@@ -192,7 +193,8 @@ static bool handleRelease(KEY_Code_t key) {
     return true;
 
   case KEY_STAR:
-    APPS_run(APP_LOOTLIST);
+    LOOTLIST_init();
+    gLootlistActive = true;
     return true;
 
   case KEY_2:

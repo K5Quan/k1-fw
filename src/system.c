@@ -21,12 +21,10 @@
 #include "settings.h"
 #include "ui/finput.h"
 #include "ui/graphics.h"
+#include "ui/lootlist.h"
 #include "ui/statusline.h"
 #include "ui/textinput.h"
 #include <string.h>
-
-#define queueLen 20
-#define itemSize sizeof(SystemMessages)
 
 static uint8_t DEAD_BUF[] = {0xDE, 0xAD};
 
@@ -36,12 +34,6 @@ static uint32_t notificationTimeoutAt;
 static uint32_t secondTimer;
 static uint32_t radioTimer;
 static uint32_t appsKeyboardTimer;
-
-static uint32_t lastUartDataTime;
-
-static bool isUartWaiting() {
-  return lastUartDataTime && Now() - lastUartDataTime < 5000;
-}
 
 static void appRender() {
   if (!gRedrawScreen) {
@@ -62,6 +54,9 @@ static void appRender() {
   }
   if (gTextInputActive) {
     TEXTINPUT_render();
+  }
+  if (gLootlistActive) {
+    LOOTLIST_render();
   }
 
   if (notificationMessage[0]) {
@@ -152,6 +147,9 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
   } else if (gTextInputActive && TEXTINPUT_key(key, state)) {
     gRedrawScreen = true;
     gLastRender = 0;
+  } else if (gLootlistActive && LOOTLIST_key(key, state)) {
+    gRedrawScreen = true;
+    gLastRender = 0;
   } else if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
     // LogC(LOG_C_BRIGHT_WHITE, "[SYS] Apps key %u %u", key, state);
     gRedrawScreen = true;
@@ -214,6 +212,9 @@ void SYS_Main() {
     }
     if (gTextInputActive) {
       TEXTINPUT_update();
+    }
+    if (gLootlistActive) {
+      LOOTLIST_update();
     }
     APPS_update();
     if (Now() - appsKeyboardTimer >= 1) {

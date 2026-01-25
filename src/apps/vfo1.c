@@ -15,6 +15,7 @@
 #include "../ui/components.h"
 #include "../ui/finput.h"
 #include "../ui/graphics.h"
+#include "../ui/lootlist.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
 #include "apps.h"
@@ -184,7 +185,8 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
       return true; */
 
   case KEY_STAR:
-    APPS_run(APP_LOOTLIST);
+    LOOTLIST_init();
+    gLootlistActive = true;
     return true;
 
   case KEY_SIDE1:

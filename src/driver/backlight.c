@@ -79,7 +79,6 @@ void BACKLIGHT_TurnOn(void) {
   BACKLIGHT_SetBrightness(gSettings.brightness);
 
   gBacklightCountdown_500ms = 1 + (BL_TIME_VALUES[gSettings.backlight]) * 2;
-  printf("BL countd %u\n", gBacklightCountdown_500ms);
 }
 
 void BACKLIGHT_TurnOff() {

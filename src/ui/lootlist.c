@@ -1,4 +1,5 @@
 #include "lootlist.h"
+#include "../apps/apps.h"
 #include "../dcs.h"
 #include "../driver/st7565.h"
 #include "../driver/systick.h"
@@ -13,10 +14,10 @@
 #include "../ui/components.h"
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
-#include "apps.h"
 #include <stdbool.h>
 #include <stdint.h>
 
+bool gLootlistActive;
 static uint8_t menuIndex = 0;
 static const uint8_t MENU_ITEM_H_LARGER = 15;
 static void initMenu();
@@ -218,7 +219,8 @@ static bool action(const uint16_t index, KEY_Code_t key, Key_State_t state) {
   if (state == KEY_RELEASED) {
     switch (key) {
     case KEY_EXIT:
-      APPS_exit();
+      MENU_Deinit();
+      gLootlistActive = false;
       return true;
     case KEY_PTT:
       tuneToLoot(loot, true);

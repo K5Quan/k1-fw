@@ -12,7 +12,6 @@
 #include "cmdscan.h"
 #include "fc.h"
 #include "files.h"
-#include "lootlist.h"
 #include "newscan.h"
 #include "scaner.h"
 #include "settings.h"
@@ -83,8 +82,6 @@ const App apps[APPS_COUNT] = {
                       ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
     [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
                      NEWSCAN_key, NEWSCAN_deinit, true},
-    [APP_LOOTLIST] = {"Lootlist", LOOTLIST_init, NULL, LOOTLIST_render,
-                      LOOTLIST_key, NULL, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
     [APP_ABOUT] = {"ABOUT", NULL, NULL, ABOUT_Render, NULL, NULL},
 };
