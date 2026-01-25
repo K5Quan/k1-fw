@@ -5,11 +5,9 @@
 #include <stdint.h>
 
 typedef struct {
-  int32_t ppm : 5;
   uint8_t modulation : 4;
   uint8_t bw : 4;
   Radio radio : 2;
-  uint8_t scrambler : 4;
   Squelch squelch;
   uint8_t gainIndex : 5;
 
