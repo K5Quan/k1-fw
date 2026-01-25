@@ -2,6 +2,7 @@
 #include "../dcs.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
+#include "../helper/scan.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/components.h"
@@ -36,25 +37,26 @@ static uint16_t hz = 0x244;
 static uint32_t fcTimeuot;
 
 static void enableScan() {
-  Log("FC enable");
+  // Log("FC enable");
   BK4819_EnableFrequencyScanEx2(gSettings.fcTime, hz);
   isScanning = true;
 }
 
 static void disableScan() {
-  Log("FC disable");
+  // Log("FC disable");
   BK4819_DisableFrequencyScan();
   BK4819_RX_TurnOn();
   isScanning = false;
 }
 
 void FC_init() {
-  Log("FC init");
+  // Log("FC init");
   bound = SETTINGS_GetFilterBound();
   BK4819_SelectFilterEx(filter);
   enableScan();
   frequencyHits = 0;
   filterSwitchCounter = 0;
+  SCAN_SetMode(SCAN_MODE_NONE);
 }
 
 void FC_deinit() { disableScan(); }
