@@ -12,6 +12,7 @@
 #include "../helper/scan.h"
 #include "../radio.h"
 #include "../settings.h"
+#include "../ui/chlist.h"
 #include "../ui/components.h"
 #include "../ui/finput.h"
 #include "../ui/graphics.h"
@@ -63,11 +64,11 @@ static bool handleNumNav(KEY_Code_t key) {
     return true;
   }
 
-  /* if (key <= KEY_9) {
-    NUMNAV_Init(vfo->channel_index, 0, CHANNELS_GetCountMax() - 1);
+  if (key <= KEY_9) {
+    NUMNAV_Init(vfo->channel_index, 0, 4096 - 1);
     gNumNavCallback = setChannel;
     return false;
-  } */
+  }
 
   return false;
 }
@@ -76,12 +77,12 @@ static bool handleFrequencyChange(KEY_Code_t key) {
   if (key != KEY_UP && key != KEY_DOWN)
     return false;
 
-  /* if (vfo->mode == MODE_CHANNEL) {
-    CHANNELS_Next((key == KEY_UP) ^ gSettings.invertButtons);
-  } else { */
-  RADIO_IncDecParam(ctx, PARAM_FREQUENCY,
-                    (key == KEY_UP) ^ gSettings.invertButtons, true);
-  // }
+  if (vfo->mode == MODE_CHANNEL) {
+    RADIO_NextChannel((key == KEY_UP) ^ gSettings.invertButtons);
+  } else {
+    RADIO_IncDecParam(ctx, PARAM_FREQUENCY,
+                      (key == KEY_UP) ^ gSettings.invertButtons, true);
+  }
   updateBand();
   return true;
 }
@@ -101,10 +102,10 @@ static bool handleLongPress(KEY_Code_t key) {
   uint8_t vfoN = RADIO_GetCurrentVFONumber(gRadioState);
 
   switch (key) {
-    /* case KEY_1:
-      gChListFilter = TYPE_FILTER_BAND;
-      APPS_run(APP_CH_LIST);
-      return true; */
+  case KEY_1:
+    CHLIST_init();
+    gChlistActive = true;
+    return true;
 
   case KEY_2:
     if (gCurrentApp == APP_VFO1) {

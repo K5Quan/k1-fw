@@ -1650,7 +1650,51 @@ bool RADIO_SwitchVFO(RadioState *state, uint8_t vfo_index) {
   return true;
 }
 
-static void setCommonParamsFromCh(VFOContext *ctx, const VFO *storage) {
+static void setCommonParamsFromVFO(VFOContext *ctx, const VFO *storage) {
+  ctx->radio_type = storage->radio;
+  ctx->modulation = storage->modulation;
+  ctx->frequency = storage->rxF;
+  RADIO_UpdateCurrentBand(ctx);
+  RADIO_ApplyCorrections(ctx, false);
+
+  RADIO_SetParam(ctx, PARAM_RADIO, storage->radio, false);
+  RADIO_SetParam(ctx, PARAM_FREQUENCY, storage->rxF, false);
+
+  RADIO_SetParam(ctx, PARAM_BANDWIDTH, storage->bw, false);
+  RADIO_SetParam(ctx, PARAM_STEP, storage->step, false);
+  RADIO_SetParam(ctx, PARAM_GAIN, storage->gainIndex, false);
+  RADIO_SetParam(ctx, PARAM_MODULATION, storage->modulation, false);
+  RADIO_SetParam(ctx, PARAM_POWER, storage->power, false);
+  RADIO_SetParam(ctx, PARAM_SQUELCH_TYPE, storage->squelch.type, false);
+  RADIO_SetParam(ctx, PARAM_SQUELCH_VALUE, storage->squelch.value, false);
+  RADIO_SetParam(ctx, PARAM_TX_FREQUENCY, storage->txF, false);
+  RADIO_SetParam(ctx, PARAM_TX_OFFSET, storage->txF, false);
+  RADIO_SetParam(ctx, PARAM_TX_OFFSET_DIR, storage->offsetDir, false);
+
+  strcpy(ctx->name, storage->name);
+
+  ctx->code = storage->code.rx;
+  ctx->tx_state.code = storage->code.tx;
+
+  // Initialize TX state
+  ctx->tx_state.is_active = false;
+  ctx->tx_state.last_error = TX_UNKNOWN;
+
+  RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
+  RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
+  RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
+  RADIO_SetParam(ctx, PARAM_AFC, 0, false);
+  RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
+  RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
+
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
+  // RADIO_SetParam(ctx, PARAM_VOLUME, 80, false);
+
+  // RADIO_UpdateCurrentBand(ctx);
+  // RADIO_ApplyCorrections(ctx, false);
+}
+
+static void setCommonParamsFromCh(VFOContext *ctx, const CH *storage) {
   ctx->radio_type = storage->radio;
   ctx->modulation = storage->modulation;
   ctx->frequency = storage->rxF;
@@ -1666,7 +1710,6 @@ static void setCommonParamsFromCh(VFOContext *ctx, const VFO *storage) {
   RADIO_SetParam(ctx, PARAM_POWER, storage->power, false);
   RADIO_SetParam(ctx, PARAM_SQUELCH_TYPE, storage->squelch.type, false);
   RADIO_SetParam(ctx, PARAM_SQUELCH_VALUE, storage->squelch.value, false);
-  RADIO_SetParam(ctx, PARAM_STEP, storage->step, false);
   RADIO_SetParam(ctx, PARAM_TX_FREQUENCY, storage->txF, false);
   RADIO_SetParam(ctx, PARAM_TX_OFFSET, storage->txF, false);
   RADIO_SetParam(ctx, PARAM_TX_OFFSET_DIR, storage->offsetDir, false);
@@ -1706,7 +1749,7 @@ void RADIO_LoadVFOFromStorage(RadioState *state, uint8_t vfo_index,
   VFOContext *ctx = &vfo->context;
 
   // Set basic parameters
-  setCommonParamsFromCh(ctx, storage);
+  setCommonParamsFromVFO(ctx, storage);
 
   // Handle channel mode
   if (vfo->mode == MODE_CHANNEL) {
@@ -1772,12 +1815,41 @@ void RADIO_LoadChannelToVFO(RadioState *state, uint8_t vfo_index,
   ExtendedVFOContext *vfo = &state->vfos[vfo_index];
   VFOContext *ctx = &vfo->context;
   CH channel;
-  // CHANNEL_LoadCSV("CHANNELS.CSV", channel_index, &channel);
+  STORAGE_LOAD("Channels.ch", channel_index, &channel);
 
   vfo->mode = MODE_CHANNEL;
   vfo->channel_index = channel_index;
 
   setCommonParamsFromCh(ctx, &channel);
+}
+
+bool RADIO_NextChannel(bool next) {
+  if (vfo->mode != MODE_CHANNEL) {
+    RADIO_ToggleVFOMode(gRadioState, gRadioState->active_vfo_index);
+  }
+  uint16_t initialChIndex = vfo->channel_index;
+
+  while (1) {
+    vfo->channel_index = (vfo->channel_index + 1) % 4096;
+    if (vfo->channel_index == initialChIndex) {
+      return false;
+    }
+    CH ch;
+    STORAGE_LOAD("Channels.ch", vfo->channel_index, &ch);
+    if (IsReadable(ch.name)) {
+      setCommonParamsFromCh(ctx, &ch);
+      RADIO_ApplySettings(&vfo->context);
+
+      // Помечаем для сохранения в EEPROM
+      ctx->save_to_eeprom = true;
+      ctx->last_save_time = Now();
+
+      gRedrawScreen = true;
+
+      return true;
+    }
+  }
+  return true;
 }
 
 /**
@@ -1798,23 +1870,23 @@ bool RADIO_ToggleVFOMode(RadioState *state, uint8_t vfo_index) {
   // Определяем новый режим (инвертируем текущий)
   VFOMode new_mode = vfo->mode == MODE_CHANNEL ? MODE_VFO : MODE_CHANNEL;
   VFO ch;
-  /* if (new_mode == MODE_CHANNEL) {
-    CHANNEL_LoadCSV("CHANNELS.CSV", vfo->vfo_ch_index, &ch);
+  if (new_mode == MODE_CHANNEL) {
+    STORAGE_LOAD("Channels.ch", vfo->vfo_ch_index, &ch);
   } else {
-    CHANNEL_LoadCSV("VFO.CSV", vfo_index, &ch);
+    loadVfo(vfo_index, &ch);
   }
 
   ch.isChMode = new_mode == MODE_CHANNEL;
   LogC(LOG_C_BRIGHT_CYAN, "[RADIO] VFOMode = %s", ch.isChMode ? "MR" : "VFO");
 
-  CHANNEL_SaveCSV("VFO.CSV", vfo_index, &ch);
+  saveVfo(vfo_index, &ch);
 
   if (new_mode == MODE_CHANNEL) {
     // TODO: if wrong CH num in VFO, load one from current SL
     RADIO_LoadChannelToVFO(state, vfo_index, ch.channel);
   } else {
     RADIO_LoadVFOFromStorage(state, vfo_index, &ch);
-  } */
+  }
   RADIO_ApplySettings(&vfo->context);
 
   // Помечаем для сохранения в EEPROM

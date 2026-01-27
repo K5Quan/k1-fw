@@ -10,6 +10,7 @@
 #include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
+#include "helper/fsk2.h"
 #include "helper/measurements.h"
 #include "helper/scancommand.h"
 #include "helper/storage.h"
@@ -23,6 +24,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 // Самый простой обработчик HardFault
 static void HardFault_Handler(void) {
@@ -57,91 +59,36 @@ static void HardFault_Handler(void) {
   }
 }
 
-CH testChannels[] = {
-    {.name = "CH1 SL1", .scanlists = 1 << 0},
-    {.name = "CH2 SL2", .scanlists = 1 << 1},
-    {.name = "CH3 SL1", .scanlists = 1 << 0},
-    {.name = "CH4 SL2", .scanlists = 1 << 1},
-    {.name = "CH5 SL1", .scanlists = 1 << 0},
-    {.name = "CH6 SL0", .scanlists = 0},
-    {.name = "CH7 SL1", .scanlists = 1 << 0},
-    {.name = "CH8 SL1", .scanlists = 1 << 0},
-    {.name = "CH9 SL2", .scanlists = 1 << 1},
-    {.name = "CH10 SL1", .scanlists = 1 << 0},
-};
-
-void ch_init() {
-  Log("Init channels");
-  STORAGE_INIT("CHANNELS.CH", CH, 1024);
-
-  for (uint16_t i = 0; i < ARRAY_SIZE(testChannels); ++i) {
-    STORAGE_SAVE("CHANNELS.CH", i, &testChannels[i]);
-  }
-}
-
-void ch_prepare_sl() {
-  Log("Read channels");
-  char slName[10];
-  uint16_t scanlistNumeration[16] = {0};
-  for (uint16_t i = 0; i < 1024; ++i) {
-    CH ch;
-    STORAGE_LOAD("CHANNELS.CH", i, &ch);
-
-    if (IsReadable(ch.name)) {
-      for (uint8_t sl = 0; sl < 16; ++sl) {
-        if ((ch.scanlists >> sl) & 1) {
-          snprintf(slName, 10, "SL%u.SL", sl);
-
-          Log("ADD %s TO %s AT %u", ch.name, slName, scanlistNumeration[sl]);
-
-          STORAGE_INIT(slName, CH, 1024);
-          STORAGE_SAVE(slName, scanlistNumeration[sl], &ch);
-          scanlistNumeration[sl]++;
-        }
-      }
-    }
-  }
-}
-
-void ch_show_scanlists() {
-  for (uint8_t sl = 0; sl < 16; ++sl) {
-    char slName[10];
-    snprintf(slName, 10, "SL%u.SL", sl);
-    if (!lfs_file_exists(slName)) {
-      continue;
-    }
-    for (uint16_t i = 0; i < 1024; ++i) {
-      CH ch;
-      STORAGE_LOAD(slName, i, &ch);
-
-      if (!IsReadable(ch.name)) {
-        break;
-      }
-
-      Log("%s: CH %s", slName, ch.name);
-    }
-  }
-}
-
-void ch_measure_scan() {
-  uint32_t start = Now();
-
-  uint16_t i;
-
-  for (i = 0; i < 1024; ++i) {
-    CH ch;
-    STORAGE_LOAD("SL0.SL", i, &ch);
-
-    if (!IsReadable(ch.name)) {
-      break;
-    }
-  }
-  Log("SCAN %u channels, t=%ums", i, Now() - start);
-}
-
 int main(void) {
   SYSTICK_Init();
   BOARD_Init();
+
+  BK4819_Init();
+  /* BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
+  BK4819_RX_TurnOn(); */
+
+  BK4819_SetModulation(MOD_FM);
+  BK4819_SetAGC(true, 0);
+  BK4819_SetAFC(0);
+  // BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
+
+  BK4819_TuneTo(434 * MHZ, true);
+  BK4819_WriteRegister(0x43, 0x3028);
+
+  for (int i = 0; i < 64; i++) {
+    FSK_TXDATA[i] = 0x00FF;
+  }
+
+  for (;;) {
+    RF_EnterFsk();
+    BK4819_ToggleGpioOut(BK4819_RED, true);
+    BK4819_SetupPowerAmplifier(128, 434 * MHZ);
+    RF_FskTransmit();
+    BK4819_TurnsOffTones_TurnsOnRX();
+    BK4819_ToggleGpioOut(BK4819_RED, false);
+    RF_ExitFsk();
+    SYSTICK_DelayMs(2000);
+  }
 
   SYS_Main();
 }

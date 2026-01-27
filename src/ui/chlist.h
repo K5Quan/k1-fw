@@ -1,0 +1,16 @@
+#ifndef CHLIST_H
+#define CHLIST_H
+
+#include "../driver/keyboard.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+void CHLIST_init();
+void CHLIST_deinit();
+bool CHLIST_key(KEY_Code_t key, Key_State_t state);
+void CHLIST_render();
+
+extern bool gChlistActive;
+extern bool gChSaveMode;
+
+#endif /* end of include guard: CHLIST_H */

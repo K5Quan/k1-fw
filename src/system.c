@@ -19,6 +19,7 @@
 #include "helper/storage.h"
 #include "inc/channel.h"
 #include "settings.h"
+#include "ui/chlist.h"
 #include "ui/finput.h"
 #include "ui/graphics.h"
 #include "ui/lootlist.h"
@@ -57,6 +58,9 @@ static void appRender() {
   }
   if (gLootlistActive) {
     LOOTLIST_render();
+  }
+  if (gChlistActive) {
+    CHLIST_render();
   }
 
   if (notificationMessage[0]) {
@@ -111,6 +115,9 @@ static void loadSettingsOrReset() {
   if (!lfs_file_exists("Bands.bnd")) {
     STORAGE_INIT("Bands.bnd", Band, MAX_BANDS);
   }
+  if (!lfs_file_exists("Channels.ch")) {
+    STORAGE_INIT("Channels.ch", CH, 4096);
+  }
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
@@ -148,6 +155,9 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
     gRedrawScreen = true;
     gLastRender = 0;
   } else if (gLootlistActive && LOOTLIST_key(key, state)) {
+    gRedrawScreen = true;
+    gLastRender = 0;
+  } else if (gChlistActive && CHLIST_key(key, state)) {
     gRedrawScreen = true;
     gLastRender = 0;
   } else if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
@@ -216,6 +226,9 @@ void SYS_Main() {
     if (gLootlistActive) {
       LOOTLIST_update();
     }
+    /* if (gChlistActive) {
+      CHLIST_update();
+    } */
     APPS_update();
     if (Now() - appsKeyboardTimer >= 1) {
       keyboard_tick_1ms();

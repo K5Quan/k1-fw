@@ -250,5 +250,11 @@ CH LOOT_ToCh(const Loot *loot) {
     }
   }
 
+  ch.bw = loot->bw;
+  ch.radio = loot->radio;
+  ch.gainIndex = loot->gainIndex;
+  ch.squelch = loot->squelch;
+  ch.modulation = loot->modulation;
+
   return ch;
 }

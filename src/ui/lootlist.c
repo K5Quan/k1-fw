@@ -9,6 +9,7 @@
 #include "../helper/measurements.h"
 #include "../helper/menu.h"
 #include "../helper/scan.h"
+#include "../helper/storage.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/components.h"
@@ -120,18 +121,19 @@ static void sort(Sort type) {
 }
 
 static void saveLootToCh(const Loot *loot, int16_t chnum, uint16_t scanlist) {
-  /* CH ch = LOOT_ToCh(loot);
+  CH ch = LOOT_ToCh(loot);
   ch.scanlists = scanlist;
-  CHANNELS_Save(chnum, &ch); */
+  STORAGE_SAVE("Channels.ch", chnum, &ch);
+  // CHANNELS_Save(chnum, &ch);
 }
 
 static void saveToFreeChannels(bool saveWhitelist, uint16_t scanlist) {
-  /* FillRect(0, LCD_YCENTER - 4, LCD_WIDTH, 9, C_FILL);
+  FillRect(0, LCD_YCENTER - 4, LCD_WIDTH, 9, C_FILL);
   PrintMediumBoldEx(LCD_XCENTER, LCD_YCENTER + 3, POS_C, C_INVERT, "Saving...");
   ST7565_Blit();
   uint32_t saved = 0;
   for (uint16_t i = 0; i < LOOT_Size(); ++i) {
-    uint16_t chnum = CHANNELS_GetCountMax();
+    uint16_t chnum = 4096;
     const Loot *loot = LOOT_Item(i);
     if (saveWhitelist && !loot->whitelist) {
       continue;
@@ -140,17 +142,17 @@ static void saveToFreeChannels(bool saveWhitelist, uint16_t scanlist) {
       continue;
     }
 
+    CH ch;
     while (chnum) {
       chnum--;
-      if (CHANNELS_GetMeta(chnum).type == TYPE_EMPTY) {
+      STORAGE_LOAD("Channels.ch", chnum, &ch);
+      if (!IsReadable(ch.name)) {
         // save new
         saveLootToCh(loot, chnum, scanlist);
         saved++;
         break;
       } else {
-        CH ch;
-        CHANNELS_Load(chnum, &ch);
-        if (ch.rxF == loot->f && ch.meta.type == TYPE_CH) {
+        if (ch.rxF == loot->f) {
           break;
         }
       }
@@ -161,7 +163,7 @@ static void saveToFreeChannels(bool saveWhitelist, uint16_t scanlist) {
   PrintMediumBoldEx(LCD_XCENTER, LCD_YCENTER + 3, POS_C, C_INVERT, "Saved: %u",
                     saved);
   ST7565_Blit();
-  SYS_DelayMs(2000); */
+  SYSTICK_DelayMs(2000);
 }
 
 static bool action(const uint16_t index, KEY_Code_t key, Key_State_t state) {

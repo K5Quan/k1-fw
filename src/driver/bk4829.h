@@ -220,6 +220,10 @@ bool BK4819_IsSquelchOpen();
 XtalMode BK4819_XtalGet();
 void BK4819_XtalSet(XtalMode mode);
 
+void BK4819_SendFSKData(uint16_t *pData);
+void BK4819_FskInit(void);
+void BK4819_PrepareFSKReceive(void);
+
 extern uint32_t d1;
 extern uint32_t d2;
 extern uint32_t d3;

@@ -185,6 +185,7 @@ void RADIO_SaveVFOToStorage(const RadioState *state, uint8_t vfo_index,
                             VFO *storage);
 void RADIO_LoadChannelToVFO(RadioState *state, uint8_t vfo_index,
                             uint16_t channel_index);
+bool RADIO_NextChannel(bool next);
 bool RADIO_SaveCurrentVFO(RadioState *state);
 void RADIO_ToggleMultiwatch(RadioState *state, bool enable);
 void RADIO_UpdateMultiwatch(RadioState *state);
