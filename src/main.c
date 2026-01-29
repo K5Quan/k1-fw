@@ -64,21 +64,17 @@ int main(void) {
   BOARD_Init();
 
   BK4819_Init();
-  /* BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
-  BK4819_RX_TurnOn(); */
+  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
+  BK4819_RX_TurnOn();
 
   BK4819_SetModulation(MOD_FM);
   BK4819_SetAGC(true, 0);
   BK4819_SetAFC(0);
-  // BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
+  BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
 
   BK4819_TuneTo(434 * MHZ, true);
-  BK4819_WriteRegister(0x43, 0x3028);
-
-  for (int i = 0; i < 64; i++) {
-    FSK_TXDATA[i] = 0x00FF;
-  }
-
+  AUDIO_AudioPathOn();
+  // BK4819_WriteRegister(0x43, 0x3028);
   for (;;) {
     RF_EnterFsk();
     BK4819_ToggleGpioOut(BK4819_RED, true);
@@ -89,6 +85,28 @@ int main(void) {
     RF_ExitFsk();
     SYSTICK_DelayMs(2000);
   }
+
+  GPIO_TurnOnBacklight();
+  RF_EnterFsk();
+  for (;;) {
+    if (RF_FskReceive()) {
+      printf("%+10u: ", Now());
+      for (uint8_t i = 0; i < 64; ++i) {
+        printf("%02x%02x", FSK_RXDATA[i] >> 8, FSK_RXDATA[i] & 0xFF);
+      }
+      printf("\n");
+      UI_ClearStatus();
+      UI_ClearScreen();
+      PrintMedium(0, 8, "%+10u", Now());
+      for (uint8_t y = 0; y < 64; ++y) {
+        PrintSmall(y % 6 * 20, 8 + (y / 6 + 1) * 6, "%02x%02x",
+                   FSK_RXDATA[y] >> 8, FSK_RXDATA[y] & 0xFF);
+      }
+      ST7565_Blit();
+    }
+    __WFI();
+  }
+  RF_ExitFsk();
 
   SYS_Main();
 }

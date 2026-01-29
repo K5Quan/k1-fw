@@ -4,9 +4,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define FSK_LEN 64
+
 // Публичные буферы для FSK данных
-extern uint16_t FSK_TXDATA[64];
-extern uint16_t FSK_RXDATA[64];
+extern uint16_t FSK_TXDATA[FSK_LEN];
+extern uint16_t FSK_RXDATA[FSK_LEN];
 
 // Функции управления RF режимом
 void RF_Txon(void);

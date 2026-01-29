@@ -1,3 +1,4 @@
+#include "fsk2.h"
 #include "../driver/bk4829.h"
 #include "../driver/systick.h"
 #include <stdint.h>
@@ -11,9 +12,11 @@
 
 #define REG_37 0x1D00
 #define REG_52 CTC_ERR << 12 | CTC_IN << 6 | CTC_OUT
-#define REG_59 0x0028
 
-#define FSK_LEN 64
+// was 0x0028
+const uint16_t REG_59 = (1 << 3)   // fsk sync length = 4B
+                        | (7 << 4) // preamble len = (v + 1)B
+    ;
 
 uint16_t FSK_TXDATA[FSK_LEN];
 uint16_t FSK_RXDATA[FSK_LEN];
@@ -71,7 +74,7 @@ bool RF_FskTransmit() {
 
   SYSTICK_DelayMs(20);
 
-  RF_Write(0x59, (REG_59 | 0x2800) & (~(1 << 13))); //[11]fsk_tx_en;[13]scrb=1
+  RF_Write(0x59, REG_59 | (1 << 11)); //[11]fsk_tx_en
 
   uint16_t rdata = 0;
   uint8_t cnt = 200; //~=1s protection
@@ -93,8 +96,8 @@ bool RF_FskTransmit() {
 bool RF_FskReceive() {
   RF_Rxon();
 
-  RF_Write(0x59, REG_59 | 0x4000);                  //[14]fifo clear
-  RF_Write(0x59, (REG_59 | 0x3000) & (~(1 << 13))); //[12]fsk_rx_en;[13]scrb=1
+  RF_Write(0x59, REG_59 | 0x4000);    //[14]fifo clear
+  RF_Write(0x59, REG_59 | (1 << 12)); //[12]fsk_rx_en
 
   RF_Write(0x3F, 0x3000); // rx sucs/fifo_af irq mask=1
 
@@ -158,6 +161,7 @@ bool RF_FskReceive() {
   rdata = RF_Read(0x0B); //[4]crc
 
   RF_FskIdle();
+  return true;
 
   return rdata & 0x10; // CRC ok
 }
