@@ -143,7 +143,7 @@ int main(void) {
     BK4819_SetupPowerAmplifier(4, 434 * MHZ);
     SYSTICK_DelayMs(10);
 
-    RF_EnterFsk();
+    RF_EnterFsk(); // without this deviation is small at 2+ tx
     RF_FskTransmit();
     RF_ExitFsk();
 
