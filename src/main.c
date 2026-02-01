@@ -116,7 +116,7 @@ int main(void) {
   BK4819_SetModulation(MOD_FM);
   BK4819_SetAGC(true, 0);
   // BK4819_SetAFC(0);
-  BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
+  // BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
 
   BK4819_TuneTo(434 * MHZ, true);
 
@@ -126,7 +126,7 @@ int main(void) {
   size_t len = strlen(str) + 1;
   pack_string(str, FSK_TXDATA, &len); */
 
-  // BK4819_WriteRegister(0x43, 0x3028);
+  BK4819_WriteRegister(0x43, 0x3028);
 
   memset(FSK_TXDATA, 0b11011011, sizeof(FSK_TXDATA));
 
@@ -140,7 +140,7 @@ int main(void) {
     SYSTICK_DelayMs(10);
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
     SYSTICK_DelayMs(5);
-    BK4819_SetupPowerAmplifier(4, 434 * MHZ);
+    BK4819_SetupPowerAmplifier(10, 434 * MHZ);
     SYSTICK_DelayMs(10);
 
     RF_EnterFsk(); // without this deviation is small at 2+ tx
@@ -159,9 +159,9 @@ int main(void) {
   AUDIO_AudioPathOn();
   GPIO_TurnOnBacklight();
   BK4819_RX_TurnOn();
+  RF_EnterFsk();
   for (;;) {
     memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
-    RF_EnterFsk();
     if (RF_FskReceive()) {
       UI_ClearStatus();
       UI_ClearScreen();
@@ -170,9 +170,9 @@ int main(void) {
                  FSK_RXDATA[2]);
       ST7565_Blit();
     }
-    RF_ExitFsk();
     __WFI();
   }
+  RF_ExitFsk();
 
   SYS_Main();
 }

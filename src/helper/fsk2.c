@@ -29,6 +29,8 @@ void RF_EnterFsk() {
 
   RF_Write(0x5C, 0x5665);
   RF_Write(0x5D, (FSK_LEN * 2 - 1) << 8); //[15:8]fsk tx length(byte)
+
+  BK4819_WriteRegister(0x40, 0x3000 + 1200);
 }
 
 void RF_ExitFsk() {
@@ -83,7 +85,7 @@ bool RF_FskReceive() {
   RF_Write(0x59, REG_59 | 0x4000);    //[14]fifo clear
   RF_Write(0x59, REG_59 | (1 << 12)); //[12]fsk_rx_en
 
-  SYSTICK_DelayMs(50); // TEST
+  // SYSTICK_DelayMs(50); // TEST
 
   RF_Write(0x3F, 0x3000); // rx sucs/fifo_af irq mask=1
 
