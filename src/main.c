@@ -128,39 +128,49 @@ int main(void) {
 
   // BK4819_WriteRegister(0x43, 0x3028);
 
-  memset(FSK_TXDATA, 0, sizeof(FSK_TXDATA));
+  memset(FSK_TXDATA, 0b11011011, sizeof(FSK_TXDATA));
 
   FSK_TXDATA[0] = 0xDEAD;
   FSK_TXDATA[1] = 0xBEEF;
 
-  /* RF_EnterFsk();
-  for (;;) {
+  /* for (;;) {
     BK4819_ToggleGpioOut(BK4819_RED, true);
-    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
-    BK4819_SetupPowerAmplifier(4, 434 * MHZ);
+
     BK4819_TxOn_Beep();
+    SYSTICK_DelayMs(10);
+    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
+    SYSTICK_DelayMs(5);
+    BK4819_SetupPowerAmplifier(4, 434 * MHZ);
+    SYSTICK_DelayMs(10);
+
+    RF_EnterFsk();
     RF_FskTransmit();
+    RF_ExitFsk();
+
+    BK4819_SetupPowerAmplifier(0, 0);
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
-    BK4819_TurnsOffTones_TurnsOnRX();
     BK4819_ToggleGpioOut(BK4819_RED, false);
+    BK4819_TurnsOffTones_TurnsOnRX();
+
     SYSTICK_DelayMs(2000);
-  }
-  RF_ExitFsk(); */
+  } */
 
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   AUDIO_AudioPathOn();
   GPIO_TurnOnBacklight();
-  RF_EnterFsk();
   BK4819_RX_TurnOn();
   for (;;) {
     memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
+    RF_EnterFsk();
     if (RF_FskReceive()) {
       UI_ClearStatus();
       UI_ClearScreen();
       PrintMedium(0, 8, "%+10u", Now());
-      PrintSmall(0, 22, "%04X%04x", FSK_RXDATA[0], FSK_RXDATA[1]);
+      PrintSmall(0, 22, "%04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
+                 FSK_RXDATA[2]);
       ST7565_Blit();
     }
+    RF_ExitFsk();
     __WFI();
   }
 
