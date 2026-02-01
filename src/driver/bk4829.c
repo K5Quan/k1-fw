@@ -1357,9 +1357,8 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
 
-  // BK4819_WriteRegister(0x40, 0x3516);
+  BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
-  RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
@@ -1405,94 +1404,4 @@ void BK4819_Init(void) {
                                  (gSettings.deviation * 10) | (1 << 12));
 
   isInitialized = true;
-}
-
-void BK4819_SendFSKData(uint16_t *pData) {
-  unsigned int i;
-  uint8_t Timeout = 200;
-
-  SYSTICK_DelayMs(20);
-
-  BK4819_WriteRegister(BK4819_REG_3F, BK4819_REG_3F_FSK_TX_FINISHED);
-  BK4819_WriteRegister(BK4819_REG_59, 0x8068);
-  BK4819_WriteRegister(BK4819_REG_59, 0x0068);
-
-  for (i = 0; i < 36; i++)
-    BK4819_WriteRegister(BK4819_REG_5F, pData[i]);
-
-  SYSTICK_DelayMs(20);
-
-  BK4819_WriteRegister(BK4819_REG_59, 0x2868);
-
-  while (Timeout-- && (BK4819_ReadRegister(BK4819_REG_0C) & 1u) == 0)
-    SYSTICK_DelayMs(5);
-
-  BK4819_WriteRegister(BK4819_REG_02, 0);
-
-  SYSTICK_DelayMs(20);
-
-  BK4819_ResetFSK();
-}
-
-void BK4819_PrepareFSKReceive(void) {
-  BK4819_ResetFSK();
-  BK4819_WriteRegister(BK4819_REG_02, 0);
-  BK4819_WriteRegister(BK4819_REG_3F, 0);
-  BK4819_RX_TurnOn();
-  BK4819_WriteRegister(BK4819_REG_3F, 0 | BK4819_REG_3F_FSK_RX_FINISHED |
-                                          BK4819_REG_3F_FSK_FIFO_ALMOST_FULL);
-
-  // Clear RX FIFO
-  // FSK Preamble Length 7 bytes
-  // FSK SyncLength Selection
-  BK4819_WriteRegister(BK4819_REG_59, 0x4068);
-
-  // Enable FSK Scramble
-  // Enable FSK RX
-  // FSK Preamble Length 7 bytes
-  // FSK SyncLength Selection
-  BK4819_WriteRegister(BK4819_REG_59, 0x3068);
-}
-
-void BK4819_FskInit(void) {
-  // BK4819_WriteRegister(BK4819_REG_70, 0x00E0); // Enable Tone2, tuning gain
-  // 48
-  BK4819_WriteRegister(BK4819_REG_70,
-                       (0u << 15) |            // 0
-                           (0u << 8) |         // 0
-                           (1u << 7) |         // 1
-                           (96u << 0));        // 96
-  BK4819_WriteRegister(BK4819_REG_72, 0x3065); // Tone2 baudrate 1200
-  BK4819_WriteRegister(
-      BK4819_REG_58,
-      0x00C1); // FSK Enable, FSK 1.2K RX Bandwidth, Preamble 0xAA or 0x55, RX
-               // Gain 0, RX Mode (FSK1.2K, FSK2.4K Rx and NOAA SAME Rx), TX
-               // Mode FSK 1.2K and FSK 2.4K Tx
-  BK4819_WriteRegister(
-      BK4819_REG_5C, 0x5665); // Enable CRC among other things we don't know yet
-  BK4819_WriteRegister(BK4819_REG_5D,
-                       0x4700); // FSK Data Length 72 Bytes (0xabcd + 2 byte
-                                // length + 64 byte payload + 2 byte CRC +
-                                // 0xdcba) BK4819_WriteRegister(0x5E, 0x3204);
-
-  // TEST
-  BK4819_WriteRegister(BK4819_REG_5A, 0x3072);
-  BK4819_WriteRegister(BK4819_REG_5B, 0x576C);
-  BK4819_WriteRegister(BK4819_REG_5C, 0x5625);
-
-  /* BK4819_WriteRegister(
-      BK4819_REG_59,
-      (0u << 15) |                 // 0/1     1 = clear TX FIFO
-          (0u << 14) |             // 0/1     1 = clear RX FIFO
-          (0u << 13) |             // 0/1     1 = scramble
-          (0u << 12) |             // 0/1     1 = enable RX
-          (0u << 11) |             // 0/1     1 = enable TX
-          (0u << 10) |             // 0/1     1 = invert data when RX
-          (0u << 9) |              // 0/1     1 = invert data when TX
-          (0u << 8) |              // 0/1     ???
-          ((rx ? 0u : 15u) << 4) | // 0 ~ 15  preamble length .. bit toggling
-          (1u << 3) |              // 0/1     sync length
-          (0u << 0)                // 0 ~ 7   ???
-  ); */
-  BK4819_WriteRegister(BK4819_REG_02, 0);
 }

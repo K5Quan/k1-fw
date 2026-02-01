@@ -14,26 +14,12 @@
 #define REG_52 CTC_ERR << 12 | CTC_IN << 6 | CTC_OUT
 
 // was 0x0028
-const uint16_t REG_59 = (1 << 3)   // fsk sync length = 4B
-                        | (7 << 4) // preamble len = (v + 1)B
+const uint16_t REG_59 = (1 << 3)         // fsk sync length = 4B
+                        | ((8 - 1) << 4) // preamble len = (v + 1)B 0..15
     ;
 
 uint16_t FSK_TXDATA[FSK_LEN];
 uint16_t FSK_RXDATA[FSK_LEN];
-
-void RF_Txon() {
-  RF_Write(0x37, REG_37 | 0x801F); //[1]xtal;[0]bg;[9]ldo_rf_vsel=0 when txon
-  RF_Write(0x52, REG_52);          // Set bit[15]=0 to Clear ctcss/cdcss Tail
-  RF_Write(0x30, 0x0000);
-  RF_Write(0x30, 0xC1FE);
-}
-
-void RF_Rxon() {
-  //[1]xtal;[0]bg;[9]ldo_rf_vsel=1 when rxon
-  RF_Write(0x37, REG_37 | 0x801F | 1 << 9);
-  RF_Write(0x30, 0x0000);
-  RF_Write(0x30, 0xBFF1); // RF Rxon
-}
 
 void RF_EnterFsk() {
   RF_Write(0x70, 0x00E0); //[7]=1,Enable Tone2 for FSK; [6:0]=Gain
@@ -58,7 +44,6 @@ void RF_FskIdle() {
 }
 
 bool RF_FskTransmit() {
-  RF_Txon();
   SYSTICK_DelayMs(100);
 
   RF_Write(0x3F, 0x8000); // tx sucs irq mask=1
@@ -87,17 +72,18 @@ bool RF_FskTransmit() {
   }
 
   RF_Write(0x02, 0x0000); // clear int
+  RF_Write(0x59, REG_59); // fsk_tx_en=0, fsk_rx_en=0
 
-  RF_FskIdle();
+  // RF_FskIdle();
 
   return cnt;
 }
 
 bool RF_FskReceive() {
-  RF_Rxon();
-
   RF_Write(0x59, REG_59 | 0x4000);    //[14]fifo clear
   RF_Write(0x59, REG_59 | (1 << 12)); //[12]fsk_rx_en
+
+  SYSTICK_DelayMs(50); // TEST
 
   RF_Write(0x3F, 0x3000); // rx sucs/fifo_af irq mask=1
 
@@ -120,7 +106,7 @@ bool RF_FskReceive() {
 
     // over time
     if (!cnt) {
-      RF_FskIdle();
+      // RF_FskIdle();
       return false;
     }
 
@@ -145,7 +131,7 @@ bool RF_FskReceive() {
 
   // over time
   if (!cnt) {
-    RF_FskIdle();
+    // RF_FskIdle();
     return false;
   }
 
@@ -160,7 +146,7 @@ bool RF_FskReceive() {
 
   rdata = RF_Read(0x0B); //[4]crc
 
-  RF_FskIdle();
+  // RF_FskIdle();
   return true;
 
   return rdata & 0x10; // CRC ok

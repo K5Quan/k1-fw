@@ -17,6 +17,7 @@
 #include "inc/band.h"
 #include "inc/channel.h"
 #include "inc/common.h"
+#include "misc.h"
 #include "settings.h"
 #include "system.h"
 #include "ui/graphics.h"
@@ -59,54 +60,109 @@ static void HardFault_Handler(void) {
   }
 }
 
+void pack_string(const char *str, uint16_t *output, size_t *output_len) {
+  size_t len = strlen(str);
+  size_t words = (len + 1) / 2; // +1 для завершающего '\0'
+
+  for (size_t i = 0; i < words; i++) {
+    uint16_t word = 0;
+
+    // Младший байт (первый символ)
+    if (i * 2 < len) {
+      word = (uint8_t)str[i * 2];
+    }
+
+    // Старший байт (второй символ)
+    if (i * 2 + 1 < len) {
+      word |= ((uint16_t)(uint8_t)str[i * 2 + 1]) << 8;
+    }
+
+    output[i] = word;
+  }
+
+  *output_len = words;
+}
+
+void unpack_string(const uint16_t *input, size_t input_len, char *output,
+                   size_t max_output_len) {
+  size_t pos = 0;
+
+  for (size_t i = 0; i < input_len && pos < max_output_len - 1; i++) {
+    // Младший байт (первый символ)
+    char c1 = (char)(input[i] & 0xFF);
+    if (c1 == '\0')
+      break;
+    output[pos++] = c1;
+
+    if (pos >= max_output_len - 1)
+      break;
+
+    // Старший байт (второй символ)
+    char c2 = (char)((input[i] >> 8) & 0xFF);
+    if (c2 == '\0')
+      break;
+    output[pos++] = c2;
+  }
+
+  output[pos] = '\0';
+}
+
 int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
   BK4819_Init();
-  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
-  BK4819_RX_TurnOn();
 
   BK4819_SetModulation(MOD_FM);
   BK4819_SetAGC(true, 0);
-  BK4819_SetAFC(0);
+  // BK4819_SetAFC(0);
   BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
 
   BK4819_TuneTo(434 * MHZ, true);
-  AUDIO_AudioPathOn();
+
+  /* static const char *str =
+      "To get started with investigating a wireless signal we need to capture "
+      "it with a Software Defined Radio";
+  size_t len = strlen(str) + 1;
+  pack_string(str, FSK_TXDATA, &len); */
+
   // BK4819_WriteRegister(0x43, 0x3028);
+
+  memset(FSK_TXDATA, 0, sizeof(FSK_TXDATA));
+
+  FSK_TXDATA[0] = 0xDEAD;
+  FSK_TXDATA[1] = 0xBEEF;
+
+  /* RF_EnterFsk();
   for (;;) {
-    RF_EnterFsk();
     BK4819_ToggleGpioOut(BK4819_RED, true);
-    BK4819_SetupPowerAmplifier(128, 434 * MHZ);
+    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
+    BK4819_SetupPowerAmplifier(4, 434 * MHZ);
+    BK4819_TxOn_Beep();
     RF_FskTransmit();
+    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
     BK4819_TurnsOffTones_TurnsOnRX();
     BK4819_ToggleGpioOut(BK4819_RED, false);
-    RF_ExitFsk();
     SYSTICK_DelayMs(2000);
   }
+  RF_ExitFsk(); */
 
+  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
+  AUDIO_AudioPathOn();
   GPIO_TurnOnBacklight();
   RF_EnterFsk();
+  BK4819_RX_TurnOn();
   for (;;) {
+    memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
     if (RF_FskReceive()) {
-      printf("%+10u: ", Now());
-      for (uint8_t i = 0; i < 64; ++i) {
-        printf("%02x%02x", FSK_RXDATA[i] >> 8, FSK_RXDATA[i] & 0xFF);
-      }
-      printf("\n");
       UI_ClearStatus();
       UI_ClearScreen();
       PrintMedium(0, 8, "%+10u", Now());
-      for (uint8_t y = 0; y < 64; ++y) {
-        PrintSmall(y % 6 * 20, 8 + (y / 6 + 1) * 6, "%02x%02x",
-                   FSK_RXDATA[y] >> 8, FSK_RXDATA[y] & 0xFF);
-      }
+      PrintSmall(0, 22, "%04X%04x", FSK_RXDATA[0], FSK_RXDATA[1]);
       ST7565_Blit();
     }
     __WFI();
   }
-  RF_ExitFsk();
 
   SYS_Main();
 }
