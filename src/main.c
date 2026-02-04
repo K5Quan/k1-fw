@@ -111,11 +111,16 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
 
+  UI_ClearStatus();
+  UI_ClearScreen();
+  PrintMedium(0, 8, "Initialized");
+  ST7565_Blit();
+
   BK4819_Init();
 
   BK4819_SetModulation(MOD_FM);
-  BK4819_SetAGC(true, 0);
-  // BK4819_SetAFC(0);
+  BK4819_SetAGC(true, 1);
+  BK4819_SetAFC(0);
   // BK4819_SetFilterBandwidth(BK4819_FILTER_BW_12k);
 
   BK4819_TuneTo(434 * MHZ, true);
@@ -128,7 +133,9 @@ int main(void) {
 
   BK4819_WriteRegister(0x43, 0x3028);
 
-  memset(FSK_TXDATA, 0b11011011, sizeof(FSK_TXDATA));
+  for (uint8_t i = 0; i < ARRAY_SIZE(FSK_TXDATA); ++i) {
+    FSK_TXDATA[i] = 0xC0FE;
+  }
 
   FSK_TXDATA[0] = 0xDEAD;
   FSK_TXDATA[1] = 0xBEEF;
@@ -158,19 +165,34 @@ int main(void) {
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   AUDIO_AudioPathOn();
   GPIO_TurnOnBacklight();
+
   BK4819_RX_TurnOn();
+
+  BK4819_WriteRegister(BK4819_REG_3F, BK4819_REG_3F_FSK_RX_SYNC |
+                                          BK4819_REG_3F_FSK_FIFO_ALMOST_FULL |
+                                          BK4819_REG_3F_FSK_RX_FINISHED);
+
   RF_EnterFsk();
+
+  const uint16_t REG_59 = (1 << 3)         // fsk sync length = 4B
+                          | ((8 - 1) << 4) // preamble len = (v + 1)B 0..15
+      ;
+  BK4819_WriteRegister(0x59, REG_59 | 0x4000);    //[14]fifo clear
+  BK4819_WriteRegister(0x59, REG_59 | (1 << 12)); //[12]fsk_rx_en
   for (;;) {
-    memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
-    if (RF_FskReceive()) {
-      UI_ClearStatus();
-      UI_ClearScreen();
-      PrintMedium(0, 8, "%+10u", Now());
-      PrintSmall(0, 22, "%04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
-                 FSK_RXDATA[2]);
-      ST7565_Blit();
+    while (BK4819_ReadRegister(0x0C) & 1) {
+      BK4819_WriteRegister(0x02, 0); // clear int
+      uint16_t int_bits = BK4819_ReadRegister(0x02);
+      if (RF_FskReceive(int_bits)) {
+        UI_ClearStatus();
+        UI_ClearScreen();
+        PrintMedium(0, 8, "%+10u", Now());
+        PrintSmall(0, 22, "%04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
+                   FSK_RXDATA[2]);
+        ST7565_Blit();
+      }
     }
-    __WFI();
+    // __WFI();
   }
   RF_ExitFsk();
 

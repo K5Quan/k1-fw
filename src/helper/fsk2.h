@@ -19,6 +19,6 @@ void RF_FskIdle(void);
 
 // Основные функции FSK
 bool RF_FskTransmit(void);
-bool RF_FskReceive(void);
+bool RF_FskReceive(uint16_t int_bits);
 
 #endif // FSK2_H
