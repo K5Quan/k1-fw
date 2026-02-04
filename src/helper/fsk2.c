@@ -3,6 +3,7 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../external/printf/printf.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -93,47 +94,28 @@ typedef enum MsgStatus {
   RECEIVING,
 } MsgStatus;
 
-static uint8_t gFSKWriteIndex;
+static uint8_t rxIdx;
 static MsgStatus msgStatus;
 
 bool RF_FskReceive(uint16_t int_bits) {
   const bool sync = int_bits & BK4819_REG_02_FSK_RX_SYNC;
   const bool fifo_almost_full = int_bits & BK4819_REG_02_FSK_FIFO_ALMOST_FULL;
   const bool finished = int_bits & BK4819_REG_02_FSK_RX_FINISHED;
-  /* Log("sync: %u, FIFO alm full: %u, finished: %u", sync, fifo_almost_full,
-      finished); */
-
-  const uint16_t rx_sync_flags = BK4819_ReadRegister(0x0B);
-
-  const bool rx_sync_neg = (rx_sync_flags & (1u << 7)) ? true : false;
 
   if (sync) {
-    gFSKWriteIndex = 0;
-    memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
+    rxIdx = 0;
     msgStatus = RECEIVING;
-    BK4819_ToggleGpioOut(BK4819_GREEN, true);
-    Log("SYNC");
+    memset(FSK_RXDATA, 0, sizeof(FSK_RXDATA));
   }
 
   if (fifo_almost_full && msgStatus == RECEIVING) {
-
-    // almost full threshold
-    const uint16_t count = RF_Read(BK4819_REG_5E) & (7u << 0);
+    const uint16_t count = RF_Read(BK4819_REG_5E) & 7u;
     for (uint16_t i = 0; i < count; i++) {
-      uint16_t word = BK4819_ReadRegister(BK4819_REG_5F);
-      printf("%04X ", word);
-      FSK_RXDATA[gFSKWriteIndex++] = word;
+      FSK_RXDATA[rxIdx++] = BK4819_ReadRegister(BK4819_REG_5F);
     }
-    printf("\n");
-
-    // SYSTICK_DelayMs(10);
   }
 
   if (finished) {
-    BK4819_ToggleGpioOut(BK4819_GREEN, false);
-    Log("FINISHED");
-    /* BK4819_FskClearFifo();
-    BK4819_FskEnableRx(); */
     msgStatus = READY;
 
     const uint16_t fsk_reg59 =
@@ -143,11 +125,14 @@ bool RF_FskReceive(uint16_t int_bits) {
     BK4819_WriteRegister(BK4819_REG_59, (1u << 15) | (1u << 14) | fsk_reg59);
     BK4819_WriteRegister(BK4819_REG_59, (1u << 12) | fsk_reg59);
 
-    if (gFSKWriteIndex > 2) {
-      gFSKWriteIndex = 0;
-      return true;
+    printf("%10u: ", Now());
+    for (uint8_t i = 0; i < 4; ++i) {
+      printf("%04X ", FSK_RXDATA[i]);
     }
-    gFSKWriteIndex = 0;
+    printf("\n");
+
+    rxIdx = 0;
+    return true;
   }
 
   return false;

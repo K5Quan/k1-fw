@@ -1398,7 +1398,10 @@ void BK4819_Init(void) {
   BK4819_SetupPowerAmplifier(0, 0);
   BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
 
-  // BK4819_WriteRegister(BK4819_REG_43, 0x3028);
+  // default settings
+  BK4819_WriteRegister(BK4819_REG_43, 0x3028); // BW
+  BK4819_SetModulation(MOD_FM);
+  BK4819_SetAGC(true, 0);
 
   BK4819_WriteRegister(0x40, (BK4819_ReadRegister(0x40) & ~(0x7FF)) |
                                  (gSettings.deviation * 10) | (1 << 12));
