@@ -10,10 +10,12 @@
 
 static uint16_t reg30state = 0xffff;
 
-#define SHORT_DELAY()                                                          \
+/* #define SHORT_DELAY() \
   __asm volatile("nop\n nop\n nop\n nop\n nop\n"                               \
                  "nop\n nop\n nop\n nop\n nop\n"                               \
-                 "nop\n nop\n nop\n"); // ~13 NOPs для ~0.27 мкс @48MHz
+                 "nop\n nop\n nop\n"); // ~13 NOPs для ~0.27 мкс @48MHz */
+
+void SHORT_DELAY() { SYSTICK_DelayUs(1); }
 
 // ============================================================================
 // Constants

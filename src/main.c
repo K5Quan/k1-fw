@@ -26,7 +26,7 @@ int main(void) {
   BK4819_TuneTo(434 * MHZ, true);
   BK4819_SetAFC(1); // small AFC
 
-#define MODE_TX
+  // #define MODE_TX
 
 #ifdef MODE_TX
   for (uint8_t i = 0; i < ARRAY_SIZE(FSK_TXDATA); ++i) {
@@ -63,34 +63,70 @@ int main(void) {
   AUDIO_AudioPathOn();
   GPIO_TurnOnBacklight();
 
+  // 1. Инициализация BK4829 с софт-ресетом
+  BK4819_Init();
+
+  // 2. Настройка частоты
+  BK4819_TuneTo(434 * MHZ, true);
+  BK4819_SetAFC(1); // small AFC
+
+  // 3. Включаем RX
   BK4819_RX_TurnOn();
 
+  // 4. Настройка FSK
+  RF_EnterFsk();
+
+  // 5. Включаем нужные прерывания FSK
   BK4819_WriteRegister(BK4819_REG_3F, BK4819_REG_3F_FSK_RX_SYNC |
                                           BK4819_REG_3F_FSK_FIFO_ALMOST_FULL |
                                           BK4819_REG_3F_FSK_RX_FINISHED);
 
-  RF_EnterFsk();
+  // 6. Очистка FIFO и запуск RX (ВНИМАНИЕ: порядок важен!)
+  const uint16_t REG_59 = (1 << 3) | ((8 - 1) << 4);
 
-  const uint16_t REG_59 = (1 << 3)         // fsk sync length = 4B
-                          | ((8 - 1) << 4) // preamble len = (v + 1)B 0..15
-      ;
-  BK4819_WriteRegister(0x59, REG_59 | 0x4000);    //[14]fifo clear
-  BK4819_WriteRegister(0x59, REG_59 | (1 << 12)); //[12]fsk_rx_en
+  // а) Останавливаем RX если был включен
+  BK4819_WriteRegister(0x59, REG_59 & ~(1 << 12));
+  SYSTICK_DelayMs(1);
+
+  // б) Очищаем RX FIFO
+  BK4819_WriteRegister(0x59, REG_59 | (1 << 14));
+  SYSTICK_DelayMs(1);
+
+  // в) Запускаем RX
+  BK4819_WriteRegister(0x59, REG_59 | (1 << 12));
+
+  printf("FSK Receiver started on 434MHz\n");
+
+  // 7. Главный цикл приема
+  uint32_t last_print = 0;
+  uint32_t packet_count = 0;
+
   for (;;) {
-    while (BK4819_ReadRegister(0x0C) & 1) {
-      BK4819_WriteRegister(0x02, 0); // clear int
+    // Проверяем наличие прерываний (бит 0 регистра 0x0C)
+    if (BK4819_ReadRegister(0x0C) & 1) {
+      BK4819_WriteRegister(0x02, 0x0000);
       uint16_t int_bits = BK4819_ReadRegister(0x02);
+
       if (RF_FskReceive(int_bits)) {
-        UI_ClearStatus();
-        UI_ClearScreen();
-        PrintMedium(0, 8, "%+10u", Now());
-        PrintSmall(0, 22, "%04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
-                   FSK_RXDATA[2]);
-        ST7565_Blit();
+        packet_count++;
+
+        // Обновляем дисплей не чаще чем раз в 500мс
+        if (Now() - last_print > 500) {
+          UI_ClearStatus();
+          UI_ClearScreen();
+          PrintMedium(0, 8, "FSK RX #%u", packet_count);
+          PrintSmall(0, 22, "%04X %04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
+                     FSK_RXDATA[2], FSK_RXDATA[3]);
+          ST7565_Blit();
+          last_print = Now();
+        }
       }
     }
-    // __WFI();
+
+    // Небольшая задержка для снижения нагрузки
+    SYSTICK_DelayMs(1);
   }
+
 #endif
 
   // SYS_Main();
