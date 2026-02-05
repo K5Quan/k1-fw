@@ -26,7 +26,7 @@ int main(void) {
   BK4819_TuneTo(434 * MHZ, true);
   BK4819_SetAFC(1); // small AFC
 
-  // #define MODE_TX
+#define MODE_TX
 
 #ifdef MODE_TX
   for (uint8_t i = 0; i < ARRAY_SIZE(FSK_TXDATA); ++i) {

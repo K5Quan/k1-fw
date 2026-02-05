@@ -185,7 +185,7 @@ bool RF_FskReceive(uint16_t int_bits) {
 
     // Отладочный вывод
     printf("%10u: RX [%d] ", Now(), rxIdx);
-    for (uint8_t i = 0; i < (rxIdx < 4 ? rxIdx : 4); ++i) {
+    for (uint8_t i = 0; i < 64; ++i) {
       printf("%04X ", FSK_RXDATA[i]);
     }
     printf("\n");
