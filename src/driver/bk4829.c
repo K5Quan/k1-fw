@@ -617,7 +617,7 @@ void BK4819_SetModulation(ModulationType type) {
   }
 
   uint16_t r31 = BK4819_ReadRegister(0x31);
-  if (type == MOD_AM || type == MOD_LSB || type == MOD_USB) {
+  if (type == MOD_AM) {
     BK4819_WriteRegister(0x31, r31 | 1);
     BK4819_WriteRegister(0x42, 0x6F5C);
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants

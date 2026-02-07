@@ -211,12 +211,24 @@ bool checkInt() {
     }
     if (int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) {
       LogC(LOG_C_GREEN, "TAIL tone");
+      TOAST_Push("TAIL");
     }
     if (int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) {
       LogC(LOG_C_GREEN, "CT +");
+      uint32_t cd;
+      uint16_t ct;
+      BK4819_CssScanResult_t res = BK4819_GetCxCSSScanResult(&cd, &ct);
+      TOAST_Push("CT:%u.%u", CTCSS_Options[ct] / 10, CTCSS_Options[ct] % 10);
     }
     if (int_bits & BK4819_REG_02_MASK_CTCSS_LOST) {
       LogC(LOG_C_GREEN, "CT -");
+    }
+    if (int_bits & BK4819_REG_02_MASK_CDCSS_FOUND) {
+      LogC(LOG_C_GREEN, "CD +");
+      TOAST_Push("CDCSS +");
+    }
+    if (int_bits & BK4819_REG_02_MASK_CDCSS_LOST) {
+      LogC(LOG_C_GREEN, "CD -");
     }
     if (int_bits & BK4819_REG_02_MASK_DTMF_5TONE_FOUND) {
       const char c = DTMF_GetCharacter(BK4819_GetDTMF_5TONE_Code());
