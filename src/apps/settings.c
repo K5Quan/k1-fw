@@ -6,6 +6,7 @@
 #include "../helper/menu.h"
 #include "../misc.h"
 #include "../settings.h"
+#include "../ui/finput.h"
 #include "apps.h"
 // #include "finput.h"
 
@@ -34,10 +35,11 @@ static bool calibrate(const MenuItem *item, KEY_Code_t key, Key_State_t state) {
   uint32_t currentVoltage =
       BATTERY_GetPreciseVoltage(SETTINGS_GetValue(SETTING_BATTERYCALIBRATION));
 
-  /* gFInputValue1 = currentVoltage / 100;
+  gFInputValue1 = currentVoltage / 100;
   gFInputCallback = doCalibrate;
   FINPUT_setup(500, 860, UNIT_VOLTS, false);
-  APPS_run(APP_FINPUT); */
+  FINPUT_init();
+  gFInputActive = true;
   return true;
 }
 

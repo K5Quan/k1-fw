@@ -1,12 +1,15 @@
 #include "board.h"
+#include "dcs.h"
 #include "driver/audio.h"
 #include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
 #include "driver/gpio.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
+#include "driver/uart.h"
 #include "helper/fsk2.h"
 #include "misc.h"
+#include "system.h"
 #include "ui/graphics.h"
 #include <assert.h>
 #include <stdbool.h>
@@ -15,6 +18,9 @@
 int main(void) {
   SYSTICK_Init();
   BOARD_Init();
+  GPIO_TurnOnBacklight();
+
+  // SYS_Main();
 
   UI_ClearStatus();
   UI_ClearScreen();
@@ -26,10 +32,74 @@ int main(void) {
   BK4819_TuneTo(434 * MHZ, true);
   BK4819_SetAFC(1); // small AFC
 
-#define MODE_TX
+  // disable the 300Hz HPF and FM pre-emphasis filter
+  const uint16_t filt_val = BK4819_ReadRegister(BK4819_REG_2B);
+  BK4819_WriteRegister(BK4819_REG_2B, (1u << 2) | (1u << 0));
+
+  // INT test
+  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
+  AUDIO_AudioPathOn();
+  uint16_t InterruptMask = BK4819_REG_3F_CxCSS_TAIL;
+
+  InterruptMask |= BK4819_REG_3F_FSK_RX_SYNC |
+                   BK4819_REG_3F_FSK_FIFO_ALMOST_FULL |
+                   BK4819_REG_3F_FSK_RX_FINISHED;
+
+  InterruptMask |= BK4819_REG_3F_SQUELCH_LOST | BK4819_REG_3F_SQUELCH_FOUND;
+  InterruptMask |= BK4819_REG_3F_DTMF_5TONE_FOUND;
+  InterruptMask |= BK4819_REG_3F_CDCSS_FOUND | BK4819_REG_3F_CDCSS_LOST;
+  InterruptMask |= BK4819_REG_3F_CTCSS_FOUND | BK4819_REG_3F_CTCSS_LOST;
+  BK4819_WriteRegister(BK4819_REG_3F, InterruptMask);
+
+  BK4819_EnableDTMF();
+  BK4819_RX_TurnOn();
+  RF_EnterFsk();
+
+  for (;;) {
+    if (BK4819_ReadRegister(0x0C) & 1) {
+      BK4819_WriteRegister(0x02, 0x0000);
+      uint16_t int_bits = BK4819_ReadRegister(0x02);
+
+      if (int_bits & BK4819_REG_02_MASK_SQUELCH_LOST) {
+        LogC(LOG_C_GREEN, "SQ -");
+      }
+      if (int_bits & BK4819_REG_02_MASK_SQUELCH_FOUND) {
+        LogC(LOG_C_GREEN, "SQ +");
+      }
+      if (int_bits & BK4819_REG_02_MASK_FSK_RX_SYNC) {
+        LogC(LOG_C_GREEN, "FSK RX Sync");
+      }
+      if (int_bits & BK4819_REG_02_MASK_FSK_FIFO_ALMOST_FULL) {
+        LogC(LOG_C_GREEN, "FSK FIFO alm full");
+      }
+      if (int_bits & BK4819_REG_02_MASK_FSK_FIFO_ALMOST_EMPTY) {
+        LogC(LOG_C_GREEN, "FSK FIFO alm empt");
+      }
+      if (int_bits & BK4819_REG_02_MASK_FSK_RX_FINISHED) {
+        LogC(LOG_C_GREEN, "FSK RX finish");
+      }
+      if (int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) {
+        LogC(LOG_C_GREEN, "TAIL tone");
+      }
+      if (int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) {
+        LogC(LOG_C_GREEN, "CT +");
+      }
+      if (int_bits & BK4819_REG_02_MASK_CTCSS_LOST) {
+        LogC(LOG_C_GREEN, "CT -");
+      }
+      if (int_bits & BK4819_REG_02_MASK_DTMF_5TONE_FOUND) {
+        const char c = DTMF_GetCharacter(BK4819_GetDTMF_5TONE_Code());
+        LogC(LOG_C_GREEN, "DTMF %c", c);
+      }
+      if (RF_FskReceive(int_bits)) {
+      }
+    }
+  }
+
+  // #define MODE_TX
 
 #ifdef MODE_TX
-  for (uint8_t i = 0; i < ARRAY_SIZE(FSK_TXDATA); ++i) {
+  for (uint16_t i = 0; i < ARRAY_SIZE(FSK_TXDATA); ++i) {
     FSK_TXDATA[i] = 0xC0FE;
   }
 
@@ -43,7 +113,7 @@ int main(void) {
     SYSTICK_DelayMs(10);
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
     SYSTICK_DelayMs(5);
-    BK4819_SetupPowerAmplifier(10, 434 * MHZ);
+    BK4819_SetupPowerAmplifier(90, 434 * MHZ);
     SYSTICK_DelayMs(10);
 
     RF_EnterFsk(); // without this deviation is small at 2+ tx
@@ -55,7 +125,7 @@ int main(void) {
     BK4819_ToggleGpioOut(BK4819_RED, false);
     BK4819_TurnsOffTones_TurnsOnRX();
 
-    SYSTICK_DelayMs(500);
+    SYSTICK_DelayMs(2000);
   }
 #else
 
@@ -81,20 +151,6 @@ int main(void) {
                                           BK4819_REG_3F_FSK_FIFO_ALMOST_FULL |
                                           BK4819_REG_3F_FSK_RX_FINISHED);
 
-  // 6. Очистка FIFO и запуск RX (ВНИМАНИЕ: порядок важен!)
-  const uint16_t REG_59 = (1 << 3) | ((8 - 1) << 4);
-
-  // а) Останавливаем RX если был включен
-  BK4819_WriteRegister(0x59, REG_59 & ~(1 << 12));
-  SYSTICK_DelayMs(1);
-
-  // б) Очищаем RX FIFO
-  BK4819_WriteRegister(0x59, REG_59 | (1 << 14));
-  SYSTICK_DelayMs(1);
-
-  // в) Запускаем RX
-  BK4819_WriteRegister(0x59, REG_59 | (1 << 12));
-
   printf("FSK Receiver started on 434MHz\n");
 
   // 7. Главный цикл приема
@@ -115,8 +171,9 @@ int main(void) {
           UI_ClearStatus();
           UI_ClearScreen();
           PrintMedium(0, 8, "FSK RX #%u", packet_count);
-          PrintSmall(0, 22, "%04X %04X %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1],
-                     FSK_RXDATA[2], FSK_RXDATA[3]);
+          PrintSmall(0, 22, "%04X %04X %04X %04X %c", FSK_RXDATA[0],
+                     FSK_RXDATA[1], FSK_RXDATA[2], FSK_RXDATA[3],
+                     BK4819_ReadRegister(0x0B) & 0x10 ? 'V' : 'X');
           ST7565_Blit();
           last_print = Now();
         }

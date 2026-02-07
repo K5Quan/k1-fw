@@ -30,6 +30,8 @@ uint16_t FSK_TXDATA[FSK_LEN];
 uint16_t FSK_RXDATA[FSK_LEN];
 
 void RF_EnterFsk() {
+  // а) Останавливаем RX если был включен
+  BK4819_WriteRegister(0x59, REG_59 & ~(1 << 12));
   // 1. Сначала отключаем FSK (софт-сброс согласно Application Notes)
   RF_Write(0x58, 0x0000); // Disable FSK
 
@@ -53,10 +55,14 @@ void RF_EnterFsk() {
   RF_Write(0x58, 0x00C1);
 
   // 6. Настройка CRC (отключено)
-  RF_Write(0x5C, 0x5665 & ~(1 << 6)); // disable crc
+  // RF_Write(0x5C, 0x5665 & ~(1 << 6)); // disable crc
+  RF_Write(0x5C, 0x5665); // disable crc
 
   // 7. Настройка длины пакета
-  RF_Write(0x5D, (FSK_LEN * 2 - 1) << 8); // tx length in bytes
+  uint16_t length = FSK_LEN * 2 - 1;
+  uint16_t reg_value = ((length & 0xFF) << 8) | //
+                       ((length >> 8) << 5);    //
+  RF_Write(0x5D, reg_value);
 
   // 8. Настройка FIFO thresholds
   RF_Write(0x5E, (64 << 3) | 4); // Almost empty=64, almost full=8
@@ -67,6 +73,8 @@ void RF_EnterFsk() {
   // 10. Настройка синхрослова (по умолчанию, но явно задаем)
   RF_Write(0x5A, (FSK_SYNC_0 << 8) | FSK_SYNC_1);
   RF_Write(0x5B, (FSK_SYNC_2 << 8) | FSK_SYNC_3);
+
+  BK4819_WriteRegister(0x59, REG_59 | (1 << 12));
 
   SYSTICK_DelayMs(10);
 }
@@ -93,7 +101,7 @@ bool RF_FskTransmit() {
   RF_Write(0x59, REG_59);
 
   // Записываем данные в FIFO
-  for (uint8_t i = 0; i < FSK_LEN; i++) {
+  for (uint16_t i = 0; i < FSK_LEN; i++) {
     RF_Write(0x5F, FSK_TXDATA[i]);
   }
 
@@ -125,7 +133,7 @@ typedef enum MsgStatus {
   RECEIVING,
 } MsgStatus;
 
-static uint8_t rxIdx;
+static uint16_t rxIdx;
 static MsgStatus msgStatus = READY;
 
 bool RF_FskReceive(uint16_t int_bits) {
@@ -142,6 +150,7 @@ bool RF_FskReceive(uint16_t int_bits) {
     uint16_t reg59 = RF_Read(BK4819_REG_59);
     RF_Write(BK4819_REG_59, reg59 | (1 << 14));
     RF_Write(BK4819_REG_59, reg59);
+    Log("SYNC");
   }
 
   if (fifo_almost_full && msgStatus == RECEIVING) {
@@ -185,7 +194,7 @@ bool RF_FskReceive(uint16_t int_bits) {
 
     // Отладочный вывод
     printf("%10u: RX [%d] ", Now(), rxIdx);
-    for (uint8_t i = 0; i < 64; ++i) {
+    for (uint16_t i = 0; i < FSK_LEN; ++i) {
       printf("%04X ", FSK_RXDATA[i]);
     }
     printf("\n");

@@ -15,6 +15,7 @@
  */
 
 #include "dcs.h"
+#include "driver/keyboard.h"
 #include "external/printf/printf.h"
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
@@ -111,4 +112,12 @@ void PrintRTXCode(char *Output, uint8_t codeType, uint8_t code) {
   } else if (codeType == CODE_TYPE_OFF) {
     sprintf(Output, "No code");
   }
+}
+
+char DTMF_GetCharacter(const unsigned int code) {
+  const char DTMF[] = "0123456789ABCD*#";
+  if (code < ARRAY_SIZE(DTMF)) {
+    return DTMF[code];
+  }
+  return 127;
 }

@@ -41,5 +41,6 @@ uint8_t DCS_GetCdcssCode(uint32_t Code);
 uint8_t DCS_GetCtcssCode(uint16_t Code);
 
 void PrintRTXCode(char *Output, uint8_t codeType, uint8_t code);
+char DTMF_GetCharacter(const unsigned int code);
 
 #endif

@@ -1,8 +1,10 @@
 #include "system.h"
 #include "apps/apps.h"
 #include "board.h"
+#include "dcs.h"
 #include "driver/backlight.h"
 #include "driver/battery.h"
+#include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
 #include "driver/keyboard.h"
 #include "driver/lfs.h"
@@ -13,6 +15,7 @@
 #include "external/littlefs/lfs.h"
 #include "external/printf/printf.h"
 #include "helper/bands.h"
+#include "helper/fsk2.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
 #include "helper/screenshot.h"
@@ -77,13 +80,6 @@ static void appRender() {
 static void systemUpdate() {
   BATTERY_UpdateBatteryInfo();
   // BACKLIGHT_Update();
-}
-
-static bool resetNeeded() {
-  uint8_t buf[2];
-  EEPROM_ReadBuffer(0, buf, 2);
-
-  return memcmp(buf, DEAD_BUF, 2) == 0;
 }
 
 static void reset() {
@@ -181,6 +177,51 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
   }
 }
 
+bool checkInt() {
+  if (BK4819_ReadRegister(0x0C) & 1) {
+    BK4819_WriteRegister(0x02, 0x0000);
+    uint16_t int_bits = BK4819_ReadRegister(0x02);
+
+    if (int_bits & BK4819_REG_02_MASK_SQUELCH_LOST) {
+      LogC(LOG_C_GREEN, "SQ -");
+    }
+    if (int_bits & BK4819_REG_02_MASK_SQUELCH_FOUND) {
+      LogC(LOG_C_GREEN, "SQ +");
+    }
+    if (int_bits & BK4819_REG_02_MASK_FSK_RX_SYNC) {
+      LogC(LOG_C_GREEN, "FSK RX Sync");
+    }
+    if (int_bits & BK4819_REG_02_MASK_FSK_FIFO_ALMOST_FULL) {
+      LogC(LOG_C_GREEN, "FSK FIFO alm full");
+    }
+    if (int_bits & BK4819_REG_02_MASK_FSK_FIFO_ALMOST_EMPTY) {
+      LogC(LOG_C_GREEN, "FSK FIFO alm empt");
+    }
+    if (int_bits & BK4819_REG_02_MASK_FSK_RX_FINISHED) {
+      LogC(LOG_C_GREEN, "FSK RX finish");
+    }
+    if (int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) {
+      LogC(LOG_C_GREEN, "TAIL tone");
+    }
+    if (int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) {
+      LogC(LOG_C_GREEN, "CT +");
+    }
+    if (int_bits & BK4819_REG_02_MASK_CTCSS_LOST) {
+      LogC(LOG_C_GREEN, "CT -");
+    }
+    if (int_bits & BK4819_REG_02_MASK_DTMF_5TONE_FOUND) {
+      const char c = DTMF_GetCharacter(BK4819_GetDTMF_5TONE_Code());
+      LogC(LOG_C_GREEN, "DTMF %c", c);
+    }
+
+    if (RF_FskReceive(int_bits)) {
+      STATUSLINE_SetTickerText("FSK RECV %04X %04X", FSK_RXDATA[0],
+                               FSK_RXDATA[1]);
+    }
+  }
+  return false;
+}
+
 void SYS_Main() {
   LogC(LOG_C_BRIGHT_WHITE, "Keyboard init");
   keyboard_init(onKey);
@@ -217,6 +258,8 @@ void SYS_Main() {
 
     SCAN_Check();
 
+    checkInt();
+
     if (gFInputActive) {
       FINPUT_update();
     }
@@ -248,6 +291,10 @@ void SYS_Main() {
     }
 
     appRender();
+
+    if (SCAN_GetMode() == SCAN_MODE_SINGLE && checkInt()) {
+      continue;
+    }
 
     __WFI();
   }

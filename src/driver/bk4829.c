@@ -954,6 +954,11 @@ void BK4819_EnterTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0xBB18); }
 
 void BK4819_ExitTxMute(void) { BK4819_WriteRegister(BK4819_REG_50, 0x3B18); }
 
+void BK4819_MuteMic(void) {
+  const uint16_t reg30 = BK4819_ReadRegister(BK4819_REG_30);
+  BK4819_WriteRegister(BK4819_REG_30, reg30 & ~(1u << 2));
+}
+
 void BK4819_RX_TurnOn(void) {
   BK4819_WriteRegister(BK4819_REG_37, 0x9F1F);
   BK4819_Idle();

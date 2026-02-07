@@ -32,6 +32,19 @@ void STATUSLINE_SetText(const char *pattern, ...) {
   }
 }
 
+void STATUSLINE_SetTickerText(const char *pattern, ...) {
+  char statuslineTextNew[32] = {0};
+  va_list args;
+  va_start(args, pattern);
+  vsnprintf(statuslineTextNew, 31, pattern, args);
+  va_end(args);
+  if (strcmp(statuslineTicker, statuslineTextNew)) {
+    strcpy(statuslineTicker, statuslineTextNew);
+    gRedrawScreen = true;
+  }
+  lastTickerUpdate = Now();
+}
+
 void STATUSLINE_update(void) {
   // BATTERY_UpdateBatteryInfo();
   uint8_t level = gBatteryPercent / 10;
