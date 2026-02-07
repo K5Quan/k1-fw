@@ -21,6 +21,7 @@
 #include "helper/screenshot.h"
 #include "helper/storage.h"
 #include "inc/channel.h"
+#include "misc.h"
 #include "settings.h"
 #include "ui/chlist.h"
 #include "ui/finput.h"
@@ -28,6 +29,7 @@
 #include "ui/lootlist.h"
 #include "ui/statusline.h"
 #include "ui/textinput.h"
+#include "ui/toast.h"
 #include <string.h>
 
 static uint8_t DEAD_BUF[] = {0xDE, 0xAD};
@@ -37,6 +39,7 @@ static uint32_t notificationTimeoutAt;
 
 static uint32_t secondTimer;
 static uint32_t radioTimer;
+static uint32_t toastTimer;
 static uint32_t appsKeyboardTimer;
 
 static void appRender() {
@@ -72,6 +75,8 @@ static void appRender() {
   }
 
   STATUSLINE_render(); // coz of APPS_render calls STATUSLINE_SetText
+
+  TOAST_Render();
 
   ST7565_Blit();
   gLastRender = Now();
@@ -177,6 +182,10 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
   }
 }
 
+char dtmfBuf[16] = "\0";
+uint8_t dtmfIdx = 0;
+uint32_t lastDtmf;
+
 bool checkInt() {
   if (BK4819_ReadRegister(0x0C) & 1) {
     BK4819_WriteRegister(0x02, 0x0000);
@@ -211,13 +220,18 @@ bool checkInt() {
     }
     if (int_bits & BK4819_REG_02_MASK_DTMF_5TONE_FOUND) {
       const char c = DTMF_GetCharacter(BK4819_GetDTMF_5TONE_Code());
+      if (dtmfIdx < ARRAY_SIZE(dtmfBuf) - 1) {
+        dtmfBuf[dtmfIdx++] = c;
+        dtmfBuf[dtmfIdx] = '\0';
+        lastDtmf = Now();
+      }
       LogC(LOG_C_GREEN, "DTMF %c", c);
     }
-
     if (RF_FskReceive(int_bits)) {
-      STATUSLINE_SetTickerText("FSK RECV %04X %04X", FSK_RXDATA[0],
-                               FSK_RXDATA[1]);
+      // TODO: process
+      TOAST_Push("FSK: %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1]);
     }
+    return true;
   }
   return false;
 }
@@ -260,6 +274,11 @@ void SYS_Main() {
 
     checkInt();
 
+    if (dtmfIdx > 0 && Now() - lastDtmf > 1000) {
+      TOAST_Push("DTMF: %s", dtmfBuf);
+      dtmfIdx = 0;
+    }
+
     if (gFInputActive) {
       FINPUT_update();
     }
@@ -273,6 +292,11 @@ void SYS_Main() {
       CHLIST_update();
     } */
     APPS_update();
+
+    if (Now() - toastTimer >= 40) {
+      TOAST_Update();
+      toastTimer = Now();
+    }
     if (Now() - appsKeyboardTimer >= 1) {
       keyboard_tick_1ms();
       appsKeyboardTimer = Now();

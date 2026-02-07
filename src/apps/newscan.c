@@ -57,6 +57,7 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
 
     case KEY_SIDE1:
       LOOT_BlacklistLast();
+
       return true;
 
     case KEY_SIDE2:
@@ -128,6 +129,7 @@ void measure() {
   msm->glitch = BK4819_GetGlitch();
 
   msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
+  LOOT_Update(msm);
 
   if (msm->f == targetF) {
     rssi = *msm;

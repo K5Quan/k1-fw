@@ -20,7 +20,7 @@ int main(void) {
   BOARD_Init();
   GPIO_TurnOnBacklight();
 
-  // SYS_Main();
+  SYS_Main();
 
   UI_ClearStatus();
   UI_ClearScreen();
