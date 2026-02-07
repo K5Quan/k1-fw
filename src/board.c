@@ -101,8 +101,8 @@ void BOARD_ADC_Init(void) {
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
                                 LL_ADC_SAMPLINGTIME_41CYCLES_5);
-  /* LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
-                                LL_ADC_SAMPLINGTIME_41CYCLES_5); */
+  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
+                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
 
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
@@ -121,7 +121,7 @@ void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
   *pCurrent = 0;
 }
 
-/* uint16_t BOARD_ADC_GetAPRS() {
+uint16_t BOARD_ADC_GetAPRS() {
   uint16_t v;
   // Переключение на канал 9 (PB1) и чтение current
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
@@ -134,7 +134,7 @@ void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
   // Возврат к каналу 8
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
   return v;
-} */
+}
 
 void BOARD_DAC_Init(void) {
   // Настроить PA4 как аналоговый пин

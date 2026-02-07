@@ -16,6 +16,7 @@ typedef enum {
   GRAPH_NOISE,
   GRAPH_GLITCH,
   GRAPH_SNR,
+  GRAPH_APRS,
   GRAPH_COUNT,
 } GraphMeasurement;
 

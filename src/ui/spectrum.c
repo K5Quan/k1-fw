@@ -1,4 +1,5 @@
 #include "spectrum.h"
+#include "../board.h"
 #include "../driver/uart.h"
 #include "../helper/measurements.h"
 #include "components.h"
@@ -463,6 +464,9 @@ void SP_AddGraphPoint(const Measurement *msm) {
     break;
   case GRAPH_SNR:
     v = msm->snr;
+    break;
+  case GRAPH_APRS:
+    v = BOARD_ADC_GetAPRS();
     break;
   case GRAPH_RSSI:
   case GRAPH_COUNT:

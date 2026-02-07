@@ -229,7 +229,8 @@ bool checkInt() {
     }
     if (RF_FskReceive(int_bits)) {
       // TODO: process
-      TOAST_Push("FSK: %04X %04X", FSK_RXDATA[0], FSK_RXDATA[1]);
+      TOAST_Push("FSK: %04X %04X %04X %04x", FSK_RXDATA[0], FSK_RXDATA[1],
+                 FSK_RXDATA[2], FSK_RXDATA[3]);
     }
     return true;
   }
@@ -274,7 +275,7 @@ void SYS_Main() {
 
     checkInt();
 
-    if (dtmfIdx > 0 && Now() - lastDtmf > 1000) {
+    if (dtmfIdx > 0 && Now() - lastDtmf > 400) {
       TOAST_Push("DTMF: %s", dtmfBuf);
       dtmfIdx = 0;
     }

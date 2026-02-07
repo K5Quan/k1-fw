@@ -368,10 +368,9 @@ static void renderMonitorMode(uint8_t BASE) {
 
   if (gSettings.showLevelInVFO) {
     static char *graphMeasurementNames[] = {
-        [GRAPH_RSSI] = "RSSI",
-        [GRAPH_NOISE] = "Noise",
-        [GRAPH_GLITCH] = "Glitch",
-        [GRAPH_SNR] = "SNR",
+        [GRAPH_RSSI] = "RSSI",     [GRAPH_NOISE] = "Noise",
+        [GRAPH_GLITCH] = "Glitch", [GRAPH_SNR] = "SNR",
+        [GRAPH_APRS] = "APRS",
     };
 
     static const struct {
@@ -382,6 +381,7 @@ static void renderMonitorMode(uint8_t BASE) {
         [GRAPH_NOISE] = {0, 255},
         [GRAPH_GLITCH] = {0, 255},
         [GRAPH_SNR] = {0, 30},
+        [GRAPH_APRS] = {0, 65535},
         [GRAPH_COUNT] = {RSSI_MIN, RSSI_MAX},
     };
 

@@ -607,7 +607,8 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_XtalSet(XTAL_0_13M);
     // RF_SetXtal(XTAL12M8);
   } else if (isSsb) {
-    BK4819_XtalSet(XTAL_3_38_4M);
+    BK4819_XtalSet(XTAL_2_26M);
+    // BK4819_XtalSet(XTAL_3_38_4M);
     // RF_SetXtal(XTAL38M4);
     BK4819_SetRegValue(RS_IF_F, 0);
   } else {
@@ -620,11 +621,13 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_WriteRegister(0x31, r31 | 1);
     BK4819_WriteRegister(0x42, 0x6F5C);
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants
-    BK4819_WriteRegister(0x2B, 0x0400);
+    BK4819_WriteRegister(0x2B, 0x0300);
     BK4819_WriteRegister(0x2F, 0x9990);
 
-    BK4819_WriteRegister(0x54, 0x9775);
-    BK4819_WriteRegister(0x55, 0x32c6);
+    /* BK4819_WriteRegister(0x54, 0x9775);
+    BK4819_WriteRegister(0x55, 0x32c6); */
+    BK4819_WriteRegister(0x54, 0x8846);
+    BK4819_WriteRegister(0x55, 0x38C0);
   } else {
     BK4819_WriteRegister(0x31, r31 & 0xFFFE);
     BK4819_WriteRegister(0x42, 0x6B5A);
