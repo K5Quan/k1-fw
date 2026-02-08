@@ -57,6 +57,7 @@ typedef const enum {
   PARAM_DEV,
   PARAM_MIC,
   PARAM_XTAL,
+  PARAM_SCRAMBLER,
   PARAM_FILTER,
 
   PARAM_RSSI,
@@ -122,6 +123,7 @@ typedef struct {
   uint8_t volume; // Громкость
   uint8_t afc;
   uint8_t afc_speed;
+  uint8_t scrambler;
   Squelch squelch;
   Code code;
   Step step : 5;

@@ -96,27 +96,48 @@ uint32_t SP_X2F(uint8_t x) {
   return range->start + (x * step);
 }
 
-/* void SP_AddPoint(const Measurement *msm) {
-  uint8_t xs = SP_F2X(msm->f);
-  uint8_t xe = SP_F2X(msm->f + step);
+void SP_AddPoint(const Measurement *msm) {
+  // Находим центральный пиксель для этой частоты
+  uint8_t xc = SP_F2X(msm->f);
 
-  Log("f=%u, xs=%u, xe=%u, step=%u\n", msm->f, xs, xe, step);
+  // Определяем границы зоны для этой точки
+  // Для простоты: первая точка - левая половина, последняя - правая половина,
+  // средние точки - центрированы между соседями
 
-  // Обрезаем индексы по диапазону допустимых значений
-  if (xs >= MAX_POINTS)
-    xs = MAX_POINTS - 1;
-  if (xe >= MAX_POINTS)
+  static uint8_t prev_xc = 0;
+  uint8_t xs, xe;
+
+  if (msm->f == range->start) {
+    // Первая точка: от начала до середины до следующей точки
+    xs = 0;
+    xe = xc + (SP_F2X(msm->f + step) - xc) / 2;
+  } else if (msm->f + step > range->end) {
+    // Последняя точка: от середины от предыдущей до конца
+    xs = prev_xc + (xc - prev_xc) / 2;
     xe = MAX_POINTS - 1;
+  } else {
+    // Средняя точка: между серединами соседних интервалов
+    uint8_t prev_mid = prev_xc + (xc - prev_xc) / 2;
+    uint8_t next_xc = SP_F2X(msm->f + step);
+    uint8_t next_mid = xc + (next_xc - xc) / 2;
 
-  // Если xs > xe, меняем местами
+    xs = prev_mid;
+    xe = next_mid - 1; // -1 чтобы не перекрывать со следующей
+  }
+
+  // Обрезаем границы
   if (xs > xe) {
     uint8_t temp = xs;
     xs = xe;
     xe = temp;
   }
+  if (xs >= MAX_POINTS)
+    xs = MAX_POINTS - 1;
+  if (xe >= MAX_POINTS)
+    xe = MAX_POINTS - 1;
 
-  // TODO: debug this range
-  for (x = xs; x < MAX_POINTS && x <= xe; ++x) {
+  // Заполняем всю зону
+  for (x = xs; x <= xe; ++x) {
     if (ox != x) {
       ox = x;
       rssiHistory[x] = 0;
@@ -125,68 +146,12 @@ uint32_t SP_X2F(uint8_t x) {
       rssiHistory[x] = msm->rssi;
     }
   }
-  // not x+1 as we going to xe inclusive
-  if (x > filledPoints) {
-    filledPoints = x;
+
+  if (xe >= filledPoints) {
+    filledPoints = xe + 1;
   }
-  if (filledPoints > MAX_POINTS) {
-    filledPoints = MAX_POINTS;
-  }
-} */
-void SP_AddPoint(const Measurement *msm) {
-    // Находим центральный пиксель для этой частоты
-    uint8_t xc = SP_F2X(msm->f);
-    
-    // Определяем границы зоны для этой точки
-    // Для простоты: первая точка - левая половина, последняя - правая половина,
-    // средние точки - центрированы между соседями
-    
-    static uint8_t prev_xc = 0;
-    uint8_t xs, xe;
-    
-    if (msm->f == range->start) {
-        // Первая точка: от начала до середины до следующей точки
-        xs = 0;
-        xe = xc + (SP_F2X(msm->f + step) - xc) / 2;
-    } else if (msm->f + step > range->end) {
-        // Последняя точка: от середины от предыдущей до конца
-        xs = prev_xc + (xc - prev_xc) / 2;
-        xe = MAX_POINTS - 1;
-    } else {
-        // Средняя точка: между серединами соседних интервалов
-        uint8_t prev_mid = prev_xc + (xc - prev_xc) / 2;
-        uint8_t next_xc = SP_F2X(msm->f + step);
-        uint8_t next_mid = xc + (next_xc - xc) / 2;
-        
-        xs = prev_mid;
-        xe = next_mid - 1; // -1 чтобы не перекрывать со следующей
-    }
-    
-    // Обрезаем границы
-    if (xs > xe) {
-        uint8_t temp = xs;
-        xs = xe;
-        xe = temp;
-    }
-    if (xs >= MAX_POINTS) xs = MAX_POINTS - 1;
-    if (xe >= MAX_POINTS) xe = MAX_POINTS - 1;
-    
-    // Заполняем всю зону
-    for (x = xs; x <= xe; ++x) {
-        if (ox != x) {
-            ox = x;
-            rssiHistory[x] = 0;
-        }
-        if (msm->rssi > rssiHistory[x]) {
-            rssiHistory[x] = msm->rssi;
-        }
-    }
-    
-    if (xe >= filledPoints) {
-        filledPoints = xe + 1;
-    }
-    
-    prev_xc = xc;
+
+  prev_xc = xc;
 }
 
 static uint16_t MinRSSI(const uint16_t *array, size_t n) {
@@ -202,35 +167,8 @@ static uint16_t MinRSSI(const uint16_t *array, size_t n) {
   return min;
 }
 
-/* VMinMax SP_GetMinMax() {
-  const uint16_t rssiMin = MinRSSI(rssiHistory, filledPoints);
-  const uint16_t rssiMax = Max(rssiHistory, filledPoints);
-  const uint16_t rssiDiff = rssiMax - rssiMin;
-  return (VMinMax){
-      .vMin = rssiMin,
-      .vMax = rssiMax + Clamp(rssiDiff, 40, rssiDiff),
-  };
-} */
-#define _MIN(a, b) (((a) < (b)) ? (a) : (b))
-#define _MAX(a, b) (((a) > (b)) ? (a) : (b))
-/*
-VMinMax SP_GetMinMax() {
-  const uint16_t rssiMin = MinRSSI(rssiHistory, filledPoints);
-  const uint16_t rssiMax = Max(rssiHistory, filledPoints);
-  const uint16_t noiseFloor = SP_GetNoiseFloor();
-  const uint16_t rssiDiff = rssiMax - rssiMin;
-
-  uint16_t vMin =
-      _MAX(noiseFloor - 10, rssiMin - 5); // Немного ниже шума для видимости
-  uint16_t vMax = rssiMax + _MAX(20, rssiDiff / 5); // Запас 20+ дБ сверху
-
-  if (rssiDiff < 20) { // Фикс для слабых сигналов
-    vMin = noiseFloor;
-    vMax = noiseFloor + 40;
-  }
-
-  return (VMinMax){.vMin = vMin, .vMax = vMax};
-} */
+/* #define _MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define _MAX(a, b) (((a) > (b)) ? (a) : (b)) */
 
 VMinMax SP_GetMinMax() {
   if (filledPoints == 0) {

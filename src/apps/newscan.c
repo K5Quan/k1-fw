@@ -4,6 +4,7 @@
 #include "../helper/lootlist.h"
 #include "../helper/regs-menu.h"
 #include "../helper/scan.h"
+#include "../settings.h"
 #include "../ui/finput.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
@@ -16,11 +17,13 @@ static VMinMax minMax;
 
 static uint32_t targetF = 434 * MHZ;
 static uint32_t delay = 1200;
-static Measurement rssi;
+static Measurement rssi[3];
 
 static bool still;
 
 static uint8_t stp = 10;
+
+static bool opt;
 
 static SQL sq;
 static void setTargetF(uint32_t fs, uint32_t _) { targetF = fs; }
@@ -55,6 +58,15 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
       gFInputActive = true;
       return true;
 
+    case KEY_PTT:
+      opt = !opt;
+      if (opt) {
+        BK4819_WriteRegister(0x53, 0);
+      } else {
+        BK4819_WriteRegister(0x53, 0xFFFF);
+      }
+      return true;
+
     case KEY_SIDE1:
       LOOT_BlacklistLast();
 
@@ -70,7 +82,8 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
 
     case KEY_UP:
     case KEY_DOWN:
-      delay = AdjustU(delay, 0, 10000, key == KEY_UP ? 100 : -100);
+      delay = AdjustU(delay, 0, 10000,
+                      ((key == KEY_UP) ^ gSettings.invertButtons) ? 100 : -100);
       return true;
 
     case KEY_4:
@@ -111,7 +124,7 @@ void NEWSCAN_init(void) {
   msm = &vfo->msm;
   msm->f = range.start;
 
-  sq = GetSql(4);
+  sq = GetSql(9);
 
   SCAN_SetMode(SCAN_MODE_NONE);
   SP_Init(&range);
@@ -127,8 +140,14 @@ void measure() {
   msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
   LOOT_Update(msm);
 
+  if (msm->f == targetF - StepFrequencyTable[range.step]) {
+    rssi[0] = *msm;
+  }
   if (msm->f == targetF) {
-    rssi = *msm;
+    rssi[1] = *msm;
+  }
+  if (msm->f == targetF + StepFrequencyTable[range.step]) {
+    rssi[2] = *msm;
   }
 }
 
@@ -210,10 +229,12 @@ void NEWSCAN_render(void) {
   PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 3, POS_R, C_FILL, "%s",
                vfo->is_open ? "OPEN" : "...");
 
-  PrintSmallEx(LCD_XCENTER, 12 + 6 * 0, POS_C, C_FILL, "%u %d", rssi.rssi,
-               Rssi2DBm(rssi.rssi));
-  PrintSmallEx(LCD_XCENTER, 12 + 6 * 1, POS_C, C_FILL, "%u", rssi.noise);
-  PrintSmallEx(LCD_XCENTER, 12 + 6 * 2, POS_C, C_FILL, "%u", rssi.glitch);
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 0, POS_C, C_FILL, "%3u %3u %3u",
+               rssi[0].rssi, rssi[1].rssi, rssi[2].rssi);
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 1, POS_C, C_FILL, "%3u %3u %3u",
+               rssi[0].noise, rssi[1].noise, rssi[2].noise);
+  PrintSmallEx(LCD_XCENTER, 12 + 6 * 2, POS_C, C_FILL, "%3u %3u %3u",
+               rssi[0].glitch, rssi[1].glitch, rssi[2].glitch);
 
   renderBottomFreq();
 

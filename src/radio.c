@@ -89,6 +89,7 @@ const char *PARAM_NAMES[] = {
     [PARAM_DEV] = "DEV",         //
     [PARAM_MIC] = "MIC",         //
     [PARAM_XTAL] = "XTAL",       //
+    [PARAM_SCRAMBLER] = "SCR",   //
     [PARAM_FILTER] = "Filter",   //
 };
 
@@ -639,6 +640,9 @@ static bool setParamBK4819(VFOContext *ctx, ParamType p) {
   case PARAM_XTAL:
     BK4819_XtalSet(ctx->xtal);
     return true;
+  case PARAM_SCRAMBLER:
+    BK4819_SetScrambler(ctx->scrambler);
+    return true;
   case PARAM_FILTER: {
     Filter filter = ctx->filter;
     if (ctx->filter == FILTER_AUTO) {
@@ -723,6 +727,7 @@ static bool setParamSI4732(VFOContext *ctx, ParamType p) {
   case PARAM_DEV:
   case PARAM_MIC:
   case PARAM_XTAL:
+  case PARAM_SCRAMBLER:
   case PARAM_FILTER:
   case PARAM_RSSI:
   case PARAM_NOISE:
@@ -1143,6 +1148,9 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
   case PARAM_XTAL:
     ctx->xtal = (XtalMode)value;
     break;
+  case PARAM_SCRAMBLER:
+    ctx->scrambler = value;
+    break;
   case PARAM_FILTER:
     ctx->filter = (Filter)value;
     break;
@@ -1250,6 +1258,8 @@ uint32_t RADIO_GetParam(const VFOContext *ctx, ParamType param) {
     return ctx->afc_speed;
   case PARAM_XTAL:
     return ctx->xtal;
+  case PARAM_SCRAMBLER:
+    return ctx->scrambler;
   case PARAM_FILTER:
     return ctx->filter;
   case PARAM_MIC:
@@ -1344,6 +1354,9 @@ bool RADIO_AdjustParam(VFOContext *ctx, ParamType param, uint32_t inc,
     break;
   case PARAM_XTAL:
     ma = XTAL_3_38_4M + 1;
+    break;
+  case PARAM_SCRAMBLER:
+    ma = 10;
     break;
   case PARAM_FILTER:
     ma = FILTER_AUTO + 1;
@@ -1694,6 +1707,7 @@ static void setCommonParamsFromVFO(VFOContext *ctx, const VFO *storage) {
   RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
   RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
   RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
+  RADIO_SetParam(ctx, PARAM_SCRAMBLER, 0, false);
   RADIO_SetParam(ctx, PARAM_AFC, 0, false);
   RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
   RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
@@ -1737,6 +1751,7 @@ static void setCommonParamsFromCh(VFOContext *ctx, const CH *storage) {
   RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
   RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
   RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
+  RADIO_SetParam(ctx, PARAM_SCRAMBLER, 0, false);
   RADIO_SetParam(ctx, PARAM_AFC, 0, false);
   RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
   RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
@@ -2227,6 +2242,7 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
   case PARAM_DEV:
   case PARAM_MIC:
   case PARAM_XTAL:
+  case PARAM_SCRAMBLER:
   case PARAM_SQUELCH_VALUE:
   case PARAM_PRECISE_F_CHANGE:
   case PARAM_COUNT:

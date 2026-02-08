@@ -545,8 +545,9 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
   gLastFrequency = freq;
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
-  BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
-  // BK4819_WriteRegister(BK4819_REG_30, 0);
+
+  BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
+  // BK4819_WriteRegister(BK4819_REG_30, 0x200);
   // SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }

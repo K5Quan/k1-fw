@@ -312,7 +312,6 @@ void SCANER_render(void) {
 
   renderBottomFreq(step);
   CUR_Render();
-  SP_RenderLine(SCAN_GetSquelchLevel(), minMaxRssi);
 
   if (vfo->is_open) {
     UI_RSSIBar(17);
