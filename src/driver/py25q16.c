@@ -433,6 +433,14 @@ void PY25Q16_SectorErase(uint32_t Address) {
   flash_unlock();
 }
 
+void PY25Q16_FullErase() {
+  WriteEnable();
+  CS_Assert();
+  SPI_WriteByte(0xC7); // Можно также использовать 0x60
+  CS_Release();
+  WaitWIP(60000);
+}
+
 void DMA1_Channel4_5_6_7_IRQHandler() {
   if (LL_DMA_IsActiveFlag_TC4(DMA1) &&
       LL_DMA_IsEnabledIT_TC(DMA1, CHANNEL_RD)) {

@@ -8,6 +8,7 @@
 #include "driver/bk4829.h"
 #include "driver/keyboard.h"
 #include "driver/lfs.h"
+#include "driver/py25q16.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
@@ -85,6 +86,20 @@ static void appRender() {
 static void systemUpdate() {
   BATTERY_UpdateBatteryInfo();
   // BACKLIGHT_Update();
+}
+
+static void resetFull() {
+  UI_ClearScreen();
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "0xFFing...");
+  ST7565_Blit();
+
+  PY25Q16_FullErase();
+
+  UI_ClearScreen();
+  PrintMediumEx(LCD_XCENTER, LCD_YCENTER, POS_C, C_FILL, "0xFFed!");
+  ST7565_Blit();
+  for (;;) {
+  }
 }
 
 static void reset() {
@@ -254,8 +269,10 @@ void SYS_Main() {
   keyboard_init(onKey);
 
   keyboard_tick_1ms();
-  if (keyboard_is_pressed(KEY_0)) {
+  if (keyboard_is_pressed(KEY_EXIT)) {
     reset();
+  } else if (keyboard_is_pressed(KEY_0)) {
+    resetFull();
   } else {
     loadSettingsOrReset();
 

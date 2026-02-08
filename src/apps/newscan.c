@@ -33,9 +33,9 @@ static void setRange(uint32_t fs, uint32_t fe) {
 }
 
 bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
-  /* if (REGSMENU_Key(key, state)) {
+  if (REGSMENU_Key(key, state)) {
     return true;
-  } */
+  }
   if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
     switch (key) {
     case KEY_5:
@@ -89,7 +89,7 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_9:
       sq.go = AdjustU(sq.go, 0, 255, key == KEY_3 ? stp : -stp);
       return true;
-    case KEY_0:
+    case KEY_F:
       if (stp == 100) {
         stp = 1;
       } else {
@@ -115,18 +115,14 @@ void NEWSCAN_init(void) {
 
   SCAN_SetMode(SCAN_MODE_NONE);
   SP_Init(&range);
-
-  BK4819_SetModulation(MOD_FM);
-  BK4819_SetAFC(0);
-  BK4819_SetAGC(true, 1);
 }
 
 void NEWSCAN_deinit(void) {}
 
 void measure() {
-  msm->rssi = BK4819_GetRSSI();
-  msm->noise = BK4819_GetNoise();
-  msm->glitch = BK4819_GetGlitch();
+  msm->rssi = RADIO_GetRSSI(ctx);
+  msm->noise = RADIO_GetNoise(ctx);
+  msm->glitch = RADIO_GetGlitch(ctx);
 
   msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
   LOOT_Update(msm);
@@ -145,7 +141,8 @@ void updateListening() {
 }
 
 void updateScan() {
-  BK4819_TuneTo(msm->f, false);
+  RADIO_SetParam(ctx, PARAM_FREQUENCY, msm->f, false);
+  RADIO_ApplySettings(ctx);
   SYSTICK_DelayUs(delay);
 
   measure();
@@ -220,5 +217,5 @@ void NEWSCAN_render(void) {
 
   renderBottomFreq();
 
-  // REGSMENU_Draw();
+  REGSMENU_Draw();
 }

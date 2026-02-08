@@ -166,6 +166,7 @@ uint16_t BK4819_ReadRegister(BK4819_REGISTER_t reg) {
   if (reg == BK4819_REG_30 && reg30state != 0xffff) {
     return reg30state;
   }
+  // printf("R R 0x%x\n", reg);
   uint16_t Value;
 
   CS_Release();
@@ -343,39 +344,27 @@ uint8_t BK4819_GetAttenuation() {
 }
 
 void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
-  const bool enableAgc = (gainIndex == AUTO_GAIN_INDEX);
-  uint16_t regVal = BK4819_ReadRegister(BK4819_REG_7E);
+  const bool enableAgc = gainIndex == AUTO_GAIN_INDEX;
+  const AgcConfig *cfg = fm ? &AGC_DEFAULT : &AGC_FAST;
+  uint16_t reg13 = enableAgc ? 0x03BE : GAIN_TABLE[gainIndex].regValue;
+  uint16_t reg14 = fm ? 0x0019 : 0x0000;
+  uint16_t reg49 = (cfg->lo << 14) | (cfg->high << 7) | (cfg->low << 0);
 
-  BK4819_WriteRegister(BK4819_REG_7E,
-                       (regVal & ~(1 << 15) & ~(0b111 << 12)) |
-                           (!enableAgc << 15) | // AGC fix mode
-                           (3u << 12) |         // AGC fix index
-                           (5u << 3) |          // Default DC
-                           (6u << 0));
-  /* BK4819_WriteRegister(BK4819_REG_7E, (regVal & ~(1 << 15) & ~(0b111 << 12))
-  |
-                                          (!enableAgc << 15) // 0  AGC fix mode
-                                          | (3u << 12)       // 3  AGC fix index
-  ); */
-
-  if (enableAgc) {
-    BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
-  } else {
-    BK4819_WriteRegister(BK4819_REG_13, GAIN_TABLE[gainIndex].regValue);
-  }
+  uint16_t reg7E = BK4819_ReadRegister(BK4819_REG_7E);
+  reg7E &= ~((1 << 15) | (0b111 << 12)); // Clear AGC and index bits
+  reg7E |= (!enableAgc << 15) |          // AGC fix mode
+           (3u << 12) |                  // AGC fix index
+           (5u << 3) |                   // Default DC
+           (6u << 0);                    // Default value
 
   configure_agc_registers();
 
-  if (fm) {
-    BK4819_WriteRegister(BK4819_REG_14, 0x0019);
-  } else {
-    BK4819_WriteRegister(BK4819_REG_14, 0x0000);
-  }
+  BK4819_WriteRegister(BK4819_REG_13, reg13);
+  BK4819_WriteRegister(BK4819_REG_14, reg14);
 
-  const AgcConfig *config = fm ? &AGC_DEFAULT : &AGC_FAST;
-  BK4819_WriteRegister(BK4819_REG_49, (config->lo << 14) | (config->high << 7) |
-                                          (config->low << 0));
-  BK4819_WriteRegister(BK4819_REG_7B, 0x8420);
+  BK4819_WriteRegister(BK4819_REG_49, reg49);
+  // BK4819_WriteRegister(BK4819_REG_7B, 0x8420);
+  BK4819_WriteRegister(BK4819_REG_7E, reg7E);
 }
 
 #define XTAL26M 0
@@ -535,11 +524,11 @@ void BK4819_SetFrequency(uint32_t freq) {
   }
 
   if (high != prev_high) {
-    if (high > 914) { // 599M
+    /* if (high > 914) { // 599M
       BK4819_WriteRegister(0x3E, 0xA037);
     } else {
       BK4819_WriteRegister(0x3E, 0x94c6);
-    }
+    } */
 
     BK4819_WriteRegister(BK4819_REG_39, high);
     prev_high = high;
@@ -558,7 +547,7 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
   BK4819_WriteRegister(BK4819_REG_30, reg & ~BK4819_REG_30_ENABLE_VCO_CALIB);
   // BK4819_WriteRegister(BK4819_REG_30, 0);
-  SYSTICK_DelayUs(300); // VCO stabilize time
+  // SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
 
@@ -1371,6 +1360,7 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
+  RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
