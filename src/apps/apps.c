@@ -77,7 +77,7 @@ const App apps[APPS_COUNT] = {
     [APP_CMDSCAN] = {"CMD Scan", CMDSCAN_init, CMDSCAN_update, CMDSCAN_render,
                      CMDSCAN_key, CMDSCAN_deinit, true},
     [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
-                     CMDEDIT_key, NULL, true},
+                     CMDEDIT_key, NULL},
     [APP_ANALYZER] = {"Analyzer", ANALYZER_init, ANALYZER_update,
                       ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
     [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,

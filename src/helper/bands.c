@@ -722,12 +722,12 @@ void BANDS_Recreate() {
 bool BANDS_InRange(uint32_t f, Band *b) { return b->start <= f && f < b->end; }
 
 Band BANDS_ByFrequency(uint32_t f) {
-  Band b;
+  Band b[MAX_BANDS];
+  Storage_LoadMultiple("Bands.bnd", 0, b, sizeof(Band), MAX_BANDS);
   for (uint8_t i = 0; i < MAX_BANDS; ++i) {
-    STORAGE_LOAD("Bands.bnd", i, &b);
-    if (IsReadable(b.name)) {
-      if (BANDS_InRange(f, &b)) {
-        return b;
+    if (IsReadable(b[i].name)) {
+      if (BANDS_InRange(f, &b[i])) {
+        return b[i];
       }
     }
   }

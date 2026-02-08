@@ -234,21 +234,10 @@ static const FreqBand si4732_bands[] = {
 char vfosDirName[16];
 char vfosFileName[32];
 
-static void saveVfo(uint8_t i, VFO *vfo) {
+static void initVfoFile() {
   snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
   snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
-
-  struct lfs_info info;
-  if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
-    lfs_mkdir(&gLfs, vfosDirName);
-  }
-
-  STORAGE_SAVE(vfosFileName, i, vfo);
-}
-
-static void loadVfo(uint8_t i, VFO *vfo) {
-  snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
-  snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
+  Log("[RADIO] INIT VFOs FILE %s", vfosFileName);
 
   struct lfs_info info;
   if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
@@ -291,7 +280,23 @@ static void loadVfo(uint8_t i, VFO *vfo) {
       STORAGE_SAVE(vfosFileName, i, &vfos[i]);
     }
   }
+}
 
+static void saveVfo(uint8_t i, VFO *vfo) {
+  snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
+  snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
+
+  struct lfs_info info;
+  if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
+    lfs_mkdir(&gLfs, vfosDirName);
+  }
+
+  Log("[RADIO] SAFE VFO %u", i);
+  STORAGE_SAVE(vfosFileName, i, vfo);
+}
+
+static void loadVfo(uint8_t i, VFO *vfo) {
+  Log("[RADIO] LOAD VFO %u", i);
   STORAGE_LOAD(vfosFileName, i, vfo);
 }
 
@@ -2073,7 +2078,9 @@ void RADIO_UpdateMultiwatch(RadioState *state) {
 }
 
 void RADIO_LoadVFOs(RadioState *state) {
-  Log("[RADIO] LoadVFOs");
+  Log("[RADIO] LoadVFOs (multiple from storage)");
+
+  initVfoFile();
 
   // Инициализируем состояние железа
   memset(&state->hw_state, 0, sizeof(RadioHardwareState));
@@ -2091,17 +2098,18 @@ void RADIO_LoadVFOs(RadioState *state) {
   // SI4732 не включаем сразу, включится при необходимости
   state->hw_state.si4732_enabled = false;
 
+  VFO vfos[4];
+  Storage_LoadMultiple(vfosFileName, 0, vfos, sizeof(VFO), 4);
+
   // Загружаем VFO
   uint8_t vfoIdx = 0;
   for (uint8_t i = 0; i < MAX_VFOS; ++i) {
     state->vfos[vfoIdx].vfo_ch_index = i;
-    VFO vfo;
-    loadVfo(i, &vfo);
 
-    if (vfo.isChMode) {
-      RADIO_LoadChannelToVFO(state, vfoIdx, vfo.channel);
+    if (vfos[i].isChMode) {
+      RADIO_LoadChannelToVFO(state, vfoIdx, vfos[i].channel);
     } else {
-      RADIO_LoadVFOFromStorage(state, vfoIdx, &vfo);
+      RADIO_LoadVFOFromStorage(state, vfoIdx, &vfos[i]);
     }
     vfoIdx++;
   }

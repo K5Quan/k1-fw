@@ -190,3 +190,131 @@ bool Storage_Exists(const char *name) {
   struct lfs_info info;
   return lfs_stat(&gLfs, name, &info) == 0;
 }
+
+bool Storage_LoadMultiple(const char *name, uint16_t start_num, void *items,
+                          size_t item_size, uint16_t count) {
+  if (count == 0) {
+    return true;
+  }
+
+  lfs_file_t file;
+  struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
+
+  int err = lfs_file_opencfg(&gLfs, &file, name, LFS_O_RDONLY, &config);
+  if (err < 0) {
+    printf("[Storage_LoadMultiple] Cannot open file '%s': %d\n", name, err);
+    return false;
+  }
+
+  // Проверяем размер файла
+  lfs_soff_t file_size = lfs_file_size(&gLfs, &file);
+  if (file_size < 0) {
+    printf("[Storage_LoadMultiple] Cannot get file size\n");
+    lfs_file_close(&gLfs, &file);
+    return false;
+  }
+
+  uint32_t offset = start_num * item_size;
+  uint32_t total_size = count * item_size;
+  uint32_t required_size = offset + total_size;
+
+  if (required_size > (uint32_t)file_size) {
+    printf("[Storage_LoadMultiple] Offset %lu > file size %ld\n", required_size,
+           file_size);
+    lfs_file_close(&gLfs, &file);
+    return false;
+  }
+
+  // Seek к начальной позиции ОДИН раз
+  if (lfs_file_seek(&gLfs, &file, offset, LFS_SEEK_SET) < 0) {
+    printf("[Storage_LoadMultiple] Seek failed\n");
+    lfs_file_close(&gLfs, &file);
+    return false;
+  }
+
+  // Читаем ВСЕ элементы ОДНИМ вызовом
+  lfs_ssize_t read = lfs_file_read(&gLfs, &file, items, total_size);
+  lfs_file_close(&gLfs, &file);
+
+  if (read != (lfs_ssize_t)total_size) {
+    printf("[Storage_LoadMultiple] Read failed: %ld/%lu\n", read, total_size);
+    return false;
+  }
+
+  printf("[Storage_LoadMultiple] Loaded %u items in one read\n", count);
+  return true;
+}
+
+// ============================================================================
+// НОВАЯ ФУНКЦИЯ: Пакетное сохранение нескольких элементов
+// ============================================================================
+bool Storage_SaveMultiple(const char *name, uint16_t start_num,
+                          const void *items, size_t item_size, uint16_t count) {
+  if (count == 0) {
+    return true;
+  }
+
+  lfs_file_t file;
+  struct lfs_file_config config = {.buffer = file_buffer, .attr_count = 0};
+
+  int err =
+      lfs_file_opencfg(&gLfs, &file, name, LFS_O_RDWR | LFS_O_CREAT, &config);
+  if (err < 0) {
+    printf("[Storage_SaveMultiple] Cannot open file '%s': %d\n", name, err);
+    return false;
+  }
+
+  lfs_soff_t file_size = lfs_file_size(&gLfs, &file);
+  if (file_size < 0) {
+    printf("[Storage_SaveMultiple] Cannot get file size\n");
+    lfs_file_close(&gLfs, &file);
+    return false;
+  }
+
+  uint32_t offset = start_num * item_size;
+  uint32_t total_size = count * item_size;
+  uint32_t required_size = offset + total_size;
+
+  // Расширяем файл если нужно
+  if (required_size > (uint32_t)file_size) {
+    if (lfs_file_seek(&gLfs, &file, 0, LFS_SEEK_END) < 0) {
+      lfs_file_close(&gLfs, &file);
+      return false;
+    }
+
+    uint32_t to_extend = required_size - file_size;
+    memset(temp_buf, 0, sizeof(temp_buf));
+
+    while (to_extend > 0) {
+      size_t chunk = to_extend;
+      if (chunk > sizeof(temp_buf))
+        chunk = sizeof(temp_buf);
+
+      lfs_ssize_t written = lfs_file_write(&gLfs, &file, temp_buf, chunk);
+      if (written != (lfs_ssize_t)chunk) {
+        lfs_file_close(&gLfs, &file);
+        return false;
+      }
+      to_extend -= chunk;
+    }
+  }
+
+  // Seek к начальной позиции
+  if (lfs_file_seek(&gLfs, &file, offset, LFS_SEEK_SET) < 0) {
+    lfs_file_close(&gLfs, &file);
+    return false;
+  }
+
+  // Пишем ВСЕ элементы ОДНИМ вызовом
+  lfs_ssize_t written = lfs_file_write(&gLfs, &file, items, total_size);
+  lfs_file_close(&gLfs, &file);
+
+  if (written != (lfs_ssize_t)total_size) {
+    printf("[Storage_SaveMultiple] Write failed: %ld/%lu\n", written,
+           total_size);
+    return false;
+  }
+
+  printf("[Storage_SaveMultiple] Saved %u items in one write\n", count);
+  return true;
+}
