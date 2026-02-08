@@ -43,6 +43,7 @@ typedef enum {
   SETTING_DEVIATION,
   SETTING_MIC,
   SETTING_SHOWLEVELINVFO,
+  SETTING_ALWAYS_RSSI,
   SETTING_BOUND240_280,
   SETTING_NOLISTEN,
   SETTING_SI4732POWEROFF,
@@ -140,7 +141,7 @@ typedef struct {
 
   uint8_t fcTime : 2;
   bool invertButtons : 1;
-  uint8_t reserved5 : 1;
+  uint8_t alwaysRssi : 1;
   uint8_t iAmPro : 1;
   uint8_t roger : 3;
 

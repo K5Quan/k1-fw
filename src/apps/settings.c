@@ -75,6 +75,7 @@ static const MenuItem displayMenuItems[] = {
     {"BL SQL mode", SETTING_BACKLIGHTONSQUELCH, getValS, updateValS},
     {"CH display", SETTING_CHDISPLAYMODE, getValS, updateValS},
     {"Level in VFO", SETTING_SHOWLEVELINVFO, getValS, updateValS},
+    {"Always RSSI", SETTING_ALWAYS_RSSI, getValS, updateValS},
 };
 
 static Menu displayMenu = {.title = "Display",

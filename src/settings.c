@@ -211,6 +211,8 @@ uint32_t SETTINGS_GetValue(Setting s) {
     return SETTING_COUNT;
   case SETTING_SHOWLEVELINVFO:
     return gSettings.showLevelInVFO;
+  case SETTING_ALWAYS_RSSI:
+    return gSettings.alwaysRssi;
   case SETTING_BOUND240_280:
     return gSettings.bound_240_280;
   case SETTING_NOLISTEN:
@@ -344,6 +346,9 @@ void SETTINGS_SetValue(Setting s, uint32_t v) {
   case SETTING_SHOWLEVELINVFO:
     gSettings.showLevelInVFO = v;
     break;
+  case SETTING_ALWAYS_RSSI:
+    gSettings.alwaysRssi = v;
+    break;
   case SETTING_BOUND240_280:
     gSettings.bound_240_280 = v;
     ctx->dirty[PARAM_FILTER] = true; // filter update
@@ -377,6 +382,7 @@ const char *SETTINGS_GetValueString(Setting s) {
 
   switch (s) {
   case SETTING_SHOWLEVELINVFO:
+  case SETTING_ALWAYS_RSSI:
   case SETTING_NOLISTEN:
   case SETTING_SI4732POWEROFF:
   case SETTING_TONELOCAL:
@@ -474,6 +480,7 @@ void SETTINGS_IncDecValue(Setting s, bool inc) {
   uint32_t v = SETTINGS_GetValue(s);
   switch (s) {
   case SETTING_SHOWLEVELINVFO:
+  case SETTING_ALWAYS_RSSI:
   case SETTING_NOLISTEN:
   case SETTING_SI4732POWEROFF:
   case SETTING_TONELOCAL:

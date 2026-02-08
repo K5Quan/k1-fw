@@ -426,7 +426,7 @@ void VFO1_render(void) {
   if (gMonitorMode) {
     renderMonitorMode(BASE);
   } else {
-    if (vfo->msm.open) {
+    if (vfo->msm.open || gSettings.alwaysRssi) {
       UI_RSSIBar(BASE + 1);
     }
     if (ctx->tx_state.is_active) {
