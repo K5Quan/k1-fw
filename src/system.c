@@ -302,8 +302,6 @@ void SYS_Main() {
 
     SCAN_Check();
 
-    checkInt();
-
     if (dtmfIdx > 0 && Now() - lastDtmf > 400) {
       TOAST_Push("DTMF: %s", dtmfBuf);
       dtmfIdx = 0;
