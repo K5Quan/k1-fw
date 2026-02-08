@@ -96,6 +96,8 @@ uint32_t SP_X2F(uint8_t x) {
   return range->start + (x * step);
 }
 
+#define _MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define _MAX(a, b) (((a) > (b)) ? (a) : (b))
 void SP_AddPoint(const Measurement *msm) {
   // Находим центральный пиксель для этой частоты
   uint8_t xc = SP_F2X(msm->f);
@@ -105,50 +107,53 @@ void SP_AddPoint(const Measurement *msm) {
   // средние точки - центрированы между соседями
 
   static uint8_t prev_xc = 0;
-  uint8_t xs, xe;
+  int16_t ixs, ixe; // Signed для избежания underflow
+
+  uint8_t next_xc =
+      (msm->f + step > range->end) ? (MAX_POINTS - 1) : SP_F2X(msm->f + step);
 
   if (msm->f == range->start) {
     // Первая точка: от начала до середины до следующей точки
-    xs = 0;
-    xe = xc + (SP_F2X(msm->f + step) - xc) / 2;
+    ixs = 0;
+    ixe = xc + (next_xc - xc) / 2;
   } else if (msm->f + step > range->end) {
     // Последняя точка: от середины от предыдущей до конца
-    xs = prev_xc + (xc - prev_xc) / 2;
-    xe = MAX_POINTS - 1;
+    ixs = prev_xc + (xc - prev_xc) / 2;
+    ixe = MAX_POINTS - 1;
   } else {
     // Средняя точка: между серединами соседних интервалов
-    uint8_t prev_mid = prev_xc + (xc - prev_xc) / 2;
-    uint8_t next_xc = SP_F2X(msm->f + step);
-    uint8_t next_mid = xc + (next_xc - xc) / 2;
+    int16_t prev_mid = prev_xc + (xc - prev_xc) / 2;
+    int16_t next_mid = xc + (next_xc - xc) / 2;
 
-    xs = prev_mid;
-    xe = next_mid - 1; // -1 чтобы не перекрывать со следующей
+    ixs = prev_mid;
+    ixe = next_mid - 1; // Здесь может быть underflow
   }
 
-  // Обрезаем границы
-  if (xs > xe) {
-    uint8_t temp = xs;
-    xs = xe;
-    xe = temp;
+  // Swap если нужно
+  if (ixs > ixe) {
+    int16_t temp = ixs;
+    ixs = ixe;
+    ixe = temp;
   }
-  if (xs >= MAX_POINTS)
-    xs = MAX_POINTS - 1;
-  if (xe >= MAX_POINTS)
-    xe = MAX_POINTS - 1;
+
+  // Клип границы
+  ixs = _MAX(0, ixs);
+  ixe = _MIN(MAX_POINTS - 1, ixe);
 
   // Заполняем всю зону
-  for (x = xs; x <= xe; ++x) {
+  for (uint8_t x = (uint8_t)ixs; x <= (uint8_t)ixe; ++x) {
     if (ox != x) {
       ox = x;
-      rssiHistory[x] = 0;
+      rssiHistory[x] = 0;  // Удалите эту строку, если хотите брать max от
+      // предыдущих сканов (не очищать бар, а обновлять пик)
     }
     if (msm->rssi > rssiHistory[x]) {
       rssiHistory[x] = msm->rssi;
     }
   }
 
-  if (xe >= filledPoints) {
-    filledPoints = xe + 1;
+  if ((uint8_t)ixe >= filledPoints) {
+    filledPoints = (uint8_t)ixe + 1;
   }
 
   prev_xc = xc;
@@ -166,9 +171,6 @@ static uint16_t MinRSSI(const uint16_t *array, size_t n) {
   }
   return min;
 }
-
-/* #define _MIN(a, b) (((a) < (b)) ? (a) : (b))
-#define _MAX(a, b) (((a) > (b)) ? (a) : (b)) */
 
 VMinMax SP_GetMinMax() {
   if (filledPoints == 0) {

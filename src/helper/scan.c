@@ -220,7 +220,8 @@ static void HandleStateSwitching(void) {
 
   if (programOpen) {
     // Потенциально есть сигнал - точная проверка
-    scan.currentF += scan.stepF;
+    // scan.currentF += scan.stepF; // WTF?!
+
     ChangeState(SCAN_STATE_DECIDING);
   } else {
     // Точно нет сигнала - на следующую частоту
