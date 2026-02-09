@@ -71,4 +71,6 @@ void keyboard_tick_1ms(void);
 // Получить текущее состояние кнопки (нажата/не нажата)
 bool keyboard_is_pressed(KEY_Code_t key);
 
+extern const char *KEY_NAMES[];
+
 #endif // KEYBOARD_H

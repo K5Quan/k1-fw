@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LOOT_SIZE_MAX 100
+#define LOOT_SIZE_MAX 30
 
 int16_t LOOT_IndexOf(Loot *loot);
 void LOOT_BlacklistLast();

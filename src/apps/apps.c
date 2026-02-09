@@ -1,6 +1,7 @@
 #include "apps.h"
 #include "../driver/st7565.h"
 #include "../driver/uart.h"
+#include "../helper/keymap.h"
 #include "../helper/menu.h"
 #include "../settings.h"
 #include "../ui/graphics.h"
@@ -140,6 +141,9 @@ void APPS_run(AppType_t app) {
     gRadioState = &radioState;
     RADIO_InitState(gRadioState, 16);
     RADIO_LoadVFOs(gRadioState);
+
+    KEYMAP_Load();
+
     RADIO_ToggleMultiwatch(gRadioState, gSettings.mWatch);
     loadedVfoApp = gCurrentApp;
   }

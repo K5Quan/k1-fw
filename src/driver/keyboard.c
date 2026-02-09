@@ -25,6 +25,29 @@ typedef struct {
   bool physical_state; // Текущее физическое состояние
 } key_context_t;
 
+const char *KEY_NAMES[] = {
+  [KEY_NONE] = "NONE",
+  [KEY_MENU] = "MENU",
+  [KEY_UP] = "UP",
+  [KEY_DOWN] = "DOWN",
+  [KEY_EXIT] = "EXIT",
+  [KEY_0] = "0",
+  [KEY_1] = "1",
+  [KEY_2] = "2",
+  [KEY_3] = "3",
+  [KEY_4] = "4",
+  [KEY_5] = "5",
+  [KEY_6] = "6",
+  [KEY_7] = "7",
+  [KEY_8] = "8",
+  [KEY_9] = "9",
+  [KEY_STAR] = "STAR",
+  [KEY_F] = "F",
+  [KEY_SIDE1] = "SIDE1",
+  [KEY_SIDE2] = "SIDE2",
+  [KEY_PTT] = "PTT",
+};
+
 // Глобальные переменные
 static key_context_t g_keys[KEY_COUNT];
 static key_event_callback_t g_callback;

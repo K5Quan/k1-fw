@@ -17,6 +17,7 @@
 #include "external/printf/printf.h"
 #include "helper/bands.h"
 #include "helper/fsk2.h"
+#include "helper/keymap.h"
 #include "helper/menu.h"
 #include "helper/scan.h"
 #include "helper/screenshot.h"
@@ -27,6 +28,7 @@
 #include "ui/chlist.h"
 #include "ui/finput.h"
 #include "ui/graphics.h"
+#include "ui/keymap.h"
 #include "ui/lootlist.h"
 #include "ui/statusline.h"
 #include "ui/textinput.h"
@@ -59,6 +61,9 @@ static void appRender() {
   APPS_render();
   if (gFInputActive) {
     FINPUT_render();
+  }
+  if (gKeymapActive) {
+    KEYMAP_Render();
   }
   if (gTextInputActive) {
     TEXTINPUT_render();
@@ -156,6 +161,18 @@ static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
   return isKeyLocked && (isPttLocked || !isSpecialKey) && !isLongPressF;
 }
 
+static bool keyAction(AppAction_t act) {
+  switch (act.action) {
+  case KA_FLASHLIGHT:
+    Log("FLASHLIGHT TOGGLE");
+    BOARD_FlashlightToggle();
+    return true;
+  }
+
+  Log("NO KEY ACTION");
+  return false;
+}
+
 static void onKey(KEY_Code_t key, KEY_State_t state) {
   BACKLIGHT_TurnOn();
 
@@ -176,6 +193,28 @@ static void onKey(KEY_Code_t key, KEY_State_t state) {
   } else if (gChlistActive && CHLIST_key(key, state)) {
     gRedrawScreen = true;
     gLastRender = 0;
+  } else if (gKeymapActive && KEYMAP_Key(key, state)) {
+    gRedrawScreen = true;
+    gLastRender = 0;
+  } else if (state == KEY_LONG_PRESSED && key == KEY_STAR) {
+    KEYMAP_Show();
+    gRedrawScreen = true;
+    gLastRender = 0;
+    return;
+  } else if (state == KEY_LONG_PRESSED &&
+             gCurrentKeymap.long_press[key].action != KA_NONE) {
+    if (keyAction(gCurrentKeymap.long_press[key])) {
+      gRedrawScreen = true;
+      gLastRender = 0;
+      return;
+    }
+  } else if (state == KEY_RELEASED &&
+             gCurrentKeymap.click[key].action != KA_NONE) {
+    if (keyAction(gCurrentKeymap.click[key])) {
+      gRedrawScreen = true;
+      gLastRender = 0;
+      return;
+    }
   } else if (APPS_key(key, state) || (MENU_IsActive() && key != KEY_EXIT)) {
     // LogC(LOG_C_BRIGHT_WHITE, "[SYS] Apps key %u %u", key, state);
     gRedrawScreen = true;

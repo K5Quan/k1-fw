@@ -31,7 +31,7 @@ typedef struct {
 bool gFInputActive;
 uint32_t gFInputValue1;
 uint32_t gFInputValue2;
-void (*gFInputCallback)(uint32_t value1, uint32_t value2);
+FInputCallback *gFInputCallback;
 
 #define MAX_INPUT_LENGTH 10
 
@@ -490,4 +490,12 @@ void FINPUT_render(void) {
       break;
     }
   }
+}
+
+void FINPUT_Show(FInputCallback cb) {
+  gFInputCallback = cb;
+  gFInputValue1 = 0;
+  gFInputValue1 = 0;
+  FINPUT_init();
+  gFInputActive = true;
 }

@@ -12,20 +12,17 @@
 #include <stdbool.h>
 
 static Band range;
-static Measurement *msm;
 static VMinMax minMax;
 
 static uint32_t targetF = 434 * MHZ;
 static uint32_t delay = 1200;
-static Measurement rssi[3];
-
+static uint8_t stp = 10;
+static SQL sq;
 static bool still;
 
-static uint8_t stp = 10;
+static Measurement *msm;
+static Measurement tgt[3];
 
-static bool opt;
-
-static SQL sq;
 static void setTargetF(uint32_t fs, uint32_t _) { targetF = fs; }
 
 static void setRange(uint32_t fs, uint32_t fe) {
@@ -42,34 +39,16 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
   if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
     switch (key) {
     case KEY_5:
-      gFInputCallback = setRange;
       FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, true);
-      gFInputValue1 = 0;
-      gFInputValue1 = 0;
-      FINPUT_init();
-      gFInputActive = true;
+      FINPUT_Show(setRange);
       return true;
     case KEY_6:
-      gFInputCallback = setTargetF;
       FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
-      gFInputValue1 = 0;
-      gFInputValue1 = 0;
-      FINPUT_init();
-      gFInputActive = true;
-      return true;
-
-    case KEY_PTT:
-      opt = !opt;
-      if (opt) {
-        BK4819_WriteRegister(0x53, 0);
-      } else {
-        BK4819_WriteRegister(0x53, 0xFFFF);
-      }
+      FINPUT_Show(setTargetF);
       return true;
 
     case KEY_SIDE1:
       LOOT_BlacklistLast();
-
       return true;
 
     case KEY_SIDE2:
@@ -141,13 +120,13 @@ void measure() {
   LOOT_Update(msm);
 
   if (msm->f == targetF - StepFrequencyTable[range.step]) {
-    rssi[0] = *msm;
+    tgt[0] = *msm;
   }
   if (msm->f == targetF) {
-    rssi[1] = *msm;
+    tgt[1] = *msm;
   }
   if (msm->f == targetF + StepFrequencyTable[range.step]) {
-    rssi[2] = *msm;
+    tgt[2] = *msm;
   }
 }
 
@@ -165,8 +144,6 @@ void updateScan() {
   SYSTICK_DelayUs(delay);
 
   measure();
-  /* Log("%u-%u %u-%u %u-%u", msm->rssi, sq.ro, msm->noise, sq.no, msm->glitch,
-      sq.go); */
   SP_AddPoint(msm);
   LOOT_Update(msm);
 
@@ -212,8 +189,6 @@ void NEWSCAN_render(void) {
   }
 
   STATUSLINE_RenderRadioSettings();
-  /* minMax.vMin = DBm2Rssi(-135);
-  minMax.vMax = DBm2Rssi(-40); */
   minMax = SP_GetMinMax();
   SP_Render(&range, minMax);
   PrintSmall(0, 12 + 6 * 0, "R %u", sq.ro);
@@ -230,11 +205,11 @@ void NEWSCAN_render(void) {
                vfo->is_open ? "OPEN" : "...");
 
   PrintSmallEx(LCD_XCENTER, 12 + 6 * 0, POS_C, C_FILL, "%3u %3u %3u",
-               rssi[0].rssi, rssi[1].rssi, rssi[2].rssi);
+               tgt[0].rssi, tgt[1].rssi, tgt[2].rssi);
   PrintSmallEx(LCD_XCENTER, 12 + 6 * 1, POS_C, C_FILL, "%3u %3u %3u",
-               rssi[0].noise, rssi[1].noise, rssi[2].noise);
+               tgt[0].noise, tgt[1].noise, tgt[2].noise);
   PrintSmallEx(LCD_XCENTER, 12 + 6 * 2, POS_C, C_FILL, "%3u %3u %3u",
-               rssi[0].glitch, rssi[1].glitch, rssi[2].glitch);
+               tgt[0].glitch, tgt[1].glitch, tgt[2].glitch);
 
   renderBottomFreq();
 

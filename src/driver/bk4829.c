@@ -606,6 +606,9 @@ void BK4819_SetModulation(ModulationType type) {
     // RF_SetXtal(XTAL26M);
   }
 
+  BK4819_WriteRegister(
+      BK4819_REG_48, isSsb ? 0x33A8 | (0b1111 << 0) | (0b111111 << 4) : 0x33A8);
+
   uint16_t r31 = BK4819_ReadRegister(0x31);
   if (type == MOD_AM) {
     BK4819_WriteRegister(0x31, r31 | 1);

@@ -16,16 +16,19 @@ typedef enum {
   UNIT_MS,
 } InputUnit;
 
+typedef void(FInputCallback)(uint32_t value1, uint32_t value2);
+
 void FINPUT_init();
 bool FINPUT_key(KEY_Code_t key, Key_State_t state);
 void FINPUT_update();
 void FINPUT_render();
 void FINPUT_deinit();
 void FINPUT_setup(uint32_t min, uint32_t max, InputUnit unit, bool is_range);
+void FINPUT_Show(FInputCallback cb);
 
 extern bool gFInputActive;
 extern uint32_t gFInputValue1;
 extern uint32_t gFInputValue2;
-extern void (*gFInputCallback)(uint32_t, uint32_t);
+extern FInputCallback *gFInputCallback;
 
 #endif /* end of include guard: FINPUT_H */
