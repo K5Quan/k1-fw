@@ -38,10 +38,10 @@
 #define OSC_ADC_CHANNEL ADC_APRS // канал для APRS сигнала
 
 // Layout константы (текст рисуется по baseline)
-#define SMALL_FONT_H 5  // высота маленького шрифта
+#define SMALL_FONT_H 6  // высота маленького шрифта
 #define NORMAL_FONT_H 8 // высота обычного шрифта
-#define OSC_TOP_MARGIN 18 // отступ сверху для 3 строк статуса
-#define OSC_BOTTOM_MARGIN 10 // отступ снизу для подсказок
+#define OSC_TOP_MARGIN 24 // отступ сверху для 3 строк статуса
+#define OSC_BOTTOM_MARGIN 1 // отступ снизу для подсказок
 #define OSC_GRAPH_H (LCD_HEIGHT - OSC_TOP_MARGIN - OSC_BOTTOM_MARGIN)
 
 #define MAX_VAL 4095
@@ -100,7 +100,7 @@ static void setScaleT(uint32_t value, uint32_t _) {
     osc.scale_t = 10;
 
   // Обновляем задержку между семплами: 50-500 мкс
-  osc.sample_delay = 50 * osc.scale_t;
+  osc.sample_delay = osc.scale_t;
 }
 
 // Установка уровня триггера (0-255)
@@ -190,10 +190,10 @@ void OSC_init(void) {
   // Настройки по умолчанию
   osc.scale_v = 5; // Средний масштаб по вертикали
   osc.scale_t = 3; // Масштаб по времени (150 мкс)
-  osc.trigger_level = 128; // Триггер на середине (50%)
-  osc.sample_delay = 50 * osc.scale_t; // Задержка между семплами
-  osc.dc_offset = true; // DC компенсация включена
-  osc.show_grid = true; // Сетка включена
+  osc.trigger_level = 128;        // Триггер на середине (50%)
+  osc.sample_delay = osc.scale_t; // Задержка между семплами
+  osc.dc_offset = true;           // DC компенсация включена
+  osc.show_grid = true;           // Сетка включена
   osc.dc_level = 0;
 
   // Очистка буфера и запуск
@@ -390,26 +390,26 @@ static void drawTriggerLevel(void) {
 static void drawStatus(void) {
   // Строка 1 (baseline y=5): статус захвата
   if (osc.triggered) {
-    PrintSmallEx(0, SMALL_FONT_H, POS_L, C_FILL, "TRIG");
+    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "TRIG");
   } else if (osc.running) {
-    PrintSmallEx(0, SMALL_FONT_H, POS_L, C_FILL, "RUN %d%%",
+    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "RUN %d%%",
                  osc.write_pos * 100 / OSC_SAMPLES);
   } else {
-    PrintSmallEx(0, SMALL_FONT_H, POS_L, C_FILL, "STOP");
+    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "STOP");
   }
 
   // Строка 1 справа: масштаб
-  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H, POS_R, C_FILL, "V:%d T:%d", osc.scale_v,
-               osc.scale_t);
+  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 2, POS_R, C_FILL, "V:%d T:%d",
+               osc.scale_v, osc.scale_t);
 
   // Строка 2 (baseline y=10): режим и задержка
-  PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s",
+  PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL, "%s",
                osc.dc_offset ? "DC" : "RAW");
-  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 2, POS_R, C_FILL, "%u us",
+  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 3, POS_R, C_FILL, "%u ms",
                osc.sample_delay);
 
   // Строка 3 (baseline y=15): уровень триггера
-  PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL, "Trig:%d",
+  PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "Trig:%d",
                osc.trigger_level);
 }
 
