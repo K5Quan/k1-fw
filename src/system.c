@@ -265,7 +265,7 @@ bool checkInt() {
     }
     if (int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) {
       LogC(LOG_C_GREEN, "TAIL tone");
-      TOAST_Push("TAIL");
+      // TOAST_Push("TAIL");
     }
     if (int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) {
       LogC(LOG_C_GREEN, "CT +");

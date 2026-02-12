@@ -14,6 +14,7 @@
 #include "fc.h"
 #include "files.h"
 #include "newscan.h"
+#include "osc.h"
 #include "scaner.h"
 #include "settings.h"
 #include "vfo1.h"
@@ -58,6 +59,7 @@ const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_CMDSCAN,  //
     APP_SCANER,   //
     APP_NEWSCAN,  //
+    APP_OSC,      //
     APP_ANALYZER, //
     APP_FC,       //
     APP_FILES,    //
@@ -83,6 +85,8 @@ const App apps[APPS_COUNT] = {
                       ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
     [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
                      NEWSCAN_key, NEWSCAN_deinit, true},
+    [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key, OSC_deinit,
+                 true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},
     [APP_ABOUT] = {"ABOUT", NULL, NULL, ABOUT_Render, NULL, NULL},
 };

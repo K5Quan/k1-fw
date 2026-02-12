@@ -4,7 +4,7 @@
 #include "../driver/keyboard.h"
 #include "../radio.h"
 
-#define RUN_APPS_COUNT 8
+#define RUN_APPS_COUNT 9
 
 typedef enum {
   APP_NONE,
@@ -17,6 +17,7 @@ typedef enum {
   APP_CMDEDIT,
   APP_ANALYZER,
   APP_NEWSCAN,
+  APP_OSC,
   APP_LOOTLIST,
   APP_FILES,
   APP_ABOUT,

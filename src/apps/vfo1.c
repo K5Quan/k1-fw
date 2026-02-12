@@ -381,7 +381,7 @@ static void renderMonitorMode(uint8_t BASE) {
         [GRAPH_NOISE] = {0, 255},
         [GRAPH_GLITCH] = {0, 255},
         [GRAPH_SNR] = {0, 30},
-        [GRAPH_APRS] = {0, 65535},
+        [GRAPH_APRS] = {0, 4095},
         [GRAPH_COUNT] = {RSSI_MIN, RSSI_MAX},
     };
 
