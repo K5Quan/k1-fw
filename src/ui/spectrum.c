@@ -42,16 +42,18 @@ void UI_DrawTicks(uint8_t y, const Band *band) {
   }
 }
 
+static uint8_t visited[MAX_POINTS / 8 + 1] = {0};
+
 void SP_ResetHistory(void) {
   filledPoints = 0;
-  for (uint8_t i = 0; i < MAX_POINTS; ++i) {
-    rssiHistory[i] = 0;
-  }
+  memset(rssiHistory, 0, sizeof(rssiHistory));
+  memset(visited, 0, sizeof(visited));
 }
 
 void SP_Begin(void) {
   x = 0;
   ox = UINT8_MAX;
+  memset(visited, 0, sizeof(visited));
 }
 
 void SP_Init(Band *b) {
@@ -140,11 +142,32 @@ void SP_AddPoint(const Measurement *msm) {
   ixs = _MAX(0, ixs);
   ixe = _MIN(MAX_POINTS - 1, ixe);
 
-  // Заполняем всю зону
   for (uint8_t x = (uint8_t)ixs; x <= (uint8_t)ixe; ++x) {
+    uint8_t byte = x / 8;
+    uint8_t bit = x % 8;
+
+    if ((visited[byte] & (1 << bit)) == 0) {
+      // первый раз попали в этот x в текущем скане
+      rssiHistory[x] = msm->rssi;
+      visited[byte] |= (1 << bit);
+    } else {
+      // уже попадали → обновляем максимум
+      if (msm->rssi > rssiHistory[x]) {
+        rssiHistory[x] = msm->rssi;
+      }
+    }
+
+    if (x + 1 > filledPoints)
+      filledPoints = x + 1;
+  }
+
+  prev_xc = xc;
+
+  // Заполняем всю зону
+  /* for (uint8_t x = (uint8_t)ixs; x <= (uint8_t)ixe; ++x) {
     if (ox != x) {
       ox = x;
-      rssiHistory[x] = 0;  // Удалите эту строку, если хотите брать max от
+      rssiHistory[x] = 0; // Удалите эту строку, если хотите брать max от
       // предыдущих сканов (не очищать бар, а обновлять пик)
     }
     if (msm->rssi > rssiHistory[x]) {
@@ -156,7 +179,7 @@ void SP_AddPoint(const Measurement *msm) {
     filledPoints = (uint8_t)ixe + 1;
   }
 
-  prev_xc = xc;
+  prev_xc = xc; */
 }
 
 static uint16_t MinRSSI(const uint16_t *array, size_t n) {

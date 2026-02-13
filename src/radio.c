@@ -337,11 +337,11 @@ static void setupToneDetection(VFOContext *ctx) {
 
   uint16_t InterruptMask = BK4819_REG_3F_CxCSS_TAIL;
 
-  InterruptMask |= BK4819_REG_3F_FSK_RX_SYNC |
+  /* InterruptMask |= BK4819_REG_3F_FSK_RX_SYNC |
                    BK4819_REG_3F_FSK_FIFO_ALMOST_FULL |
-                   BK4819_REG_3F_FSK_RX_FINISHED;
+                   BK4819_REG_3F_FSK_RX_FINISHED; */
 
-  InterruptMask |= BK4819_REG_3F_SQUELCH_LOST | BK4819_REG_3F_SQUELCH_FOUND;
+  // InterruptMask |= BK4819_REG_3F_SQUELCH_LOST | BK4819_REG_3F_SQUELCH_FOUND;
 
   if (gSettings.dtmfdecode) {
     BK4819_EnableDTMF();
@@ -370,7 +370,7 @@ static void setupToneDetection(VFOContext *ctx) {
   }
   BK4819_WriteRegister(BK4819_REG_3F, InterruptMask);
 
-  RF_EnterFsk();
+  // RF_EnterFsk();
 }
 
 static void sendEOT() {
@@ -625,8 +625,7 @@ static bool setParamBK4819(VFOContext *ctx, ParamType p) {
                                                                    : FILTER_UHF;
       BK4819_SelectFilterEx(filter);
     }
-    BK4819_TuneTo(ctx->frequency,
-                  ctx->preciseFChange); // TODO: check if SetFreq needed
+    BK4819_TuneTo(ctx->frequency, ctx->preciseFChange);
     return true;
   /* case PARAM_TX_POWER_AMPLIFIER:
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE,

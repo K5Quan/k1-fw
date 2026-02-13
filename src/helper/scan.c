@@ -161,6 +161,7 @@ static void HandleEndOfRange(void) {
     // Обычный режим - возврат к началу
     scan.currentF = scan.startF;
     ChangeState(SCAN_STATE_SWITCHING);
+    SP_Begin();
   }
   gRedrawScreen = true;
 }
@@ -189,11 +190,8 @@ static void HandleStateSwitching(void) {
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
   SYSTICK_DelayUs(scan.scanDelayUs);
-  scan.measurement.f = scan.currentF;
   scan.measurement.rssi = RADIO_GetRSSI(ctx);
-  // scan.measurement.noise = RADIO_GetNoise(ctx);
-  // scan.measurement.glitch = RADIO_GetGlitch(ctx);
-  // scan.measurement.snr = RADIO_GetSNR(ctx);
+  scan.measurement.f = scan.currentF;
 
   scan.scanCycles++;
   scan.scanCyclesSql++;
@@ -242,7 +240,7 @@ static void HandleStateDeciding(void) {
 
     scan.measurement.open = scan.isOpen;
     LOOT_Update(&scan.measurement);
-    // SP_AddPoint(&scan.measurement);
+    SP_AddPoint(&scan.measurement);
 
     if (scan.isOpen) {
       // Сигнал подтверждён
@@ -269,6 +267,7 @@ static void HandleStateDeciding(void) {
 static void HandleStateListening(void) {
   // Обновляем состояние squelch
   RADIO_UpdateSquelch(gRadioState);
+  SP_AddPoint(&scan.measurement);
   bool wasOpen = scan.isOpen;
   scan.isOpen = vfo->is_open;
 
@@ -303,13 +302,13 @@ static void HandleModeSingle(void) {
   static uint32_t radioTimer = 0;
   uint32_t now = Now();
 
-  RADIO_UpdateSquelch(gRadioState);
+  /* RADIO_UpdateSquelch(gRadioState);
 
   scan.measurement.f = ctx->frequency;
-  scan.measurement.rssi = RADIO_GetRSSI(ctx);
-  scan.measurement.noise = RADIO_GetNoise(ctx);
-  scan.measurement.glitch = RADIO_GetGlitch(ctx);
-  scan.measurement.snr = RADIO_GetSNR(ctx);
+  scan.measurement.rssi = vfo->msm.rssi;
+  scan.measurement.noise = vfo->msm.noise;
+  scan.measurement.glitch = vfo->msm.glitch;
+  scan.measurement.snr = vfo->msm.snr;
   scan.isOpen = vfo->is_open;
   scan.measurement.open = scan.isOpen;
 
@@ -317,7 +316,7 @@ static void HandleModeSingle(void) {
   if (lastOpen != scan.isOpen) {
     lastOpen = scan.isOpen;
     gRedrawScreen = true;
-  }
+  } */
 
   RADIO_CheckAndSaveVFO(gRadioState);
 

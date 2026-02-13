@@ -156,6 +156,7 @@ void updateScan() {
   if (msm->f > range.end) {
     msm->f = range.start;
     gRedrawScreen = true;
+    SP_Begin();
   }
 }
 

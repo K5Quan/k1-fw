@@ -106,6 +106,10 @@ void UART_printf(const char *str, ...) {
   va_end(va);
 }
 
+#define DEBUG
+
+#ifdef DEBUG
+
 void Log(const char *pattern, ...) {
   char text[128];
   va_list args;
@@ -122,3 +126,8 @@ void LogC(LogColor c, const char *pattern, ...) {
   va_end(args);
   UART_printf("%+10u \033[%um%s\033[%um\n", Now(), c, text, LOG_C_RESET);
 }
+
+#else
+void Log(const char *pattern, ...) {}
+void LogC(LogColor c, const char *pattern, ...) {}
+#endif

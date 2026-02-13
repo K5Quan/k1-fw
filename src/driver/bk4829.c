@@ -101,15 +101,9 @@ static ModulationType gLastModulation = 255;
 // Register Access
 // ============================================================================
 
-static inline void CS_Assert() {
-  __disable_irq();
-  GPIO_ResetOutputPin(PIN_CSN);
-}
+static inline void CS_Assert() { GPIO_ResetOutputPin(PIN_CSN); }
 
-static inline void CS_Release() {
-  GPIO_SetOutputPin(PIN_CSN);
-  __enable_irq();
-}
+static inline void CS_Release() { GPIO_SetOutputPin(PIN_CSN); }
 
 static inline void SCL_Reset() { GPIO_ResetOutputPin(PIN_SCL); }
 
@@ -172,6 +166,7 @@ uint16_t BK4819_ReadRegister(BK4819_REGISTER_t reg) {
   if (reg == BK4819_REG_30 && reg30state != 0xffff) {
     return reg30state;
   }
+  __disable_irq();
   // printf("R R 0x%x\n", reg);
   uint16_t Value;
 
@@ -189,6 +184,7 @@ uint16_t BK4819_ReadRegister(BK4819_REGISTER_t reg) {
 
   SCL_Set();
   SDA_Set();
+  __enable_irq();
 
   return Value;
 }
@@ -198,6 +194,7 @@ void BK4819_WriteRegister(BK4819_REGISTER_t reg, uint16_t Data) {
   if (reg == BK4819_REG_30) {
     reg30state = Data;
   }
+  __disable_irq();
   CS_Release();
   SCL_Reset();
 
@@ -218,6 +215,7 @@ void BK4819_WriteRegister(BK4819_REGISTER_t reg, uint16_t Data) {
 
   SCL_Set();
   SDA_Set();
+  __enable_irq();
 }
 
 void BK4819_WriteU8(uint8_t Data) {
@@ -485,15 +483,15 @@ void BK4819_SetFilterBandwidth(BK4819_FilterBandwidth_t bw) {
     return;
 
   //                                       v
-  /* static const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};
+  static const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};
   static const uint8_t wb[] = {0, 0, 1, 2, 0, 2, 2, 3, 4, 6};
   static const uint8_t af[] = {1, 2, 0, 3, 0, 0, 7, 6, 5, 4};
-  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; */
+  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2};
 
-  static const uint8_t rf[] = {3, 3, 4, 4, 4, 5, 5, 6, 6, 7};
+  /* static const uint8_t rf[] = {3, 3, 4, 4, 4, 5, 5, 6, 6, 7};
   static const uint8_t wb[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 5};
   static const uint8_t af[] = {1, 1, 1, 1, 0, 0, 3, 3, 4, 4};
-  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2};
+  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; */
 
   const uint16_t value = //
       (0u << 15)         //
