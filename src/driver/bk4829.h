@@ -6,8 +6,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define BK4819_F_MIN 1588000
-#define BK4819_F_MAX 134000000
+// #define BK4819_F_MIN 1588000
+#define BK4819_F_MIN 1520000
+// #define BK4819_F_MAX 134000000
+#define BK4819_F_MAX 122050000
 
 #define VHF_UHF_BOUND1 24000000
 #define VHF_UHF_BOUND2 28000000
