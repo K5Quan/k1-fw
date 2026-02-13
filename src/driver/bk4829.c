@@ -101,9 +101,15 @@ static ModulationType gLastModulation = 255;
 // Register Access
 // ============================================================================
 
-static inline void CS_Assert() { GPIO_ResetOutputPin(PIN_CSN); }
+static inline void CS_Assert() {
+  __disable_irq();
+  GPIO_ResetOutputPin(PIN_CSN);
+}
 
-static inline void CS_Release() { GPIO_SetOutputPin(PIN_CSN); }
+static inline void CS_Release() {
+  GPIO_SetOutputPin(PIN_CSN);
+  __enable_irq();
+}
 
 static inline void SCL_Reset() { GPIO_ResetOutputPin(PIN_SCL); }
 
@@ -572,6 +578,25 @@ void BK4819_SetAF(BK4819_AF_Type_t af) {
   BK4819_WriteRegister(BK4819_REG_47, 0x6042 | (af << 8));
 }
 
+void BK4819_SetIfMode(uint8_t mode) {
+  switch (mode) {
+  case 0:                               // Zero IF
+    BK4819_WriteRegister(0x1c, 0x01c0); // for 55nm
+    BK4819_WriteRegister(0x1d, 0x0000); // for 55nm
+    break;
+
+  case 1:                               // LPF
+    BK4819_WriteRegister(0x1c, 0x01c0); // for 55nm
+    BK4819_WriteRegister(0x1d, 0xe555); // for 55nm
+    break;
+
+  case 2:                               // BPF
+    BK4819_WriteRegister(0x1c, 0x0122); // for 55nm
+    BK4819_WriteRegister(0x1d, 0x2aab); // for 55nm
+    break;
+  }
+}
+
 void BK4819_SetModulation(ModulationType type) {
   if (gLastModulation == type) {
     return;
@@ -598,12 +623,17 @@ void BK4819_SetModulation(ModulationType type) {
     // RF_SetXtal(XTAL12M8);
   } else if (isSsb) {
     BK4819_XtalSet(XTAL_2_26M);
-    // BK4819_XtalSet(XTAL_3_38_4M);
-    // RF_SetXtal(XTAL38M4);
-    BK4819_SetRegValue(RS_IF_F, 0);
   } else {
     BK4819_XtalSet(XTAL_2_26M);
     // RF_SetXtal(XTAL26M);
+  }
+
+  if (isSsb) {
+    BK4819_SetRegValue(RS_IF_F, 0);
+  } else if (type == MOD_WFM) {
+    BK4819_SetRegValue(RS_IF_F, 14223);
+  } else {
+    BK4819_SetRegValue(RS_IF_F, 10923);
   }
 
   BK4819_WriteRegister(
@@ -614,13 +644,13 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_WriteRegister(0x31, r31 | 1);
     BK4819_WriteRegister(0x42, 0x6F5C);
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants
-    BK4819_WriteRegister(0x2B, 0x0300);
+    BK4819_WriteRegister(0x2B, 0x0400);
     BK4819_WriteRegister(0x2F, 0x9990);
 
     /* BK4819_WriteRegister(0x54, 0x9775);
     BK4819_WriteRegister(0x55, 0x32c6); */
-    BK4819_WriteRegister(0x54, 0x8846);
-    BK4819_WriteRegister(0x55, 0x38C0);
+    /* BK4819_WriteRegister(0x54, 0x8846);
+    BK4819_WriteRegister(0x55, 0x38C0); */
   } else {
     BK4819_WriteRegister(0x31, r31 & 0xFFFE);
     BK4819_WriteRegister(0x42, 0x6B5A);
@@ -628,8 +658,8 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_WriteRegister(0x2B, 0x0000);
     BK4819_WriteRegister(0x2F, 0x9890);
 
-    BK4819_WriteRegister(0x54, 0x9009);
-    BK4819_WriteRegister(0x55, 0x31a9);
+    /* BK4819_WriteRegister(0x54, 0x9009);
+    BK4819_WriteRegister(0x55, 0x31a9); */
   }
 }
 

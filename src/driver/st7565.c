@@ -55,15 +55,21 @@ static void SPI_Init() {
   InitStruct.NSS = LL_SPI_NSS_SOFT;
   InitStruct.BitOrder = LL_SPI_MSB_FIRST;
   InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
-  InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV64;
+  InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV32;
   LL_SPI_Init(SPIx, &InitStruct);
 
   LL_SPI_Enable(SPIx);
 }
 
-static inline void CS_Assert() { GPIO_ResetOutputPin(PIN_CS); }
+static inline void CS_Assert() {
+  __disable_irq();
+  GPIO_ResetOutputPin(PIN_CS);
+}
 
-static inline void CS_Release() { GPIO_SetOutputPin(PIN_CS); }
+static inline void CS_Release() {
+  GPIO_SetOutputPin(PIN_CS);
+  __enable_irq();
+}
 
 static inline void A0_Set() { GPIO_SetOutputPin(PIN_A0); }
 

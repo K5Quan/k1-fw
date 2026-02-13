@@ -37,9 +37,6 @@
 
 static uint8_t DEAD_BUF[] = {0xDE, 0xAD};
 
-static char notificationMessage[16] = "";
-static uint32_t notificationTimeoutAt;
-
 static uint32_t secondTimer;
 static uint32_t radioTimer;
 static uint32_t toastTimer;
@@ -50,7 +47,7 @@ static void appRender() {
     return;
   }
 
-  if (Now() - gLastRender < 40) {
+  if (Now() - gLastRender < 20) {
     return;
   }
 
@@ -73,11 +70,6 @@ static void appRender() {
   }
   if (gChlistActive) {
     CHLIST_render();
-  }
-
-  if (notificationMessage[0]) {
-    FillRect(0, 32 - 5, 128, 9, C_FILL);
-    PrintMediumEx(64, 32 + 2, POS_C, C_CLEAR, notificationMessage);
   }
 
   STATUSLINE_render(); // coz of APPS_render calls STATUSLINE_SetText

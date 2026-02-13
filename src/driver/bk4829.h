@@ -214,6 +214,7 @@ void BK4819_TuneTo(uint32_t f, bool precise);
 void BK4819_SetToneFrequency(uint16_t f);
 void BK4819_SetTone2Frequency(uint16_t f);
 void BK4819_SetModulation(ModulationType type);
+void BK4819_SetIfMode(uint8_t mode);
 ModulationType BK4819_GetModulation();
 bool BK4819_IsSquelchOpen();
 

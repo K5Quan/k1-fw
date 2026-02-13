@@ -117,7 +117,6 @@ void APPS_update(void) {
 
 void APPS_render(void) {
   if (apps[gCurrentApp].render) {
-    UI_ClearScreen();
     apps[gCurrentApp].render();
   }
 }

@@ -11,7 +11,7 @@ extern uint16_t gBatteryCurrent;
 extern uint8_t gBatteryPercent;
 extern bool gChargingWithTypeC;
 
-extern const char *BATTERY_TYPE_NAMES[3];
+extern const char *BATTERY_TYPE_NAMES[4];
 extern const char *BATTERY_STYLE_NAMES[3];
 
 void BATTERY_UpdateBatteryInfo();

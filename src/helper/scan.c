@@ -242,7 +242,7 @@ static void HandleStateDeciding(void) {
 
     scan.measurement.open = scan.isOpen;
     LOOT_Update(&scan.measurement);
-    SP_AddPoint(&scan.measurement);
+    // SP_AddPoint(&scan.measurement);
 
     if (scan.isOpen) {
       // Сигнал подтверждён

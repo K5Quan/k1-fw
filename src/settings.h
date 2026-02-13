@@ -76,6 +76,7 @@ typedef enum {
 } MultiwatchType;
 
 typedef enum {
+  BAT_1400,
   BAT_1600,
   BAT_2200,
   BAT_3500,

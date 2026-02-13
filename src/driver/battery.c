@@ -11,10 +11,25 @@ bool gChargingWithTypeC = true;
 static uint16_t batAdcV = 0;
 static uint16_t batAvgV = 0;
 
-const char *BATTERY_TYPE_NAMES[3] = {"1600mAh", "2200mAh", "3500mAh"};
+const char *BATTERY_TYPE_NAMES[4] = {"1400mAh", "1600mAh", "2200mAh",
+                                     "3500mAh"};
 const char *BATTERY_STYLE_NAMES[3] = {"Icon", "%", "V"};
 
 const uint16_t Voltage2PercentageTable[][11][2] = {
+    [BAT_1400] =
+        {
+            {828, 100},
+            {813, 97},
+            {794, 80},
+            {782, 65},
+            {770, 45},
+            {758, 25},
+            {750, 18},
+            {742, 12},
+            {734, 9},
+            {726, 6},
+            {630, 0},
+        },
     [BAT_1600] =
         {
             {840, 100},
@@ -46,17 +61,6 @@ const uint16_t Voltage2PercentageTable[][11][2] = {
         },
     [BAT_3500] =
         {
-            /* {840, 100},
-            {762, 90},
-            {744, 80},
-            {726, 70},
-            {710, 60},
-            {690, 50},
-            {674, 40},
-            {660, 30},
-            {648, 20},
-            {628, 10},
-            {600, 0}, */
             {840, 100},
             {820, 90},
             {780, 80},
