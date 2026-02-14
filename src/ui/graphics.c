@@ -83,8 +83,54 @@ void DrawRect(int16_t x, int16_t y, int16_t w, int16_t h, Color c) {
 }
 
 void FillRect(int16_t x, int16_t y, int16_t w, int16_t h, Color c) {
-  for (int16_t i = x, e = x + w; i < e; i++)
-    DrawVLine(i, y, h, c);
+  // Границы
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
+  if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
+  if (w <= 0 || h <= 0) return;
+  
+  uint8_t startPage = y >> 3;
+  uint8_t endPage = (y + h - 1) >> 3;
+  
+  if (c == C_CLEAR) {
+    // Быстрая очистка через memset
+    if (startPage == endPage) {
+      // Внутри одной страницы - маска
+      uint8_t mask = 0xFF;
+      uint8_t topBits = y & 7;
+      uint8_t bottomBits = (y + h - 1) & 7;
+      mask = (0xFF << topBits) & (0xFF >> (7 - bottomBits));
+      mask = ~mask;
+      for (int16_t i = x; i < x + w; i++) {
+        gFrameBuffer[startPage][i] &= mask;
+      }
+    } else {
+      // Несколько страниц - быстрая очистка
+      for (uint8_t page = startPage; page <= endPage; page++) {
+        if (page == startPage && (y & 7)) {
+          // Первая страница - частичная очистка
+          uint8_t mask = (1 << (y & 7)) - 1;
+          for (int16_t i = x; i < x + w; i++) {
+            gFrameBuffer[page][i] &= mask;
+          }
+        } else if (page == endPage && ((y + h) & 7)) {
+          // Последняя страница - частичная очистка
+          uint8_t mask = ~((1 << ((y + h) & 7)) - 1);
+          for (int16_t i = x; i < x + w; i++) {
+            gFrameBuffer[page][i] &= mask;
+          }
+        } else {
+          // Полная страница - memset
+          memset(&gFrameBuffer[page][x], 0, w);
+        }
+      }
+    }
+  } else {
+    // Старый медленный способ для не-CLEAR
+    for (int16_t i = x, e = x + w; i < e; i++)
+      DrawVLine(i, y, h, c);
+  }
 }
 
 static void m_putchar(int16_t x, int16_t y, uint8_t c, Color col, uint8_t sx,

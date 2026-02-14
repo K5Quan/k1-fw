@@ -42,19 +42,30 @@ static uint32_t radioTimer;
 static uint32_t toastTimer;
 static uint32_t appsKeyboardTimer;
 
+static uint32_t gFrameCount = 0;
+static uint32_t gLastFpsUpdate = 0;
+static uint16_t gCurrentFPS = 0;
+
+static uint32_t time_clear;
+static uint32_t time_draw;
+static uint32_t time_blit;
+
 static void appRender() {
   if (!gRedrawScreen) {
     return;
   }
 
-  if (Now() - gLastRender < 16) {
+  /* if (Now() - gLastRender < 8) {
     return;
-  }
+  } */
 
   gRedrawScreen = false;
 
+  uint32_t t = Now();
   UI_ClearScreen();
+  time_clear = Now() - t;
 
+  t = Now();
   APPS_render();
   if (gFInputActive) {
     FINPUT_render();
@@ -76,8 +87,24 @@ static void appRender() {
 
   TOAST_Render();
 
-  ST7565_Blit();
   gLastRender = Now();
+
+  time_draw = Now() - t;
+
+  // FPS counter
+  gFrameCount++;
+  if (Now() - gLastFpsUpdate >= 1000) { // Каждую секунду
+    gCurrentFPS = gFrameCount;
+    gFrameCount = 0;
+    gLastFpsUpdate = Now();
+    // Можете вывести gCurrentFPS на экран для проверки
+  }
+  PrintSmallEx(LCD_WIDTH - 24, 4, POS_R, C_FILL, "FPS: %u", gCurrentFPS);
+  PrintSmallEx(LCD_XCENTER, 32, POS_C, C_FILL, "C %u D %u B %u", time_clear,
+               time_draw, time_blit);
+  t = Now();
+  ST7565_Blit();
+  time_blit = Now() - t;
 }
 
 static void systemUpdate() {
@@ -350,6 +377,7 @@ void SYS_Main() {
     /* if (gChlistActive) {
       CHLIST_update();
     } */
+
     APPS_update();
 
     if (Now() - toastTimer >= 40) {
@@ -358,6 +386,7 @@ void SYS_Main() {
     }
     if (Now() - appsKeyboardTimer >= 1) {
       keyboard_tick_1ms();
+
       appsKeyboardTimer = Now();
     }
 
