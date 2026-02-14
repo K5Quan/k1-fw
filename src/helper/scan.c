@@ -231,9 +231,7 @@ static void HandleStateSwitching(void) {
 }
 
 static void HandleStateDeciding(void) {
-  uint32_t elapsed = Now() - scan.stateEnteredAt;
-
-  if (elapsed >= scan.sqlDelayMs) {
+  if (Now() - scan.stateEnteredAt >= scan.sqlDelayMs) {
     // Аппаратная проверка squelch
     RADIO_UpdateSquelch(gRadioState);
     scan.isOpen = vfo->is_open;
@@ -298,9 +296,8 @@ static void HandleStateListening(void) {
 // State Machine - Single VFO (мониторинг)
 // ============================================================================
 
+static uint32_t radioTimer = 0;
 static void HandleModeSingle(void) {
-  static uint32_t radioTimer = 0;
-  uint32_t now = Now();
 
   /* RADIO_UpdateSquelch(gRadioState);
 
@@ -320,11 +317,11 @@ static void HandleModeSingle(void) {
 
   RADIO_CheckAndSaveVFO(gRadioState);
 
-  if (now - radioTimer >= SQL_DELAY) {
+  if (Now() - radioTimer >= SQL_DELAY) {
     RADIO_UpdateSquelch(gRadioState);
     SP_ShiftGraph(-1); // TODO: second buffer =)
     SP_AddGraphPoint(&scan.measurement);
-    radioTimer = now;
+    radioTimer = Now();
   }
 }
 

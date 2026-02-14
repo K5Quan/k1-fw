@@ -1,25 +1,3 @@
-/*
- * Приложение "Осциллограф"
- *
- * Простой цифровой осциллограф для захвата и отображения сигналов с ADC.
- *
- * Возможности:
- * - Захват сигнала с канала APRS
- * - Регулируемый масштаб по вертикали (V) и времени (T)
- * - Триггер по переднему фронту с регулируемым уровнем
- * - DC компенсация для устранения постоянной составляющей
- * - Отображаемая сетка для удобства измерений
- *
- * Управление:
- * - Клавиши 1/4: масштаб по вертикали
- * - Клавиши 2/5: масштаб по времени
- * - Клавиши 3/6: уровень триггера
- * - Клавиша 7: переключение DC/RAW
- * - Клавиша 8: вкл/выкл сетку
- * - Клавиша F: запуск захвата
- * - Клавиша *: сброс
- */
-
 #include "osc.h"
 #include "../board.h"
 #include "../driver/systick.h"
@@ -75,6 +53,11 @@ static OscContext osc; // Контекст осциллографа
 static uint32_t last_sample_time; // Время последнего семпла (для timing)
 
 // === Вспомогательные функции ===
+static void tuneTo(uint32_t f, uint32_t _) {
+  (void)_;
+  RADIO_SetParam(ctx, PARAM_FREQUENCY, f, true);
+  RADIO_ApplySettings(ctx);
+}
 
 // === Функции настройки параметров ===
 
@@ -96,8 +79,8 @@ static void setScaleT(uint32_t value, uint32_t _) {
   osc.scale_t = value;
   if (osc.scale_t < 1)
     osc.scale_t = 1;
-  if (osc.scale_t > 10)
-    osc.scale_t = 10;
+  if (osc.scale_t > 100)
+    osc.scale_t = 100;
 
   // Обновляем задержку между семплами: 50-500 мкс
   osc.sample_delay = osc.scale_t;
@@ -162,8 +145,13 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     triggerArm(); // Перезапускаем после смены режима
     return true;
 
-  case KEY_5: // Переключить сетку
+  case KEY_F: // Переключить сетку
     osc.show_grid = !osc.show_grid;
+    return true;
+
+  case KEY_5:
+    FINPUT_setup(BK4819_F_MIN, BK4819_F_MAX, UNIT_MHZ, false);
+    FINPUT_Show(tuneTo);
     return true;
 
   case KEY_0:
@@ -171,15 +159,15 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     FINPUT_Show(setTriggerLevel);
     return true;
 
-  case KEY_F: // Запуск захвата
+  case KEY_STAR: // Запуск захвата
     triggerArm();
     return true;
 
-  case KEY_STAR: // Полный сброс
-    memset(osc.buffer, 0, sizeof(osc.buffer));
-    osc.triggered = false;
-    osc.running = false;
-    return true;
+    /* case KEY_STAR: // Полный сброс
+      memset(osc.buffer, 0, sizeof(osc.buffer));
+      osc.triggered = false;
+      osc.running = false;
+      return true; */
 
   default:
     return false;
@@ -411,6 +399,9 @@ static void drawStatus(void) {
   // Строка 3 (baseline y=15): уровень триггера
   PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "Trig:%d",
                osc.trigger_level);
+  char buf[16];
+  mhzToS(buf, RADIO_GetParam(ctx, PARAM_FREQUENCY));
+  PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
 }
 
 void OSC_render(void) {

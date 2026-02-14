@@ -7,7 +7,6 @@
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "about.h"
-#include "analyzer.h"
 #include "appslist.h"
 #include "cmdedit.h"
 #include "cmdscan.h"
@@ -60,7 +59,6 @@ const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
     APP_SCANER,   //
     APP_NEWSCAN,  //
     APP_OSC,      //
-    APP_ANALYZER, //
     APP_FC,       //
     APP_FILES,    //
     APP_ABOUT,    //
@@ -81,8 +79,6 @@ const App apps[APPS_COUNT] = {
                      CMDSCAN_key, CMDSCAN_deinit, true},
     [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
                      CMDEDIT_key, NULL},
-    [APP_ANALYZER] = {"Analyzer", ANALYZER_init, ANALYZER_update,
-                      ANALYZER_render, ANALYZER_key, ANALYZER_deinit, true},
     [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
                      NEWSCAN_key, NEWSCAN_deinit, true},
     [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key, OSC_deinit,

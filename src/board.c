@@ -6,12 +6,14 @@
 #include "driver/lfs.h"
 #include "driver/py25q16.h"
 #include "driver/st7565.h"
+#include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_adc.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_bus.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dac.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_gpio.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_rcc.h"
+#include "ui/graphics.h"
 #include <stdint.h>
 
 void BOARD_GPIO_Init(void) {
@@ -156,15 +158,6 @@ void BOARD_DAC_SetValue(uint16_t value) {
     value = 4095; // Ограничение 12-bit
   LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, value);
   LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
-}
-
-void BOARD_USBInit() {
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USBD);
-  // LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA);
-
-  /* Enable USB interrupt */
-  NVIC_SetPriority(USB_IRQn, 3);
-  NVIC_EnableIRQ(USB_IRQn);
 }
 
 void BOARD_Init(void) {

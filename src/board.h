@@ -1,20 +1,25 @@
 #ifndef BOARD_H
 #define BOARD_H
 
-#include <stdbool.h>
 #include <stdint.h>
+#include <stdbool.h>
 
-void BOARD_FLASH_Init(void);
+// Существующие функции
+void BOARD_Init(void);
 void BOARD_GPIO_Init(void);
 void BOARD_ADC_Init(void);
+void BOARD_DAC_Init(void);
 void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent);
-void BOARD_Init(void);
-void BOARD_FlashlightToggle();
+uint16_t BOARD_ADC_GetAPRS(void);
+void BOARD_FlashlightToggle(void);
 void BOARD_ToggleRed(bool on);
 void BOARD_ToggleGreen(bool on);
 
-uint16_t BOARD_ADC_GetAPRS();
-void BOARD_DAC_SetValue(uint16_t value);
-void BOARD_USBInit();
+// Новые функции для DMA-режима APRS
+void BOARD_DMA_Init(void);
+void BOARD_ADC_StartAPRS_DMA(void);
+void BOARD_ADC_StopAPRS_DMA(void);
+uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples);
+uint32_t BOARD_ADC_GetAvailableAPRS_DMA(void);
 
-#endif
+#endif // BOARD_H

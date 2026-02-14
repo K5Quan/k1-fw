@@ -3994,6 +3994,54 @@ void        LL_ADC_INJ_StructInit(LL_ADC_INJ_InitTypeDef *ADC_INJ_InitStruct);
 }
 #endif
 
+/**
+  * @brief  Clear flag ADC group regular overrun.
+  * @rmtoll SR       OVR            LL_ADC_ClearFlag_OVR
+  * @param  ADCx ADC instance
+  * @retval None
+  */
+__STATIC_INLINE void LL_ADC_ClearFlag_OVR(ADC_TypeDef *ADCx)
+{
+  WRITE_REG(ADCx->SR, ~LL_ADC_FLAG_OVR);
+}
+
+/**
+  * @brief  Get flag ADC start of conversion.
+  * @rmtoll SR       STRT           LL_ADC_IsActiveFlag_STRT
+  * @param  ADCx ADC instance
+  * @retval State of bit (1 or 0).
+  */
+__STATIC_INLINE uint32_t LL_ADC_IsActiveFlag_STRT(ADC_TypeDef *ADCx)
+{
+  return (READ_BIT(ADCx->SR, LL_ADC_FLAG_STRT) == (LL_ADC_FLAG_STRT));
+}
+
+/**
+  * @brief  Check if regular conversion is ongoing.
+  * @note   In continuous mode, this remains set during conversions.
+  * @rmtoll SR       STRT           LL_ADC_REG_IsConversionOngoing
+  *         CR2      SWSTART        LL_ADC_REG_IsConversionOngoing
+  * @param  ADCx ADC instance
+  * @retval State of bit (1 or 0).
+  */
+__STATIC_INLINE uint32_t LL_ADC_REG_IsConversionOngoing(ADC_TypeDef *ADCx)
+{
+  // Use STRT from SR (set at start, cleared at end/stop) or SWSTART from CR2
+  return (LL_ADC_IsActiveFlag_STRT(ADCx) || (READ_BIT(ADCx->CR2, ADC_CR2_SWSTART) == ADC_CR2_SWSTART));
+}
+
+/**
+  * @brief  Check if regular conversion stop is ongoing (after stop request).
+  * @note   Wait loop helper for safe stop.
+  * @rmtoll SR       STRT           LL_ADC_REG_IsStopConversionOngoing
+  * @param  ADCx ADC instance
+  * @retval State of bit (1 or 0).
+  */
+__STATIC_INLINE uint32_t LL_ADC_REG_IsStopConversionOngoing(ADC_TypeDef *ADCx)
+{
+  return LL_ADC_REG_IsConversionOngoing(ADCx);  // Mirrors ongoing until fully stopped
+}
+
 #endif /* __PY32F071_LL_ADC_H */
 
 /************************ (C) COPYRIGHT Puya *****END OF FILE******************/
