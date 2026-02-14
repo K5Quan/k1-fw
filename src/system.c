@@ -47,7 +47,7 @@ static void appRender() {
     return;
   }
 
-  if (Now() - gLastRender < 20) {
+  if (Now() - gLastRender < 16) {
     return;
   }
 

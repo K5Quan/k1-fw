@@ -26,6 +26,7 @@ static Measurement tgt[3];
 static void setTargetF(uint32_t fs, uint32_t _) { targetF = fs; }
 
 static void setRange(uint32_t fs, uint32_t fe) {
+  range.step = RADIO_GetParam(ctx, PARAM_STEP);
   range.start = fs;
   range.end = fe;
   msm->f = range.start;
@@ -97,7 +98,7 @@ void NEWSCAN_init(void) {
   SPECTRUM_Y = 8;
   SPECTRUM_H = 44;
 
-  range.step = STEP_25_0kHz;
+  range.step = RADIO_GetParam(ctx, PARAM_STEP);
   range.start = 43307500;
   range.end = range.start + StepFrequencyTable[range.step] * LCD_WIDTH;
   msm = &vfo->msm;
