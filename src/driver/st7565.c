@@ -138,12 +138,30 @@ void ST7565_ForceFullRedraw(void) {
   gRedrawScreen = true;
 }
 
+static inline bool line_changed_fast(uint8_t line) {
+  uint32_t *curr = (uint32_t *)gFrameBuffer[line];
+  uint32_t *prev = (uint32_t *)gPrevFrameBuffer[line];
+
+  // Сравниваем по 4 байта за раз
+  for (uint8_t i = 0; i < LCD_WIDTH / 4; i++) {
+    if (curr[i] != prev[i])
+      return true;
+  }
+
+  // Остаток (если LCD_WIDTH не кратен 4)
+  for (uint8_t i = (LCD_WIDTH / 4) * 4; i < LCD_WIDTH; i++) {
+    if (gFrameBuffer[line][i] != gPrevFrameBuffer[line][i])
+      return true;
+  }
+
+  return false;
+}
+
 void ST7565_Blit(void) {
   bool any_change = false;
 
   for (uint8_t line = 0; line < FRAME_LINES; line++) {
-    gLineChanged[line] =
-        memcmp(gFrameBuffer[line], gPrevFrameBuffer[line], LCD_WIDTH) != 0;
+    gLineChanged[line] = line_changed_fast(line);
     if (gLineChanged[line])
       any_change = true;
   }
@@ -155,10 +173,19 @@ void ST7565_Blit(void) {
 
   CS_Assert();
 
+  uint8_t start_line = 0xFF;
   for (uint8_t line = 0; line < FRAME_LINES; line++) {
     if (gLineChanged[line]) {
+      if (start_line == 0xFF)
+        start_line = line;
+
       DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
       memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
+
+      // Если следующая строка не изменена - делаем паузу CS
+      if (line + 1 < FRAME_LINES && !gLineChanged[line + 1]) {
+        start_line = 0xFF;
+      }
     }
   }
 
