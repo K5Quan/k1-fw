@@ -46,9 +46,7 @@ static uint32_t gFrameCount = 0;
 static uint32_t gLastFpsUpdate = 0;
 static uint16_t gCurrentFPS = 0;
 
-static uint32_t time_apps;
-static uint32_t time_status;
-static uint32_t time_toast;
+// static uint32_t time_apps;
 
 static void appRender() {
   if (!gRedrawScreen) {
@@ -63,9 +61,9 @@ static void appRender() {
 
   UI_ClearScreen();
 
-  uint32_t t = Now();
+  // uint32_t t = Now();
   APPS_render();
-  time_apps = Now() - t;
+  // time_apps = Now() - t;
   if (gFInputActive) {
     FINPUT_render();
   }
@@ -82,27 +80,22 @@ static void appRender() {
     CHLIST_render();
   }
 
-  t = Now();
   STATUSLINE_render(); // coz of APPS_render calls STATUSLINE_SetText
-  time_status = Now() - t;
 
-  t = Now();
   TOAST_Render();
-  time_toast = Now() - t;
 
   gLastRender = Now();
 
   // FPS counter
-  gFrameCount++;
+  /* gFrameCount++;
   if (Now() - gLastFpsUpdate >= 1000) { // Каждую секунду
     gCurrentFPS = gFrameCount;
     gFrameCount = 0;
     gLastFpsUpdate = Now();
-    // Можете вывести gCurrentFPS на экран для проверки
-  }
-  PrintSmallEx(LCD_WIDTH - 24, 4, POS_R, C_FILL, "FPS: %u", gCurrentFPS);
+  } */
+  /* PrintSmallEx(LCD_WIDTH - 24, 4, POS_R, C_FILL, "FPS: %u", gCurrentFPS);
   PrintSmallEx(LCD_XCENTER, 32, POS_C, C_FILL, "A %u S %u T %u", time_apps,
-               time_status, time_toast);
+               time_status, time_toast); */
   ST7565_Blit();
 }
 
@@ -407,6 +400,6 @@ void SYS_Main() {
       continue;
     }
 
-    __WFI();
+    // __WFI();
   }
 }
