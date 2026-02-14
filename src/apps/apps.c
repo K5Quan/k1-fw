@@ -54,14 +54,14 @@ AppType_t APPS_Peek(void) {
 }
 
 const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
-    APP_VFO1,     //
-    APP_CMDSCAN,  //
-    APP_SCANER,   //
-    APP_NEWSCAN,  //
-    APP_OSC,      //
-    APP_FC,       //
-    APP_FILES,    //
-    APP_ABOUT,    //
+    APP_VFO1,    //
+    APP_SCANER,  //
+    APP_NEWSCAN, //
+    APP_CMDSCAN, //
+    APP_FC,      //
+    APP_OSC,     //
+    APP_FILES,   //
+    APP_ABOUT,   //
 };
 
 const App apps[APPS_COUNT] = {
@@ -79,7 +79,7 @@ const App apps[APPS_COUNT] = {
                      CMDSCAN_key, CMDSCAN_deinit, true},
     [APP_CMDEDIT] = {"CMD Scan", CMDEDIT_init, NULL, CMDEDIT_render,
                      CMDEDIT_key, NULL},
-    [APP_NEWSCAN] = {"Newscan", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
+    [APP_NEWSCAN] = {"Analyzer", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
                      NEWSCAN_key, NEWSCAN_deinit, true},
     [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key, OSC_deinit,
                  true},

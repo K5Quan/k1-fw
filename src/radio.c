@@ -459,7 +459,7 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
   switch (target) {
   case RADIO_BK4819:
     LogC(LOG_C_BRIGHT_YELLOW, "BK4819 on");
-    toggleBK4819(true);
+    BK4819_RX_TurnOn(); // Reset state
     hw_state->bk4819_enabled = true;
     break;
 
@@ -467,8 +467,7 @@ static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
     // Переводим BK4819 в Idle только если он был активен
     if (hw_state->bk4819_enabled) {
       LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
-      // BK4819_Idle();
-      toggleBK4819(false);
+      BK4819_Idle();
       hw_state->bk4819_enabled = false;
     }
 
@@ -2089,7 +2088,6 @@ void RADIO_LoadVFOs(RadioState *state) {
   BK4819_Init();
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   BK4819_RX_TurnOn();
-  toggleBK4819(false);
   state->hw_state.bk4819_enabled = true;
 
   BK1080_Init(0, false);

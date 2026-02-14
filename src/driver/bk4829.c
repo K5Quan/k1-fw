@@ -985,7 +985,7 @@ void BK4819_MuteMic(void) {
 
 void BK4819_RX_TurnOn(void) {
   BK4819_WriteRegister(BK4819_REG_37, 0x9F1F);
-  BK4819_Idle();
+  // BK4819_Idle();
   BK4819_WriteRegister(BK4819_REG_30, 0xBFF1);
 }
 

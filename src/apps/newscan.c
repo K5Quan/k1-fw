@@ -203,8 +203,6 @@ void NEWSCAN_render(void) {
                SP_GetNoiseFloor());
 
   PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 2, POS_R, C_FILL, "%uus", delay);
-  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 3, POS_R, C_FILL, "%s",
-               vfo->is_open ? "OPEN" : "...");
 
   PrintSmallEx(LCD_XCENTER, 12 + 6 * 0, POS_C, C_FILL, "%3u %3u %3u",
                tgt[0].rssi, tgt[1].rssi, tgt[2].rssi);
