@@ -1,31 +1,35 @@
 #include "newscan.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
+#include "../helper/bands.h"
 #include "../helper/lootlist.h"
 #include "../helper/regs-menu.h"
 #include "../helper/scan.h"
 #include "../settings.h"
+#include "../ui/components.h"
 #include "../ui/finput.h"
 #include "../ui/spectrum.h"
 #include "../ui/statusline.h"
 #include "apps.h"
 #include <stdbool.h>
 
+// отладка шумодава (на одной частоте?)
+// анализ эфира
+// прослушивание в любом режиме через still
+
 typedef enum {
+  AM_ANALYZER,
   AM_SCAN,
   AM_SQ,
-  AM_RNG,
-  AM_STILL,
 
   AM_COUNT,
 } AnalyzerMode;
 
 static AnalyzerMode mode;
 static const char *AM_NAMES[] = {
+    [AM_ANALYZER] = "ANALYZER",
     [AM_SCAN] = "SCAN",
     [AM_SQ] = "SQ",
-    [AM_RNG] = "RNG",
-    [AM_STILL] = "STILL",
 };
 
 static Band range;
@@ -36,9 +40,12 @@ static uint32_t delay = 1200;
 static uint8_t stp = 10;
 static SQL sq;
 static bool still;
+static bool listen;
 
 static Measurement *msm;
 static Measurement tgt[3];
+
+static uint32_t cursorRangeTimeout = 0;
 
 static void setTargetF(uint32_t fs, uint32_t _) { targetF = fs; }
 
@@ -48,6 +55,8 @@ static void setRange(uint32_t fs, uint32_t fe) {
   range.end = fe;
   msm->f = range.start;
   SP_Init(&range);
+  BANDS_RangeClear();
+  BANDS_RangePush(range);
 }
 
 bool sqModeKey(KEY_Code_t key, Key_State_t state) {
@@ -63,12 +72,6 @@ bool sqModeKey(KEY_Code_t key, Key_State_t state) {
 
   case KEY_SIDE2:
     LOOT_WhitelistLast();
-    return true;
-
-  case KEY_UP:
-  case KEY_DOWN:
-    delay = AdjustU(delay, 0, 10000,
-                    ((key == KEY_UP) ^ gSettings.invertButtons) ? 100 : -100);
     return true;
 
   case KEY_4:
@@ -126,23 +129,69 @@ bool scanModeKey(KEY_Code_t key, Key_State_t state) {
   return false;
 }
 
+bool analyzerModeKey(KEY_Code_t key, Key_State_t state) {
+  uint32_t step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
+  switch (key) {
+  case KEY_UP:
+  case KEY_DOWN:
+    CUR_Move((key == KEY_UP) ^ gSettings.invertButtons);
+    cursorRangeTimeout = Now() + 2000;
+    return true;
+  case KEY_1:
+  case KEY_7:
+    delay = AdjustU(delay, 0, 10000, key == KEY_1 ? 100 : -100);
+    return true;
+  case KEY_2:
+    BANDS_RangePush(CUR_GetRange(BANDS_RangePeek(), step));
+    range = *BANDS_RangePeek();
+    CUR_Reset();
+    return true;
+
+  case KEY_4:
+    still = !still;
+    if (still) {
+      targetF =
+          CUR_GetCenterF(StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)]);
+      msm->f = targetF;
+    }
+    return true;
+  case KEY_6:
+    listen = !listen;
+    if (listen) {
+      still = true;
+    }
+    if (still) {
+      targetF =
+          CUR_GetCenterF(StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)]);
+      msm->f = targetF;
+    }
+    return true;
+  case KEY_8:
+    BANDS_RangePop();
+    range = *BANDS_RangePeek();
+    CUR_Reset();
+    return true;
+  case KEY_3:
+  case KEY_9:
+    RADIO_IncDecParam(ctx, PARAM_STEP, key == KEY_3, false);
+    range.step = RADIO_GetParam(ctx, PARAM_STEP);
+    SP_Init(&range);
+    return true;
+  }
+  return false;
+}
+
 bool stillModeKey(KEY_Code_t key, Key_State_t state) {
   switch (key) {
 
   case KEY_UP:
   case KEY_DOWN:
     targetF = msm->f =
-        AdjustU(msm->f, range.start, range.end,
-                StepFrequencyTable[range.step] *
+        AdjustU(RADIO_GetParam(ctx, PARAM_FREQUENCY), range.start, range.end,
+                StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)] *
                     (((key == KEY_UP) ^ gSettings.invertButtons) ? 1 : -1));
-    return true;
-
-  case KEY_SIDE2:
-    LOOT_WhitelistLast();
-    return true;
-
-  case KEY_STAR:
-    APPS_run(APP_LOOTLIST);
+    RADIO_SetParam(ctx, PARAM_FREQUENCY, targetF, false);
+    RADIO_ApplySettings(ctx);
     return true;
 
   case KEY_1:
@@ -161,6 +210,11 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
     return true;
   }
   if (state == KEY_RELEASED) {
+    if (key == KEY_EXIT && (listen || still)) {
+      listen = false;
+      still = false;
+      return true;
+    }
     if (key == KEY_F) {
       mode = IncDecU(mode, 0, AM_COUNT, true);
       return true;
@@ -172,15 +226,16 @@ bool NEWSCAN_key(KEY_Code_t key, Key_State_t state) {
     }
   }
   if (state == KEY_RELEASED || state == KEY_LONG_PRESSED_CONT) {
+    if (still && stillModeKey(key, state)) {
+      return true;
+    }
     switch (mode) {
     case AM_SCAN:
       return scanModeKey(key, state);
     case AM_SQ:
       return sqModeKey(key, state);
-    /* case AM_RNG:
-      return rngModeKey(key, state); */
-    case AM_STILL:
-      return stillModeKey(key, state);
+    case AM_ANALYZER:
+      return analyzerModeKey(key, state);
     default:
       break;
     }
@@ -202,6 +257,7 @@ void NEWSCAN_init(void) {
 
   SCAN_SetMode(SCAN_MODE_NONE);
   SP_Init(&range);
+  BANDS_RangePush(range);
 }
 
 void NEWSCAN_deinit(void) {}
@@ -211,17 +267,25 @@ void measure() {
   msm->noise = RADIO_GetNoise(ctx);
   msm->glitch = RADIO_GetGlitch(ctx);
 
-  msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
+  if (listen) {
+    msm->open = true;
+  } else if (mode == AM_ANALYZER) {
+    msm->open = false;
+  } else {
+    msm->open = msm->rssi >= sq.ro && msm->noise < sq.no && msm->glitch < sq.go;
+  }
   LOOT_Update(msm);
 
-  if (msm->f == targetF - StepFrequencyTable[range.step]) {
-    tgt[0] = *msm;
-  }
-  if (msm->f == targetF) {
-    tgt[1] = *msm;
-  }
-  if (msm->f == targetF + StepFrequencyTable[range.step]) {
-    tgt[2] = *msm;
+  if (mode == AM_SQ) {
+    if (msm->f == targetF - StepFrequencyTable[range.step]) {
+      tgt[0] = *msm;
+    }
+    if (msm->f == targetF) {
+      tgt[1] = *msm;
+    }
+    if (msm->f == targetF + StepFrequencyTable[range.step]) {
+      tgt[2] = *msm;
+    }
   }
 }
 
@@ -242,7 +306,7 @@ void updateScan() {
   SP_AddPoint(msm);
   LOOT_Update(msm);
 
-  if (mode == AM_STILL) {
+  if (still) {
     return;
   }
 
@@ -269,13 +333,19 @@ void NEWSCAN_update(void) {
     RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
   }
 }
+
 static void renderBottomFreq() {
-  uint32_t leftF = range.start;
-  uint32_t centerF = msm->f;
-  uint32_t rightF = range.end;
+  uint32_t step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
+  Band r = CUR_GetRange(&range, step);
+  bool showCurRange = (Now() < cursorRangeTimeout);
+
+  uint32_t leftF = showCurRange ? r.start : range.start;
+  uint32_t centerF = showCurRange ? CUR_GetCenterF(step)
+                                  : RADIO_GetParam(ctx, PARAM_FREQUENCY);
+  uint32_t rightF = showCurRange ? r.end : range.end;
 
   FSmall(1, LCD_HEIGHT - 2, POS_L, leftF);
-  FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, targetF);
+  FSmall(LCD_XCENTER, LCD_HEIGHT - 2, POS_C, centerF);
   FSmall(LCD_WIDTH - 1, LCD_HEIGHT - 2, POS_R, rightF);
 }
 
@@ -296,9 +366,8 @@ void renderRNGMode() {
 }
 
 void renderMinMax() {
-  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 0, POS_R, C_FILL, "%u", SP_GetRssiMax());
-  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 1, POS_R, C_FILL, "%u",
-               SP_GetNoiseFloor());
+  PrintSmallEx(0, 12 + 6 * 1, POS_L, C_FILL, "%u", SP_GetRssiMax());
+  PrintSmallEx(0, 12 + 6 * 2, POS_L, C_FILL, "%u", SP_GetNoiseFloor());
 }
 
 void renderSpectrum() {
@@ -310,7 +379,6 @@ void renderScanMode() { PrintSmallEx(0, 12, POS_L, C_FILL, "%uus", delay); }
 
 void renderStillMode() {
   PrintSmallEx(LCD_XCENTER, 12 + 6 * 3, POS_C, C_FILL, "%s", "STILL");
-  SP_RenderArrow(targetF);
 }
 
 void NEWSCAN_render(void) {
@@ -318,19 +386,38 @@ void NEWSCAN_render(void) {
 
   renderSpectrum();
 
+  PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 2, POS_R, C_FILL, "%s", AM_NAMES[mode]);
+  if (listen) {
+    PrintSmallEx(LCD_XCENTER, 12 + 6 * 2, POS_C, C_FILL, "LISTEN MODE");
+  }
+
+  if (still || listen) {
+    renderStillMode();
+    SP_RenderArrow(RADIO_GetParam(ctx, PARAM_FREQUENCY));
+    PrintMediumEx(LCD_XCENTER, 14, POS_C, C_FILL,
+                  RADIO_GetParamValueString(ctx, PARAM_FREQUENCY));
+  }
+
   switch (mode) {
+  case AM_ANALYZER:
+    if (!still) {
+      CUR_Render();
+    }
+    renderMinMax();
+    renderScanMode();
+    PrintSmallEx(LCD_WIDTH - 1, 12 + 6 * 0, POS_R, C_FILL, "%s",
+                 RADIO_GetParamValueString(ctx, PARAM_STEP));
+    break;
   case AM_SCAN:
     renderScanMode();
+    if (gLastActiveLoot) {
+      UI_DrawLoot(gLastActiveLoot, LCD_XCENTER, 14, POS_C);
+    }
     break;
   case AM_SQ:
     renderSqMode();
     renderRNGMode();
-    break;
-  case AM_RNG:
-    renderRNGMode();
-    break;
-  case AM_STILL:
-    renderStillMode();
+    SP_RenderArrow(targetF);
     break;
   default:
     break;

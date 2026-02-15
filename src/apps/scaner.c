@@ -19,7 +19,6 @@
 
 static VMinMax minMaxRssi;
 static uint32_t cursorRangeTimeout = 0;
-static bool isAnalyserMode = false;
 static bool pttWasLongPressed = false;
 
 static void setRange(uint32_t fs, uint32_t fe) {
@@ -60,7 +59,7 @@ void SCANER_init(void) {
 
   SCAN_SetDelay(1200);
 
-  SCAN_SetMode(isAnalyserMode ? SCAN_MODE_ANALYSER : SCAN_MODE_FREQUENCY);
+  SCAN_SetMode(SCAN_MODE_FREQUENCY);
   SCAN_Init(false);
 }
 
@@ -141,12 +140,6 @@ static bool handleLongPressCont(KEY_Code_t key) {
   }
 }
 
-static void toggleAnalyserMode(void) {
-  isAnalyserMode = !isAnalyserMode;
-  minMaxRssi = SP_GetMinMax();
-  SCAN_SetMode(isAnalyserMode ? SCAN_MODE_ANALYSER : SCAN_MODE_FREQUENCY);
-}
-
 static bool handlePTTRelease(void) {
   // Переход в VFO если не заблокирован и есть активный сигнал
   if (gLastActiveLoot && !gSettings.keylock) {
@@ -171,9 +164,6 @@ static bool handleRelease(KEY_Code_t key) {
   uint32_t step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
 
   switch (key) {
-  case KEY_4:
-    toggleAnalyserMode();
-    return true;
 
   case KEY_5:
     gFInputCallback = setRange;
@@ -247,14 +237,6 @@ bool SCANER_key(KEY_Code_t key, Key_State_t state) {
   return false;
 }
 
-static void renderAnalyzerUI(void) {
-  VMinMax mm = SP_GetMinMax();
-  PrintSmallEx(LCD_WIDTH, 18, POS_R, C_FILL, "%3u %+3d", mm.vMax,
-               Rssi2DBm(mm.vMax));
-  PrintSmallEx(LCD_WIDTH, 24, POS_R, C_FILL, "%3u %+3d", mm.vMin,
-               Rssi2DBm(mm.vMin));
-}
-
 static void renderTopInfo(void) {
   const uint32_t step = StepFrequencyTable[RADIO_GetParam(ctx, PARAM_STEP)];
 
@@ -293,22 +275,13 @@ void SCANER_render(void) {
   STATUSLINE_RenderRadioSettings();
 
   // Установка диапазона для спектра
-  if (isAnalyserMode) {
-    minMaxRssi.vMin = 55;
-    minMaxRssi.vMax = RSSI_MAX;
-  } else {
-    minMaxRssi = SP_GetMinMax();
-  }
+  minMaxRssi = SP_GetMinMax();
 
   SP_Render(&gCurrentBand, minMaxRssi);
 
   renderTopInfo();
 
-  if (isAnalyserMode) {
-    renderAnalyzerUI();
-  } else {
-    SP_RenderArrow(RADIO_GetParam(ctx, PARAM_FREQUENCY));
-  }
+  SP_RenderArrow(RADIO_GetParam(ctx, PARAM_FREQUENCY));
 
   renderBottomFreq(step);
   CUR_Render();

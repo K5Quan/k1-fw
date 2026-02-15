@@ -524,13 +524,13 @@ void CUR_Render() {
 
 bool CUR_Move(bool up) {
   if (up) {
-    if (curX + curSbWidth < MAX_POINTS - 1) {
-      curX++;
+    if (curX + curSbWidth < MAX_POINTS - 4) {
+      curX += 4;
       return true;
     }
   } else {
-    if (curX - curSbWidth > 0) {
-      curX--;
+    if (curX - curSbWidth >= 4) {
+      curX -= 4;
       return true;
     }
   }

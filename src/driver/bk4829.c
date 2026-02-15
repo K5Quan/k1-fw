@@ -495,7 +495,7 @@ void BK4819_SetFilterBandwidth(BK4819_FilterBandwidth_t bw) {
   const uint16_t value = //
       (0u << 15)         //
       | (rf[bw] << 12)   //
-      | (wb[bw] << 9)    //
+      | (rf[bw] << 9)    // weak
       | (af[bw] << 6)    //
       | (bs[bw] << 4)    //
       | (1u << 3)        //
@@ -548,8 +548,8 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
 
-  // BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
-  BK4819_WriteRegister(BK4819_REG_30, 0x200);
+  BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
+  // BK4819_WriteRegister(BK4819_REG_30, 0x200);
   // SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
@@ -622,6 +622,17 @@ void BK4819_SetModulation(ModulationType type) {
   } else {
     BK4819_XtalSet(XTAL_2_26M);
     // RF_SetXtal(XTAL26M);
+  }
+
+  // sound boost
+  if (isSsb) {
+    BK4819_WriteRegister(0x54, 0x90D1); // default is 0x9009
+    BK4819_WriteRegister(0x55, 0x3271); // default is 0x31a9
+    BK4819_WriteRegister(0x75, 0xFC13); // default is 0xF50B
+  } else {
+    BK4819_WriteRegister(0x54, 0x9009);
+    BK4819_WriteRegister(0x55, 0x31A9);
+    BK4819_WriteRegister(0x75, 0xF50B);
   }
 
   if (isSsb) {
