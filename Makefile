@@ -86,6 +86,7 @@ CFLAGS   := $(COMMON_FLAGS) $(OPTIMIZATION) \
             -Wall -Wextra \
             -Wno-missing-field-initializers \
             -Wno-incompatible-pointer-types \
+			-Wno-strict-aliasing \
             -Wno-unused-function -Wno-unused-variable \
             -fno-builtin -fshort-enums \
 			-Wno-unused-parameter \
@@ -163,19 +164,13 @@ debug:
 # Release сборка с копированием
 release: clean
 	@$(MAKE) BUILD_TYPE=release all
-	@cp $(TARGET).packed.bin $(BIN_DIR)/k1-fw-alfa-by-fagci-$(BUILD_TAG).bin
+	@cp $(TARGET).bin $(BIN_DIR)/k1-fw-alfa-by-fagci-$(BUILD_TAG).bin
 	@echo "Release firmware: $(BIN_DIR)/k1-fw-alfa-by-fagci-$(BUILD_TAG).bin"
 
 # Генерация бинарного файла
 $(TARGET).bin: $(TARGET)
 	@echo "Creating binary file..."
 	$(OBJCOPY) -O binary $< $@
-	@if [ -f fw-pack.py ]; then \
-		python3 fw-pack.py $@ $(GIT_HASH) $(TARGET).packed.bin; \
-	else \
-		echo "Warning: fw-pack.py not found, skipping packing"; \
-		cp $@ $(TARGET).packed.bin; \
-	fi
 
 # Линковка
 $(TARGET): $(OBJS) | $(BIN_DIR)

@@ -59,7 +59,7 @@ static int writeFile(lfs_t *lfs, const char *path, const void *buffer,
   lfs_ssize_t written = lfs_file_write(lfs, &file, buffer, size);
   lfs_file_close(lfs, &file);
 
-  if (written != size) {
+  if (written != (lfs_ssize_t)size) {
     Log("Failed to write file: %s", path);
     return LFS_ERR_IO;
   }
@@ -81,7 +81,7 @@ static int readFile(lfs_t *lfs, const char *path, void *buffer,
   lfs_ssize_t read = lfs_file_read(lfs, &file, buffer, size);
   lfs_file_close(lfs, &file);
 
-  if (read != size) {
+  if (read != (lfs_ssize_t)size) {
     Log("Failed to read file: %s", path);
     return LFS_ERR_IO;
   }

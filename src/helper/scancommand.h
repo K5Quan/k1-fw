@@ -88,7 +88,7 @@ typedef struct {
   SCMD_Command current;
   SCMD_Command next;
 
-  uint32_t file_pos;
+  lfs_soff_t file_pos;
   uint16_t cmd_index;
   uint16_t cmd_count;
 

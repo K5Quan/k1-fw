@@ -94,6 +94,8 @@ bool sqModeKey(KEY_Code_t key, Key_State_t state) {
       stp *= 10;
     }
     return true;
+  default:
+    break;
   }
   return false;
 }
@@ -118,6 +120,8 @@ bool scanModeKey(KEY_Code_t key, Key_State_t state) {
     delay = AdjustU(delay, 0, 10000,
                     ((key == KEY_1) ^ gSettings.invertButtons) ? 100 : -100);
     return true;
+  default:
+    break;
   }
   return false;
 }
@@ -146,6 +150,8 @@ bool stillModeKey(KEY_Code_t key, Key_State_t state) {
     delay = AdjustU(delay, 0, 10000,
                     ((key == KEY_1) ^ gSettings.invertButtons) ? 100 : -100);
     return true;
+  default:
+    break;
   }
   return false;
 }

@@ -175,12 +175,12 @@ static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {
 static bool keyAction(AppAction_t act) {
   switch (act.action) {
   case KA_FLASHLIGHT:
-    Log("FLASHLIGHT TOGGLE");
     BOARD_FlashlightToggle();
     return true;
+  default:
+    break;
   }
 
-  Log("NO KEY ACTION");
   return false;
 }
 

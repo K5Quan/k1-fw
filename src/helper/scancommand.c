@@ -32,7 +32,7 @@ static bool HandleGoto(SCMD_Context *ctx) {
   }
 
   // Рассчитываем новую позицию
-  uint32_t target_pos = sizeof(SCMD_Header) + (offset * sizeof(SCMD_Command));
+  lfs_soff_t target_pos = sizeof(SCMD_Header) + (offset * sizeof(SCMD_Command));
 
   // Проверяем границы
   lfs_soff_t file_size = lfs_file_size(&gLfs, &ctx->file);

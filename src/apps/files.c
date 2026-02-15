@@ -170,15 +170,15 @@ static void loadDirectory(const char *path) {
     } else {
 
       const char *ext = getFileExtension(gFilesList[gFilesCount].name);
-      if (strcasecmp(ext, "vfo") == 0) {
+      if (strcmp(ext, "vfo") == 0) {
         gFilesList[gFilesCount].type = FILE_TYPE_VFO;
-      } else if (strcasecmp(ext, "bnd") == 0) {
+      } else if (strcmp(ext, "bnd") == 0) {
         gFilesList[gFilesCount].type = FILE_TYPE_BAND;
-      } else if (strcasecmp(ext, "ch") == 0) {
+      } else if (strcmp(ext, "ch") == 0) {
         gFilesList[gFilesCount].type = FILE_TYPE_CH;
-      } else if (strcasecmp(ext, "set") == 0) {
+      } else if (strcmp(ext, "set") == 0) {
         gFilesList[gFilesCount].type = FILE_TYPE_SET;
-      } else if (strcasecmp(ext, "sl") == 0) {
+      } else if (strcmp(ext, "sl") == 0) {
         gFilesList[gFilesCount].type = FILE_TYPE_SL;
       } else {
         gFilesList[gFilesCount].type = FILE_TYPE_FILE;
@@ -273,7 +273,7 @@ static void navigateTo(const char *name) {
     formatSize(info.size, sizeStr, sizeof(sizeStr));
     STATUSLINE_SetText("%s - %s", name, sizeStr);
     const char *ext = getFileExtension(name);
-    if (strcasecmp(ext, "bmp") == 0) {
+    if (strcmp(ext, "bmp") == 0) {
       showingScreenshot = true;
       sprintf(screenshotPath, "%s/%s", gCurrentPath, name);
     }

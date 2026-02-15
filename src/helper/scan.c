@@ -379,6 +379,8 @@ void SCAN_SetMode(ScanMode mode) {
   ChangeState(SCAN_STATE_IDLE);
 
   switch (mode) {
+  case SCAN_MODE_NONE:
+    break;
   case SCAN_MODE_SINGLE:
     scan.rangeActive = false;
     break;

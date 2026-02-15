@@ -227,6 +227,8 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
     case KEY_PTT:
       APPS_run(APP_VFO1);
       return true;
+    default:
+      break;
     }
   }
 
@@ -247,6 +249,8 @@ bool CMDSCAN_key(KEY_Code_t key, Key_State_t state) {
         cmdState.execCount = 0;
         cmdState.cmdIndex = 0;
         return true; */
+    default:
+      break;
     }
   }
 

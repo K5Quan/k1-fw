@@ -87,7 +87,6 @@ static const AgcConfig AGC_FAST = {0, 32, 50};
 
 static uint16_t gGpioOutState = 0x9000;
 static uint8_t gSelectedFilter = 255;
-static uint32_t gLastFrequency = 0;
 static ModulationType gLastModulation = 255;
 
 // ============================================================================
@@ -546,12 +545,11 @@ uint32_t BK4819_GetFrequency(void) {
 
 void BK4819_TuneTo(uint32_t freq, bool precise) {
   BK4819_SetFrequency(freq);
-  gLastFrequency = freq;
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
 
-  BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
-  // BK4819_WriteRegister(BK4819_REG_30, 0x200);
+  // BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
+  BK4819_WriteRegister(BK4819_REG_30, 0x200);
   // SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
@@ -1365,7 +1363,6 @@ void BK4819_Init(void) {
     return;
   }
   gSelectedFilter = 255;
-  gLastFrequency = 0;
   gLastModulation = 255;
 
   CS_Release();
