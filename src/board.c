@@ -11,10 +11,68 @@
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_adc.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_bus.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dac.h"
+#include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dma.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_gpio.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_rcc.h"
 #include "ui/graphics.h"
 #include <stdint.h>
+
+// Буфер для DMA: [0] - Канал 8 (Voltage), [1] - Канал 9 (APRS)
+// volatile uint16_t adc_dma_buffer[2];
+volatile uint16_t adc_dma_buffer[2] __attribute__((aligned(4)));
+
+void BOARD_DMA_Init(void) {
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
+
+  // Сброс DMA
+  LL_AHB1_GRP1_ForceReset(LL_AHB1_GRP1_PERIPH_DMA1);
+  LL_AHB1_GRP1_ReleaseReset(LL_AHB1_GRP1_PERIPH_DMA1);
+
+  LL_DMA_DeInit(DMA1, LL_DMA_CHANNEL_1);
+
+  LL_DMA_InitTypeDef DMA_InitStruct;
+  LL_DMA_StructInit(&DMA_InitStruct);
+
+  DMA_InitStruct.Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY;
+  DMA_InitStruct.PeriphOrM2MSrcAddress = (uint32_t)&ADC1->DR;
+  DMA_InitStruct.MemoryOrM2MDstAddress = (uint32_t)adc_dma_buffer;
+  DMA_InitStruct.PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD;
+  DMA_InitStruct.MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD;
+  DMA_InitStruct.NbData = 2;
+
+  DMA_InitStruct.PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT;
+  DMA_InitStruct.MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT;
+  DMA_InitStruct.Mode = LL_DMA_MODE_CIRCULAR;
+  DMA_InitStruct.Priority = LL_DMA_PRIORITY_HIGH;
+
+  LL_DMA_Init(DMA1, LL_DMA_CHANNEL_1, &DMA_InitStruct);
+
+// В PY32F071 remap настраивается через SYSCFG, а не через CSELR
+#ifdef SYSCFG
+  // Настройка DMA remap для ADC1 на Channel 1
+  // Это зависит от конкретной реализации, возможно, нужно через SYSCFG->CFGR3
+  // LL_SYSCFG_SetDMARemap(DMA1, LL_DMA_CHANNEL_1, LL_SYSCFG_DMA_MAP_ADC1);
+#endif
+
+  // Включить прерывания
+  LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
+  LL_DMA_EnableIT_TE(DMA1, LL_DMA_CHANNEL_1); // Включаем прерывание по ошибке
+  NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+}
+
+void DMA1_Channel1_IRQHandler(void) {
+  // Log("DMA IRQ");
+  if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
+    LL_DMA_ClearFlag_HT1(DMA1);
+    // Половина буфера заполнена
+  }
+
+  if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
+    LL_DMA_ClearFlag_TC1(DMA1);
+    // Весь буфер заполнен
+    // LogC(LOG_C_GREEN, "DMA transfer complete!");
+  }
+}
 
 void BOARD_GPIO_Init(void) {
   LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA   //
@@ -81,61 +139,171 @@ void BOARD_GPIO_Init(void) {
   // BK4819 CS: PF9
   InitStruct.Pin = LL_GPIO_PIN_9 | LL_GPIO_PIN_8;
   LL_GPIO_Init(GPIOF, &InitStruct);
+
+  InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  InitStruct.Pull = LL_GPIO_PULL_NO;
+  InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1;
+  LL_GPIO_Init(GPIOB, &InitStruct);
 }
 
-void BOARD_ADC_Init(void) {
-  LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOB);
-  LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_0 | LL_GPIO_PIN_1, LL_GPIO_MODE_ANALOG);
+// Типичные биты регистра SR для ADC:
+// AWD - Analog watchdog flag (бит 0)
+// EOC - End of conversion flag (бит 1)
+// ADRDY - ADC ready flag (обычно бит 0 или другой)
 
+void BOARD_ADC_Init(void) {
   LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
   LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV4);
+
+  // Reset ADC first
+  LL_APB1_GRP2_ForceReset(LL_APB1_GRP2_PERIPH_ADC1);
+  LL_APB1_GRP2_ReleaseReset(LL_APB1_GRP2_PERIPH_ADC1);
+
+  // Initialize DMA AFTER ADC reset
+  BOARD_DMA_Init();
 
   LL_ADC_SetCommonPathInternalCh(ADC1_COMMON, LL_ADC_PATH_INTERNAL_NONE);
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
-  LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_DISABLE);
+
+  // Scan mode for multiple channels
+  LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
+
+  // Trigger and continuous mode
   LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_SOFTWARE);
-  LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_SINGLE);
-  LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_NONE);
-  LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
-  LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
-  LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
+  LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_CONTINUOUS);
+
+  // DMA unlimited mode
+  LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
+
+  // Sequence length = 2 ranks
+  LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_2RANKS);
+
+  // Configure channels
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
+  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_9);
+
+  // Sampling time
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
                                 LL_ADC_SAMPLINGTIME_41CYCLES_5);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
                                 LL_ADC_SAMPLINGTIME_41CYCLES_5);
 
+  // Calibration
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
     ;
 
+  // КРИТИЧЕСКИ ВАЖНО: Правильная настройка DMA в ADC
+  // В PY32F071 для генерации DMA запросов нужно:
+  
+  // 1. Включить DMA в ADC (бит 8)
+  ADC1->CR2 |= ADC_CR2_DMA;
+  
+  // 2. Убедиться, что DDS бит (бит 9) установлен в 0 для непрерывных запросов
+  ADC1->CR2 &= ~(1 << 9);  // DDS = 0 (запросы при каждом преобразовании)
+  
+  // 3. EOCS бит (бит 10) - для генерации EOC после каждого преобразования
+  ADC1->CR2 |= (1 << 10);   // EOCS = 1
+  
+  // 4. ВАЖНО: Проверить, что DMA настроен на правильный запрос
+  // В некоторых PY32 нужно настроить remap через SYSCFG
+  #ifdef SYSCFG
+    // Настройка DMA remap для ADC1 на Channel 1
+    // Это может быть необходимо для правильной маршрутизации запросов
+    SYSCFG->CFGR3 &= ~(0x3F << 0);  // Очищаем для Channel 1
+    SYSCFG->CFGR3 |= (0 << 0);      // 0 = ADC1 (значение может отличаться)
+  #endif
+
+  LogC(LOG_C_YELLOW, "ADC_CR2 after DMA config = %08X", ADC1->CR2);
+
+  // CRITICAL: Enable DMA channel BEFORE enabling ADC
+  LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
+
+  // Проверяем, что DMA канал действительно включен
+  if (LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_1)) {
+    LogC(LOG_C_GREEN, "DMA Channel 1 enabled");
+  }
+
+  // Small delay for DMA to be ready
+  for (volatile int i = 0; i < 1000; i++);
+
+  // Enable ADC
   LL_ADC_Enable(ADC1);
+
+  // Wait for ADC to be ready
+  uint32_t timeout = 10000;
+  while (!(ADC1->SR & ADC_SR_EOC) && timeout--) {
+    for (volatile int i = 0; i < 100; i++);
+  }
+
+  if (timeout == 0) {
+    LogC(LOG_C_RED, "ADC ready timeout!");
+  } else {
+    LogC(LOG_C_GREEN, "ADC is ready");
+  }
+
+  // Initialize test pattern
+  adc_dma_buffer[0] = 0xABCD;
+  adc_dma_buffer[1] = 0x1234;
+
+  LogC(LOG_C_BRIGHT_WHITE, "DMA_CCR=%08X", DMA1_Channel1->CCR);
+  LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR=%d", DMA1_Channel1->CNDTR);
+  LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X", ADC1->CR2);
+  LogC(LOG_C_BRIGHT_WHITE, "ADC_SR=%08X", ADC1->SR);
+  
+  // Проверяем флаги DMA до старта
+  LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR before start = %08X", DMA1->ISR);
+
+  // Start conversion
+  LL_ADC_REG_StartConversionSWStart(ADC1);
+
+  // Verify DMA is working
+  for (int n = 0; n < 10; n++) {
+    SYSTICK_DelayMs(100);
+    
+    // Проверяем флаги DMA
+    LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR now = %08X", DMA1->ISR);
+    
+    if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
+      LogC(LOG_C_RED, "DMA Transfer Error!");
+      LL_DMA_ClearFlag_TE1(DMA1);
+    }
+    
+    if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
+      LogC(LOG_C_GREEN, "DMA Transfer Complete!");
+      LL_DMA_ClearFlag_TC1(DMA1);
+    }
+    
+    if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
+      LogC(LOG_C_GREEN, "DMA Half Transfer Complete!");
+      LL_DMA_ClearFlag_HT1(DMA1);
+    }
+    
+    LogC(LOG_C_BRIGHT_WHITE, "ADC_SR now = %08X", ADC1->SR);
+    LogC(LOG_C_BRIGHT_WHITE, "ADC_DR = %04X", ADC1->DR);
+    LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR now = %d", DMA1_Channel1->CNDTR);
+    LogC(LOG_C_BRIGHT_WHITE, "Buf[0]=%d Buf[1]=%d", 
+         adc_dma_buffer[0], adc_dma_buffer[1]);
+    
+    // Direct read for comparison
+    uint16_t direct_val = LL_ADC_REG_ReadConversionData12(ADC1);
+    LogC(LOG_C_YELLOW, "Direct read = %d", direct_val);
+  }
 }
 
 void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
-  LL_ADC_REG_StartConversionSWStart(ADC1);
-  while (!LL_ADC_IsActiveFlag_EOS(ADC1))
-    ;
-  LL_ADC_ClearFlag_JEOS(ADC1);
+  // Данные обновляются автоматически через DMA
+  // adc_dma_buffer[0] соответствует RANK_1 (Channel 8)
+  // adc_dma_buffer[1] соответствует RANK_2 (Channel 9)
 
-  *pVoltage = LL_ADC_REG_ReadConversionData12(ADC1);
-  *pCurrent = 0;
+  *pVoltage = adc_dma_buffer[0];
+  *pCurrent = 0; // Или adc_dma_buffer[1], если там ток
 }
 
-uint16_t BOARD_ADC_GetAPRS() {
-  uint16_t v;
-  // Переключение на канал 9 (PB1) и чтение current
-  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
-  LL_ADC_REG_StartConversionSWStart(ADC1);
-  while (!LL_ADC_IsActiveFlag_EOS(ADC1))
-    ;
-  LL_ADC_ClearFlag_EOS(ADC1);
-  v = LL_ADC_REG_ReadConversionData12(ADC1);
-
-  // Возврат к каналу 8
-  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
-  return v;
+uint16_t BOARD_ADC_GetAPRS(void) {
+  // Канал 9 у нас на RANK_2, значит он в индексе 1 буфера
+  return adc_dma_buffer[1];
 }
 
 void BOARD_DAC_Init(void) {
@@ -169,6 +337,8 @@ void BOARD_Init(void) {
 
   BOARD_ADC_Init();
   BOARD_DAC_Init();
+
+  LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X ADC_SR=%08X", ADC1->CR2, ADC1->SR);
 
   LogC(LOG_C_BRIGHT_WHITE, "Flash init");
   PY25Q16_Init();
