@@ -17,9 +17,14 @@
 #include "ui/graphics.h"
 #include <stdint.h>
 
-// Буфер для DMA: [0] - Канал 8 (Voltage), [1] - Канал 9 (APRS)
-// volatile uint16_t adc_dma_buffer[2];
-volatile uint16_t adc_dma_buffer[2] __attribute__((aligned(4)));
+volatile uint16_t adc_dma_buffer[4 * APRS_BUFFER_SIZE] __attribute__((
+    aligned(4))); // Расширенный DMA-буфер: CH8, CH9, CH8, CH9... (1024 для 256)
+
+uint16_t aprs_process_buffer1[APRS_BUFFER_SIZE];
+uint16_t aprs_process_buffer2[APRS_BUFFER_SIZE];
+
+volatile bool aprs_ready1 = false;
+volatile bool aprs_ready2 = false;
 
 void BOARD_DMA_Init(void) {
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
@@ -38,7 +43,7 @@ void BOARD_DMA_Init(void) {
   DMA_InitStruct.MemoryOrM2MDstAddress = (uint32_t)adc_dma_buffer;
   DMA_InitStruct.PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD;
   DMA_InitStruct.MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD;
-  DMA_InitStruct.NbData = 2;
+  DMA_InitStruct.NbData = 4 * APRS_BUFFER_SIZE; // ИСПРАВЛЕНИЕ: 1024 для 256
 
   DMA_InitStruct.PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT;
   DMA_InitStruct.MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT;
@@ -56,25 +61,39 @@ void BOARD_DMA_Init(void) {
 
   // Включить прерывания
   LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
+  LL_DMA_EnableIT_HT(DMA1, LL_DMA_CHANNEL_1);
   LL_DMA_EnableIT_TE(DMA1, LL_DMA_CHANNEL_1); // Включаем прерывание по ошибке
   NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 }
 
 void DMA1_Channel1_IRQHandler(void) {
-  // Log("DMA IRQ");
   if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
     LL_DMA_ClearFlag_HT1(DMA1);
-    // Половина буфера заполнена
+    // Первая половина: индексы 1,3,5,... (APRS)
+    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
+      aprs_process_buffer1[i] = adc_dma_buffer[2 * i + 1];
+    }
+    aprs_ready1 = true;
   }
 
   if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
     LL_DMA_ClearFlag_TC1(DMA1);
-    // Весь буфер заполнен
-    // LogC(LOG_C_GREEN, "DMA transfer complete!");
+    // Вторая половина: offset = 2 * APRS_BUFFER_SIZE (512 для 256)
+    uint32_t offset = 2 * APRS_BUFFER_SIZE;
+    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
+      aprs_process_buffer2[i] = adc_dma_buffer[offset + 2 * i + 1];
+    }
+    aprs_ready2 = true;
+  }
+
+  if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
+    LL_DMA_ClearFlag_TE1(DMA1);
+    LogC(LOG_C_RED, "DMA Transfer Error!");
   }
 }
 
 void BOARD_GPIO_Init(void) {
+  // (без изменений, оставьте как есть)
   LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA   //
                           | LL_IOP_GRP1_PERIPH_GPIOB //
                           | LL_IOP_GRP1_PERIPH_GPIOC //
@@ -146,11 +165,6 @@ void BOARD_GPIO_Init(void) {
   LL_GPIO_Init(GPIOB, &InitStruct);
 }
 
-// Типичные биты регистра SR для ADC:
-// AWD - Analog watchdog flag (бит 0)
-// EOC - End of conversion flag (бит 1)
-// ADRDY - ADC ready flag (обычно бит 0 или другой)
-
 void BOARD_ADC_Init(void) {
   LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
   LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV4);
@@ -196,24 +210,24 @@ void BOARD_ADC_Init(void) {
 
   // КРИТИЧЕСКИ ВАЖНО: Правильная настройка DMA в ADC
   // В PY32F071 для генерации DMA запросов нужно:
-  
+
   // 1. Включить DMA в ADC (бит 8)
   ADC1->CR2 |= ADC_CR2_DMA;
-  
+
   // 2. Убедиться, что DDS бит (бит 9) установлен в 0 для непрерывных запросов
-  ADC1->CR2 &= ~(1 << 9);  // DDS = 0 (запросы при каждом преобразовании)
-  
+  ADC1->CR2 &= ~(1 << 9); // DDS = 0 (запросы при каждом преобразовании)
+
   // 3. EOCS бит (бит 10) - для генерации EOC после каждого преобразования
-  ADC1->CR2 |= (1 << 10);   // EOCS = 1
-  
-  // 4. ВАЖНО: Проверить, что DMA настроен на правильный запрос
-  // В некоторых PY32 нужно настроить remap через SYSCFG
-  #ifdef SYSCFG
-    // Настройка DMA remap для ADC1 на Channel 1
-    // Это может быть необходимо для правильной маршрутизации запросов
-    SYSCFG->CFGR3 &= ~(0x3F << 0);  // Очищаем для Channel 1
-    SYSCFG->CFGR3 |= (0 << 0);      // 0 = ADC1 (значение может отличаться)
-  #endif
+  ADC1->CR2 |= (1 << 10); // EOCS = 1
+
+// 4. ВАЖНО: Проверить, что DMA настроен на правильный запрос
+// В некоторых PY32 нужно настроить remap через SYSCFG
+#ifdef SYSCFG
+                          // Настройка DMA remap для ADC1 на Channel 1
+  // Это может быть необходимо для правильной маршрутизации запросов
+  SYSCFG->CFGR3 &= ~(0x3F << 0); // Очищаем для Channel 1
+  SYSCFG->CFGR3 |= (0 << 0); // 0 = ADC1 (значение может отличаться)
+#endif
 
   LogC(LOG_C_YELLOW, "ADC_CR2 after DMA config = %08X", ADC1->CR2);
 
@@ -226,7 +240,8 @@ void BOARD_ADC_Init(void) {
   }
 
   // Small delay for DMA to be ready
-  for (volatile int i = 0; i < 1000; i++);
+  for (volatile int i = 0; i < 1000; i++)
+    ;
 
   // Enable ADC
   LL_ADC_Enable(ADC1);
@@ -234,7 +249,8 @@ void BOARD_ADC_Init(void) {
   // Wait for ADC to be ready
   uint32_t timeout = 10000;
   while (!(ADC1->SR & ADC_SR_EOC) && timeout--) {
-    for (volatile int i = 0; i < 100; i++);
+    for (volatile int i = 0; i < 100; i++)
+      ;
   }
 
   if (timeout == 0) {
@@ -251,7 +267,7 @@ void BOARD_ADC_Init(void) {
   LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR=%d", DMA1_Channel1->CNDTR);
   LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X", ADC1->CR2);
   LogC(LOG_C_BRIGHT_WHITE, "ADC_SR=%08X", ADC1->SR);
-  
+
   // Проверяем флаги DMA до старта
   LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR before start = %08X", DMA1->ISR);
 
@@ -261,90 +277,138 @@ void BOARD_ADC_Init(void) {
   // Verify DMA is working
   for (int n = 0; n < 10; n++) {
     SYSTICK_DelayMs(100);
-    
+
     // Проверяем флаги DMA
     LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR now = %08X", DMA1->ISR);
-    
+
     if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
       LogC(LOG_C_RED, "DMA Transfer Error!");
       LL_DMA_ClearFlag_TE1(DMA1);
     }
-    
+
     if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
       LogC(LOG_C_GREEN, "DMA Transfer Complete!");
       LL_DMA_ClearFlag_TC1(DMA1);
     }
-    
+
     if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
       LogC(LOG_C_GREEN, "DMA Half Transfer Complete!");
       LL_DMA_ClearFlag_HT1(DMA1);
     }
-    
+
     LogC(LOG_C_BRIGHT_WHITE, "ADC_SR now = %08X", ADC1->SR);
     LogC(LOG_C_BRIGHT_WHITE, "ADC_DR = %04X", ADC1->DR);
     LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR now = %d", DMA1_Channel1->CNDTR);
-    LogC(LOG_C_BRIGHT_WHITE, "Buf[0]=%d Buf[1]=%d", 
-         adc_dma_buffer[0], adc_dma_buffer[1]);
-    
+    LogC(LOG_C_BRIGHT_WHITE, "Buf[0]=%d Buf[1]=%d", adc_dma_buffer[0],
+         adc_dma_buffer[1]);
+
     // Direct read for comparison
     uint16_t direct_val = LL_ADC_REG_ReadConversionData12(ADC1);
     LogC(LOG_C_YELLOW, "Direct read = %d", direct_val);
   }
 }
 
-void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
-  // Данные обновляются автоматически через DMA
-  // adc_dma_buffer[0] соответствует RANK_1 (Channel 8)
-  // adc_dma_buffer[1] соответствует RANK_2 (Channel 9)
+void BOARD_ADC_StartAPRS_DMA(void) {
+  // Запускаем DMA и ADC конверсию (если не запущено)
+  if (!LL_ADC_IsEnabled(ADC1)) {
+    LL_ADC_Enable(ADC1);
+    // Ждём ready снова, если нужно
+    SYSTICK_DelayUs(10);
+  }
+  if (!LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_1)) {
+    LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
+  }
+  LL_ADC_REG_StartConversionSWStart(ADC1);
+  LogC(LOG_C_GREEN, "APRS DMA started");
+}
 
+void BOARD_ADC_StopAPRS_DMA(void) {
+  // Останавливаем конверсию и DMA
+  LL_ADC_StopConversion(ADC1);
+  while (LL_ADC_REG_IsStopConversionOngoing(ADC1)) {
+  }
+  LL_ADC_Disable(ADC1);
+  LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
+  // Сбрасываем флаги ready
+  aprs_ready1 = false;
+  aprs_ready2 = false;
+  LogC(LOG_C_YELLOW, "APRS DMA stopped");
+}
+
+uint32_t BOARD_ADC_GetAvailableAPRS_DMA(void) {
+  // Возвращаем количество доступных семплов (APRS_BUFFER_SIZE если буфер ready,
+  // иначе 0) Проверяем любой из ping-pong
+  if (aprs_ready1 || aprs_ready2) {
+    return APRS_BUFFER_SIZE;
+  }
+  return 0;
+}
+
+uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
+  // Копируем из готового буфера (предпочтительно buffer1, затем buffer2)
+  // Возвращаем количество скопированных семплов
+  uint32_t copied = 0;
+  if (aprs_ready1 && max_samples >= APRS_BUFFER_SIZE) {
+    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
+      dest[i] = aprs_process_buffer1[i];
+    }
+    aprs_ready1 = false;
+    copied = APRS_BUFFER_SIZE;
+  } else if (aprs_ready2 && max_samples >= APRS_BUFFER_SIZE) {
+    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
+      dest[i] = aprs_process_buffer2[i];
+    }
+    aprs_ready2 = false;
+    copied = APRS_BUFFER_SIZE;
+  }
+  // Если max_samples меньше, можно скопировать частично, но для простоты — весь
+  // буфер или ничего
+  if (copied > 0) {
+    LogC(LOG_C_GREEN, "Read %d APRS samples", copied);
+  }
+  return copied;
+}
+
+void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
+  // (без изменений)
   *pVoltage = adc_dma_buffer[0];
-  *pCurrent = 0; // Или adc_dma_buffer[1], если там ток
+  *pCurrent = 0;
 }
 
 uint16_t BOARD_ADC_GetAPRS(void) {
-  // Канал 9 у нас на RANK_2, значит он в индексе 1 буфера
+  // (без изменений, для одиночного значения)
   return adc_dma_buffer[1];
 }
 
 void BOARD_DAC_Init(void) {
-  // Настроить PA4 как аналоговый пин
+  // (без изменений)
   LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
-
-  // Включить тактирование DAC
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_DAC1);
-
-  // Настроить DAC Channel 1 (PA4)
   LL_DAC_SetTriggerSource(DAC1, LL_DAC_CHANNEL_1, LL_DAC_TRIG_SOFTWARE);
   LL_DAC_SetOutputBuffer(DAC1, LL_DAC_CHANNEL_1, LL_DAC_OUTPUT_BUFFER_ENABLE);
-
-  // Включить DAC Channel 1
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_1);
 }
 
 void BOARD_DAC_SetValue(uint16_t value) {
+  // (без изменений)
   if (value > 4095)
-    value = 4095; // Ограничение 12-bit
+    value = 4095;
   LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, value);
   LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
 }
 
 void BOARD_Init(void) {
+  // (без изменений, но ADC_Init теперь не стартует DMA)
   BOARD_GPIO_Init();
-
   UART_Init();
-
   LogC(LOG_C_BRIGHT_WHITE, "Init start");
-
   BOARD_ADC_Init();
   BOARD_DAC_Init();
-
   LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X ADC_SR=%08X", ADC1->CR2, ADC1->SR);
-
   LogC(LOG_C_BRIGHT_WHITE, "Flash init");
   PY25Q16_Init();
   LogC(LOG_C_BRIGHT_WHITE, "File system init");
   fs_init();
-
   LogC(LOG_C_BRIGHT_WHITE, "Display init");
   ST7565_Init();
   LogC(LOG_C_BRIGHT_WHITE, "Backlight init");

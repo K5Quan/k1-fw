@@ -1,5 +1,7 @@
 #include "misc.h"
 #include "driver/bk4829.h"
+#include "driver/gpio.h"
+#include "driver/systick.h"
 #include "driver/uart.h"
 #include "external/printf/printf.h"
 
@@ -54,6 +56,8 @@ void HardFault_Handler(void) {
   // Останавливаем систему
   while (1) {
     // Мигаем или делаем что-то для индикации
+    SYSTICK_DelayMs(300);
+    GPIO_TogglePin(GPIO_PIN_FLASHLIGHT);
   }
 }
 

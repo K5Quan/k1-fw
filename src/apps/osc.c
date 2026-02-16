@@ -405,7 +405,7 @@ static void drawStatus(void) {
 }
 
 void OSC_render(void) {
-  // Очистка экрана
+  /* // Очистка экрана
   FillRect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_CLEAR);
 
   // Рисуем радио-статус (верхняя строка, если есть)
@@ -425,5 +425,17 @@ void OSC_render(void) {
   // === Информационные панели ===
 
   // Статусная информация сверху
-  drawStatus();
+  drawStatus(); */
+
+  if (aprs_ready2) {
+
+    for (uint16_t i = 0; i < APRS_BUFFER_SIZE; ++i) {
+      uint8_t x = ConvertDomain(i, 0, APRS_BUFFER_SIZE, 0, LCD_WIDTH);
+      uint8_t y = 8 + ConvertDomain(aprs_process_buffer2[i], 0, 4096, 0,
+                                    LCD_HEIGHT - 8);
+      PutPixel(x, y, C_FILL);
+    }
+
+    aprs_ready2 = false;
+  }
 }
