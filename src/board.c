@@ -175,6 +175,8 @@ void BOARD_ADC_Init(void) {
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
 
+  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV8);
+
   // -----------------------------------------------------------------------
   // Regular group: CH9 (APRS audio) → DMA circular
   // -----------------------------------------------------------------------
@@ -202,10 +204,6 @@ void BOARD_ADC_Init(void) {
   // Automatic injection disabled (we trigger manually)
   LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
 
-  LL_ADC_StartCalibration(ADC1);
-  while (LL_ADC_IsCalibrationOnGoing(ADC1))
-    ;
-
   // Route ADC1 requests to DMA1 Channel 1 via SYSCFG remap
   // (SYSCFG clock is already enabled by UART_Init before this call)
   LL_SYSCFG_SetDMARemap(DMA1, LL_DMA_CHANNEL_1, LL_SYSCFG_DMA_MAP_ADC1);
@@ -215,8 +213,8 @@ void BOARD_ADC_Init(void) {
 
   LL_ADC_Enable(ADC1);
 
-  uint32_t timeout = 10000;
-  while (!(ADC1->SR & ADC_SR_EOC) && timeout--)
+  LL_ADC_StartCalibration(ADC1);
+  while (LL_ADC_IsCalibrationOnGoing(ADC1))
     ;
 
   LL_ADC_REG_StartConversionSWStart(ADC1);

@@ -64,9 +64,6 @@ typedef struct {
 
   uint8_t decimate_cnt;
 
-  // --- Батарея (читается ОДИН РАЗ при init) ---
-  uint16_t battery_raw;
-
   int32_t lpf_iir;
 } OscContext;
 
@@ -195,15 +192,11 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 void OSC_init(void) {
   osc.mode = MODE_WAVE;
   osc.scale_v = 5;
-  osc.scale_t = 72; // каждый 4-й семпл (~ADC_rate/4)
+  osc.scale_t = 16;
   osc.trigger_level = 2048;
   osc.dc_offset = true;
   osc.show_grid = true;
   osc.show_trigger = true;
-
-  // --- Батарея: читаем ОДИН РАЗ, больше не трогаем ADC injected в фоне ---
-  uint16_t dummy;
-  BOARD_ADC_GetBatteryInfo(&osc.battery_raw, &dummy);
 
   triggerArm();
 }
@@ -216,7 +209,7 @@ void OSC_deinit(void) {}
 
 static void push_sample(uint16_t raw) {
   // IIR DC-фильтр: alpha = 1/256, dc_iir хранит mean*256
-  osc.dc_iir += (int32_t)raw - (int32_t)(osc.dc_iir >> 8);
+  // osc.dc_iir += (int32_t)raw - (int32_t)(osc.dc_iir >> 8);
   uint16_t dc = (uint16_t)(osc.dc_iir >> 8);
 
   // --- WAVE: нормированное значение в кольцо ---
@@ -270,14 +263,16 @@ static void process_block(const uint16_t *src, uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
     // IIR low-pass: lpf_iir += (src[i] - (lpf_iir >> 8)) * alpha; alpha = 1/256
     // для слабого cutoff, подстройте
-    osc.lpf_iir += ((int32_t)src[i] -
+    /* osc.lpf_iir += ((int32_t)src[i] -
                     (osc.lpf_iir >> 8)); // alpha=1/256, cutoff ~ Fs_original /
                                          // (2*pi*256) ≈ 3-5 кГц при Fs=48 кГц
-    uint16_t filtered = (uint16_t)(osc.lpf_iir >> 8);
+     */
+    // uint16_t filtered = (uint16_t)(osc.lpf_iir >> 8);
 
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
-      push_sample(filtered); // Используйте filtered вместо src[i]
+      push_sample(src[i]); // Используйте filtered вместо src[i]
+      // push_sample(filtered); // Используйте filtered вместо src[i]
       if (osc.mode == MODE_FFT) {
         gRedrawScreen = true;
       }
@@ -418,7 +413,6 @@ static void drawStatus(void) {
   }
 
   // Строка 3: батарея | триггер (только WAVE)
-  PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "Bat:%u", osc.battery_raw);
   if (osc.mode == MODE_WAVE) {
     PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 4, POS_R, C_FILL, "T:%d",
                  osc.trigger_level);
