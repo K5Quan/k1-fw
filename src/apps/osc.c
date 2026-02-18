@@ -92,7 +92,7 @@ static void setScaleV(uint32_t v, uint32_t _) {
 static void setScaleT(uint32_t v, uint32_t _) {
   (void)_;
   if (v < 1)  v = 1;
-  if (v > 32) v = 32;
+  if (v > 128) v = 128;
   osc.scale_t = (uint8_t)v;
 }
 
