@@ -14,6 +14,7 @@
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_dma.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_gpio.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_rcc.h"
+#include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_system.h"
 #include "ui/graphics.h"
 #include <stdint.h>
 
@@ -51,13 +52,6 @@ void BOARD_DMA_Init(void) {
   DMA_InitStruct.Priority = LL_DMA_PRIORITY_HIGH;
 
   LL_DMA_Init(DMA1, LL_DMA_CHANNEL_1, &DMA_InitStruct);
-
-// В PY32F071 remap настраивается через SYSCFG, а не через CSELR
-#ifdef SYSCFG
-  // Настройка DMA remap для ADC1 на Channel 1
-  // Это зависит от конкретной реализации, возможно, нужно через SYSCFG->CFGR3
-  // LL_SYSCFG_SetDMARemap(DMA1, LL_DMA_CHANNEL_1, LL_SYSCFG_DMA_MAP_ADC1);
-#endif
 
   // Включить прерывания
   LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
@@ -208,28 +202,9 @@ void BOARD_ADC_Init(void) {
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
     ;
 
-  // КРИТИЧЕСКИ ВАЖНО: Правильная настройка DMA в ADC
-  // В PY32F071 для генерации DMA запросов нужно:
-
-  // 1. Включить DMA в ADC (бит 8)
-  ADC1->CR2 |= ADC_CR2_DMA;
-
-  // 2. Убедиться, что DDS бит (бит 9) установлен в 0 для непрерывных запросов
-  ADC1->CR2 &= ~(1 << 9); // DDS = 0 (запросы при каждом преобразовании)
-
-  // 3. EOCS бит (бит 10) - для генерации EOC после каждого преобразования
-  ADC1->CR2 |= (1 << 10); // EOCS = 1
-
-// 4. ВАЖНО: Проверить, что DMA настроен на правильный запрос
-// В некоторых PY32 нужно настроить remap через SYSCFG
-#ifdef SYSCFG
-                          // Настройка DMA remap для ADC1 на Channel 1
+  // Настройка DMA remap для ADC1 на Channel 1
   // Это может быть необходимо для правильной маршрутизации запросов
-  SYSCFG->CFGR3 &= ~(0x3F << 0); // Очищаем для Channel 1
-  SYSCFG->CFGR3 |= (0 << 0); // 0 = ADC1 (значение может отличаться)
-#endif
-
-  LogC(LOG_C_YELLOW, "ADC_CR2 after DMA config = %08X", ADC1->CR2);
+  LL_SYSCFG_SetDMARemap(DMA1, LL_DMA_CHANNEL_1, LL_SYSCFG_DMA_MAP_ADC1);
 
   // CRITICAL: Enable DMA channel BEFORE enabling ADC
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
@@ -253,59 +228,8 @@ void BOARD_ADC_Init(void) {
       ;
   }
 
-  if (timeout == 0) {
-    LogC(LOG_C_RED, "ADC ready timeout!");
-  } else {
-    LogC(LOG_C_GREEN, "ADC is ready");
-  }
-
-  // Initialize test pattern
-  adc_dma_buffer[0] = 0xABCD;
-  adc_dma_buffer[1] = 0x1234;
-
-  LogC(LOG_C_BRIGHT_WHITE, "DMA_CCR=%08X", DMA1_Channel1->CCR);
-  LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR=%d", DMA1_Channel1->CNDTR);
-  LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X", ADC1->CR2);
-  LogC(LOG_C_BRIGHT_WHITE, "ADC_SR=%08X", ADC1->SR);
-
-  // Проверяем флаги DMA до старта
-  LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR before start = %08X", DMA1->ISR);
-
   // Start conversion
   LL_ADC_REG_StartConversionSWStart(ADC1);
-
-  // Verify DMA is working
-  for (int n = 0; n < 10; n++) {
-    SYSTICK_DelayMs(100);
-
-    // Проверяем флаги DMA
-    LogC(LOG_C_BRIGHT_WHITE, "DMA_ISR now = %08X", DMA1->ISR);
-
-    if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
-      LogC(LOG_C_RED, "DMA Transfer Error!");
-      LL_DMA_ClearFlag_TE1(DMA1);
-    }
-
-    if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
-      LogC(LOG_C_GREEN, "DMA Transfer Complete!");
-      LL_DMA_ClearFlag_TC1(DMA1);
-    }
-
-    if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
-      LogC(LOG_C_GREEN, "DMA Half Transfer Complete!");
-      LL_DMA_ClearFlag_HT1(DMA1);
-    }
-
-    LogC(LOG_C_BRIGHT_WHITE, "ADC_SR now = %08X", ADC1->SR);
-    LogC(LOG_C_BRIGHT_WHITE, "ADC_DR = %04X", ADC1->DR);
-    LogC(LOG_C_BRIGHT_WHITE, "DMA_CNDTR now = %d", DMA1_Channel1->CNDTR);
-    LogC(LOG_C_BRIGHT_WHITE, "Buf[0]=%d Buf[1]=%d", adc_dma_buffer[0],
-         adc_dma_buffer[1]);
-
-    // Direct read for comparison
-    uint16_t direct_val = LL_ADC_REG_ReadConversionData12(ADC1);
-    LogC(LOG_C_YELLOW, "Direct read = %d", direct_val);
-  }
 }
 
 void BOARD_ADC_StartAPRS_DMA(void) {
@@ -319,7 +243,6 @@ void BOARD_ADC_StartAPRS_DMA(void) {
     LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
   }
   LL_ADC_REG_StartConversionSWStart(ADC1);
-  LogC(LOG_C_GREEN, "APRS DMA started");
 }
 
 void BOARD_ADC_StopAPRS_DMA(void) {
@@ -332,7 +255,6 @@ void BOARD_ADC_StopAPRS_DMA(void) {
   // Сбрасываем флаги ready
   aprs_ready1 = false;
   aprs_ready2 = false;
-  LogC(LOG_C_YELLOW, "APRS DMA stopped");
 }
 
 uint32_t BOARD_ADC_GetAvailableAPRS_DMA(void) {
