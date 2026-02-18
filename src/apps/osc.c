@@ -195,7 +195,7 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 void OSC_init(void) {
   osc.mode = MODE_WAVE;
   osc.scale_v = 5;
-  osc.scale_t = 4; // каждый 4-й семпл (~ADC_rate/4)
+  osc.scale_t = 72; // каждый 4-й семпл (~ADC_rate/4)
   osc.trigger_level = 2048;
   osc.dc_offset = true;
   osc.show_grid = true;
@@ -278,17 +278,12 @@ static void process_block(const uint16_t *src, uint32_t len) {
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
       push_sample(filtered); // Используйте filtered вместо src[i]
+      if (osc.mode == MODE_FFT) {
+        gRedrawScreen = true;
+      }
     }
   }
 }
-/* static void process_block(const uint16_t *src, uint32_t len) {
-  for (uint32_t i = 0; i < len; i++) {
-    if (++osc.decimate_cnt >= osc.scale_t) {
-      osc.decimate_cnt = 0;
-      push_sample(src[i]);
-    }
-  }
-} */
 
 // Вызывается из main loop ~каждые 2 мс
 void OSC_update(void) {
