@@ -26,31 +26,36 @@
 
 // Структура данных осциллографа
 typedef struct {
-  // Буфер семплов
-  uint16_t buffer[OSC_SAMPLES]; // Буфер захваченных значений (0-255)
-  uint8_t write_pos; // Текущая позиция записи в буфер
+  // --- Дисплейный кольцевой буфер ---
+  // Хранит последние LCD_WIDTH нормированных значений [0..4095].
+  // disp_head — позиция следующей записи (старейший семпл — disp_head,
+  // новейший — disp_head-1 по модулю LCD_WIDTH).
+  uint16_t disp_buf[LCD_WIDTH];
+  uint8_t  disp_head;   // указатель записи в кольцо
 
-  // Параметры триггера
-  uint16_t trigger_level; // Уровень срабатывания триггера (0-255)
-  uint8_t trigger_pos; // Позиция триггера в буфере
-  bool triggered;      // Флаг: триггер сработал
-  bool running;        // Флаг: захват активен
+  // --- Параметры триггера ---
+  uint16_t trigger_level; // Уровень триггера [0..4095]
+  bool     show_trigger;  // Рисовать маркер триггера
 
-  // Параметры отображения
-  uint8_t scale_v;       // Масштаб по вертикали (1-10)
-  uint8_t scale_t;       // Масштаб по времени (1-10)
-  uint16_t sample_delay; // Задержка между семплами (мкс)
+  // --- Параметры отображения ---
+  uint8_t  scale_v;  // Масштаб по вертикали [1..10]
+  uint8_t  scale_t;  // Прореживание: каждый N-й семпл идёт в буфер [1..32]
 
-  // Режимы работы
-  bool dc_offset;    // Компенсация DC составляющей
-  bool show_grid;    // Отображать сетку
-  uint16_t dc_level; // Вычисленный уровень DC
+  // --- Режимы работы ---
+  bool     dc_offset;  // IIR-компенсация DC
+  bool     show_grid;  // Показывать сетку
+
+  // --- IIR DC-фильтр ---
+  // dc_iir хранит <<8 * mean, чтобы не терять дробную часть.
+  // Обновляется: dc_iir += (raw - (dc_iir >> 8)), сдвиг = alpha 1/256.
+  uint32_t dc_iir;
+
+  // --- Счётчик прореживания ---
+  uint8_t  decimate_cnt;
 } OscContext;
 
 // === Глобальные переменные ===
-
-static OscContext osc; // Контекст осциллографа
-static uint32_t last_sample_time; // Время последнего семпла (для timing)
+static OscContext osc;
 
 // === Вспомогательные функции ===
 static void tuneTo(uint32_t f, uint32_t _) {
@@ -61,48 +66,34 @@ static void tuneTo(uint32_t f, uint32_t _) {
 
 // === Функции настройки параметров ===
 
-// Регулировка масштаба по вертикали (1-10)
 static void setScaleV(uint32_t value, uint32_t _) {
-  (void)_; // Неиспользуемый параметр
-
+  (void)_;
+  if (value < 1)  value = 1;
+  if (value > 10) value = 10;
   osc.scale_v = value;
-  if (osc.scale_v < 1)
-    osc.scale_v = 1;
-  if (osc.scale_v > 10)
-    osc.scale_v = 10;
 }
 
-// Регулировка масштаба по времени (1-10)
+// scale_t — это прореживание: в кольцо попадает каждый scale_t-й семпл.
+// Чем больше — тем «медленнее» развёртка.
 static void setScaleT(uint32_t value, uint32_t _) {
-  (void)_; // Неиспользуемый параметр
-
+  (void)_;
+  if (value < 1)  value = 1;
+  if (value > 32) value = 32;
   osc.scale_t = value;
-  if (osc.scale_t < 1)
-    osc.scale_t = 1;
-  if (osc.scale_t > 100)
-    osc.scale_t = 100;
-
-  // Обновляем задержку между семплами: 50-500 мкс
-  osc.sample_delay = osc.scale_t;
 }
 
-// Установка уровня триггера (0-255)
 static void setTriggerLevel(uint32_t value, uint32_t _) {
-  (void)_; // Неиспользуемый параметр
-
+  (void)_;
+  if (value > MAX_VAL) value = MAX_VAL;
   osc.trigger_level = value;
-  if (osc.trigger_level > MAX_VAL)
-    osc.trigger_level = MAX_VAL;
 }
 
-// Сброс триггера и запуск нового цикла захвата
+// Сброс кольцевого буфера и DC-аккумулятора
 static void triggerArm(void) {
-  osc.triggered = false;
-  osc.write_pos = 0;
-  osc.trigger_pos = 0;
-  osc.running = true;
-  osc.dc_level = 0;
-  memset(osc.buffer, 0, sizeof(osc.buffer));
+  memset(osc.disp_buf, 0, sizeof(osc.disp_buf));
+  osc.disp_head    = 0;
+  osc.decimate_cnt = 0;
+  osc.dc_iir       = 2048UL << 8; // Начальное значение DC — середина шкалы
 }
 
 // === Основные функции приложения ===
@@ -175,107 +166,65 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 }
 
 void OSC_init(void) {
-  // Настройки по умолчанию
-  osc.scale_v = 5; // Средний масштаб по вертикали
-  osc.scale_t = 3; // Масштаб по времени (150 мкс)
-  osc.trigger_level = 128;        // Триггер на середине (50%)
-  osc.sample_delay = osc.scale_t; // Задержка между семплами
-  osc.dc_offset = true;           // DC компенсация включена
-  osc.show_grid = true;           // Сетка включена
-  osc.dc_level = 0;
-
-  // Очистка буфера и запуск
-  memset(osc.buffer, 0, sizeof(osc.buffer));
+  osc.scale_v       = 5;
+  osc.scale_t       = 4;        // прореживание: каждый 4-й семпл
+  osc.trigger_level = 2048;     // середина шкалы 12-бит
+  osc.dc_offset     = true;
+  osc.show_grid     = true;
+  osc.show_trigger  = true;
   triggerArm();
 }
 
 void OSC_deinit(void) {}
 
-// === Функции захвата и триггера ===
+// === Функции захвата ===
 
-// Поиск точки срабатывания триггера в буфере
-static void findTrigger(void) {
-  if (osc.write_pos < 10)
-    return; // Недостаточно данных
+// Обработать один сырой семпл: DC-фильтр, масштаб, запись в кольцо.
+static void push_sample(uint16_t raw) {
+  // --- IIR DC-фильтр (alpha ≈ 1/256) ---
+  // dc_iir хранит значение * 256, чтобы не терять дробную часть.
+  osc.dc_iir += (int32_t)raw - (int32_t)(osc.dc_iir >> 8);
+  uint16_t dc = osc.dc_iir >> 8;  // текущая оценка постоянной составляющей
 
-  // Ищем пересечение уровня триггера снизу вверх (rising edge)
-  for (int i = 1; i < osc.write_pos - 1; i++) {
-    if (osc.buffer[i - 1] < osc.trigger_level &&
-        osc.buffer[i] >= osc.trigger_level) {
-      osc.trigger_pos = i;
-      osc.triggered = true;
-      osc.running = false;
-      break;
-    }
-  }
-}
-
-// Захват одного семпла с ADC
-static void sampleADC(void) {
-  if (!osc.running)
-    return;
-
-  // Проверяем заполненность буфера
-  if (osc.write_pos >= OSC_SAMPLES) {
-    // Буфер заполнен - ищем триггер если ещё не нашли
-    if (!osc.triggered) {
-      findTrigger();
-    }
-    osc.running = false;
-    return;
-  }
-
-  // Считываем значение с ADC
-  uint16_t value = BOARD_ADC_GetAPRS();
-
-  // Обработка значения в зависимости от режима
+  uint16_t val;
   if (osc.dc_offset) {
-    // === Режим DC компенсации ===
-    static uint32_t dc_sum = 0;
-    static uint8_t dc_count = 0;
-
-    // Накапливаем среднее за первые 64 семпла
-    if (dc_count < 64) {
-      dc_sum += value;
-      dc_count++;
-      if (dc_count == 64) {
-        osc.dc_level = dc_sum / 64;
-      }
-      return; // Пропускаем первые семплы
-    }
-
-    // Вычитаем DC составляющую и применяем масштаб
-    if (value > osc.dc_level) {
-      value = 128 + ((value - osc.dc_level) * osc.scale_v / 10);
-    } else {
-      value = 128 - ((osc.dc_level - value) * osc.scale_v / 10);
-    }
-
-    // Ограничение диапазона
-    if (value > MAX_VAL)
-      value = MAX_VAL;
+    // Вычитаем DC, центрируем вокруг 2048, масштабируем
+    int32_t v = ((int32_t)raw - dc) * osc.scale_v / 10 + 2048;
+    if (v < 0)      v = 0;
+    if (v > MAX_VAL) v = MAX_VAL;
+    val = (uint16_t)v;
   } else {
-    // === Режим RAW (без DC компенсации) ===
-    value = value * osc.scale_v / 10;
-    if (value > MAX_VAL)
-      value = MAX_VAL;
+    // RAW: просто масштабируем от 0
+    uint32_t v = (uint32_t)raw * osc.scale_v / 10;
+    val = v > MAX_VAL ? MAX_VAL : (uint16_t)v;
   }
 
-  // Сохраняем семпл в буфер
-  osc.buffer[osc.write_pos++] = value;
+  osc.disp_buf[osc.disp_head] = val;
+  osc.disp_head = (osc.disp_head + 1) % LCD_WIDTH;
+}
 
-  // Пытаемся найти триггер при накоплении данных
-  if (!osc.triggered && osc.write_pos > 10) {
-    findTrigger();
+// Обработать массив сырых семплов с прореживанием scale_t.
+static void process_block(const uint16_t *src, uint32_t len) {
+  for (uint32_t i = 0; i < len; i++) {
+    osc.decimate_cnt++;
+    if (osc.decimate_cnt >= osc.scale_t) {
+      osc.decimate_cnt = 0;
+      push_sample(src[i]);
+    }
   }
 }
 
+// OSC_update вызывается из main loop каждые ~2 мс.
+// Когда DMA-полубуфер готов — забираем его и раскладываем в кольцо.
 void OSC_update(void) {
-  // Выполняем сэмплирование с заданной частотой
-  uint32_t now = Now();
-  if (now - last_sample_time >= osc.sample_delay) {
-    sampleADC();
-    last_sample_time = now;
+  // Забираем оба флага атомарно (читаем, потом сбрасываем)
+  if (aprs_ready1) {
+    aprs_ready1 = false;  // сброс ДО обработки, чтобы не пропустить следующий
+    process_block(aprs_process_buffer1, APRS_BUFFER_SIZE);
+  }
+  if (aprs_ready2) {
+    aprs_ready2 = false;
+    process_block(aprs_process_buffer2, APRS_BUFFER_SIZE);
   }
 }
 
@@ -289,7 +238,6 @@ static void drawGrid(void) {
   // Горизонтальные линии (5 уровней: 0%, 25%, 50%, 75%, 100%)
   for (int i = 0; i <= 4; i++) {
     int ypos = OSC_TOP_MARGIN + (OSC_GRAPH_H * i) / 4;
-    // Пунктирная линия (точка через 3 пикселя)
     for (int x = 0; x < LCD_WIDTH; x += 4) {
       PutPixel(x, ypos, C_FILL);
     }
@@ -298,72 +246,42 @@ static void drawGrid(void) {
   // Вертикальные линии (8 делений по времени)
   for (int i = 0; i <= 8; i++) {
     int xpos = (LCD_WIDTH * i) / 8;
-    // Пунктирная линия (точка через 3 пикселя)
     for (int y = OSC_TOP_MARGIN; y < OSC_TOP_MARGIN + OSC_GRAPH_H; y += 4) {
       PutPixel(xpos, y, C_FILL);
     }
   }
 }
 
-// Отрисовка формы сигнала
+// Перевести значение [0..MAX_VAL] в Y-координату в области графика
+static inline int val_to_y(uint16_t val) {
+  int y = OSC_TOP_MARGIN + OSC_GRAPH_H - 1 -
+          ((int32_t)val * (OSC_GRAPH_H - 1) / MAX_VAL);
+  if (y < OSC_TOP_MARGIN)            y = OSC_TOP_MARGIN;
+  if (y >= OSC_TOP_MARGIN + OSC_GRAPH_H) y = OSC_TOP_MARGIN + OSC_GRAPH_H - 1;
+  return y;
+}
+
+// Отрисовка формы сигнала из кольцевого буфера.
+// Обходим от disp_head (старейший) до disp_head-1 (новейший),
+// соединяем соседние точки линиями — разрывов нет.
 static void drawWaveform(void) {
-  if (osc.write_pos < 2)
-    return; // Нечего рисовать
+  int prev_y = val_to_y(osc.disp_buf[osc.disp_head]);
 
-  int prev_y = -1;
-  int start_idx = 0;
-
-  // Если сработал триггер - центрируем сигнал относительно точки триггера
-  if (osc.triggered && osc.trigger_pos > 0) {
-    start_idx = osc.trigger_pos - LCD_WIDTH / 2;
-    if (start_idx < 0)
-      start_idx = 0;
-    if (start_idx + LCD_WIDTH > osc.write_pos)
-      start_idx = osc.write_pos - LCD_WIDTH;
-    if (start_idx < 0)
-      start_idx = 0;
-  }
-
-  // Рисуем форму волны
-  for (int x = 0; x < LCD_WIDTH; x++) {
-    int idx = start_idx + x;
-    if (idx >= OSC_SAMPLES || idx >= osc.write_pos)
-      break;
-
-    // Преобразуем значение 0-255 в координату Y на графике
-    int y = OSC_TOP_MARGIN + OSC_GRAPH_H -
-            (osc.buffer[idx] * OSC_GRAPH_H / (MAX_VAL + 1));
-
-    // Ограничиваем область графика
-    if (y < OSC_TOP_MARGIN)
-      y = OSC_TOP_MARGIN;
-    if (y >= OSC_TOP_MARGIN + OSC_GRAPH_H)
-      y = OSC_TOP_MARGIN + OSC_GRAPH_H - 1;
-
-    // Рисуем точку
-    PutPixel(x, y, C_FILL);
-
-    // Соединяем с предыдущей точкой линией (если изменение не слишком резкое)
-    if (prev_y >= 0 && abs(y - prev_y) < OSC_GRAPH_H / 2) {
-      DrawLine(x - 1, prev_y, x, y, C_FILL);
-    }
+  for (int x = 1; x < LCD_WIDTH; x++) {
+    uint8_t idx = (osc.disp_head + x) % LCD_WIDTH;
+    int y = val_to_y(osc.disp_buf[idx]);
+    DrawLine(x - 1, prev_y, x, y, C_FILL);
     prev_y = y;
   }
 }
 
-// Отрисовка уровня триггера
+// Отрисовка маркера уровня триггера (стрелки слева и справа)
 static void drawTriggerLevel(void) {
-  // Вычисляем Y-позицию линии триггера в области графика
-  int y =
-      OSC_TOP_MARGIN + OSC_GRAPH_H - (osc.trigger_level * OSC_GRAPH_H / 256);
+  if (!osc.show_trigger) return;
 
-  // Ограничиваем область графика
-  if (y < OSC_TOP_MARGIN)
-    y = OSC_TOP_MARGIN;
-  if (y > OSC_TOP_MARGIN + OSC_GRAPH_H - 1)
-    y = OSC_TOP_MARGIN + OSC_GRAPH_H - 1;
+  int y = val_to_y(osc.trigger_level);
 
-  // Рисуем маркеры слева и справа (треугольники из точек)
+  // Маленькие стрелки: ▷ слева, ◁ справа
   for (int i = 0; i < 3; i++) {
     PutPixel(i, y, C_FILL);
     PutPixel(LCD_WIDTH - 1 - i, y, C_FILL);
@@ -376,66 +294,30 @@ static void drawTriggerLevel(void) {
 
 // Отрисовка статуса
 static void drawStatus(void) {
-  // Строка 1 (baseline y=5): статус захвата
-  if (osc.triggered) {
-    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "TRIG");
-  } else if (osc.running) {
-    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "RUN %d%%",
-                 osc.write_pos * 100 / OSC_SAMPLES);
-  } else {
-    PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "STOP");
-  }
-
-  // Строка 1 справа: масштаб
-  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 2, POS_R, C_FILL, "V:%d T:%d",
-               osc.scale_v, osc.scale_t);
-
-  // Строка 2 (baseline y=10): режим и задержка
-  PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL, "%s",
-               osc.dc_offset ? "DC" : "RAW");
-  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 3, POS_R, C_FILL, "%u ms",
-               osc.sample_delay);
-
-  // Строка 3 (baseline y=15): уровень триггера
-  PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "Trig:%d",
-               osc.trigger_level);
+  // Строка 1: частота в центре
   char buf[16];
   mhzToS(buf, RADIO_GetParam(ctx, PARAM_FREQUENCY));
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
+
+  // Строка 1 справа: масштабы
+  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 2, POS_R, C_FILL, "V:%d T:%d",
+               osc.scale_v, osc.scale_t);
+
+  // Строка 2: режим DC | уровень DC (в мВ или просто raw)
+  PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL, "%s",
+               osc.dc_offset ? "DC" : "RAW");
+
+  // Строка 3: уровень триггера
+  PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "Trig:%d",
+               osc.trigger_level);
 }
 
 void OSC_render(void) {
-  /* // Очистка экрана
-  FillRect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_CLEAR);
+  FillRect(0, OSC_TOP_MARGIN, LCD_WIDTH, OSC_GRAPH_H, C_CLEAR);
 
-  // Рисуем радио-статус (верхняя строка, если есть)
-  STATUSLINE_RenderRadioSettings();
-
-  // === Область графика ===
-
-  // Рисуем сетку (если включена)
   drawGrid();
-
-  // Рисуем форму сигнала
   drawWaveform();
-
-  // Рисуем маркеры уровня триггера
   drawTriggerLevel();
-
-  // === Информационные панели ===
-
-  // Статусная информация сверху
-  drawStatus(); */
-
-  if (aprs_ready2) {
-
-    for (uint16_t i = 0; i < APRS_BUFFER_SIZE; ++i) {
-      uint8_t x = ConvertDomain(i, 0, APRS_BUFFER_SIZE, 0, LCD_WIDTH);
-      uint8_t y = 8 + ConvertDomain(aprs_process_buffer2[i], 0, 4096, 0,
-                                    LCD_HEIGHT - 8);
-      PutPixel(x, y, C_FILL);
-    }
-
-    aprs_ready2 = false;
-  }
+  drawStatus();
 }
+

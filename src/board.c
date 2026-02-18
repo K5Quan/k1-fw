@@ -1,3 +1,4 @@
+
 #include "board.h"
 #include "driver/backlight.h"
 #include "driver/bk4819-regs.h"
@@ -18,9 +19,11 @@
 #include "ui/graphics.h"
 #include <stdint.h>
 
-// DMA buffer interleaved: CH8, CH9, CH8, CH9, ...
-// Total size = 4 * APRS_BUFFER_SIZE (two ping-pong halves, two ADC channels each)
-volatile uint16_t adc_dma_buffer[4 * APRS_BUFFER_SIZE] __attribute__((aligned(4)));
+// DMA buffer: CH9 only (APRS audio).
+// Layout: [half-A: APRS_BUFFER_SIZE samples | half-B: APRS_BUFFER_SIZE samples]
+// HT fires when half-A is full; TC fires when half-B is full.
+volatile uint16_t adc_dma_buffer[2 * APRS_BUFFER_SIZE]
+    __attribute__((aligned(4)));
 
 uint16_t aprs_process_buffer1[APRS_BUFFER_SIZE];
 uint16_t aprs_process_buffer2[APRS_BUFFER_SIZE];
@@ -43,16 +46,17 @@ void BOARD_DMA_Init(void) {
   LL_DMA_InitTypeDef DMA_InitStruct;
   LL_DMA_StructInit(&DMA_InitStruct);
 
-  DMA_InitStruct.Direction                = LL_DMA_DIRECTION_PERIPH_TO_MEMORY;
-  DMA_InitStruct.PeriphOrM2MSrcAddress    = (uint32_t)&ADC1->DR;
-  DMA_InitStruct.MemoryOrM2MDstAddress    = (uint32_t)adc_dma_buffer;
-  DMA_InitStruct.PeriphOrM2MSrcDataSize   = LL_DMA_PDATAALIGN_HALFWORD;
-  DMA_InitStruct.MemoryOrM2MDstDataSize   = LL_DMA_MDATAALIGN_HALFWORD;
-  DMA_InitStruct.NbData                   = 4 * APRS_BUFFER_SIZE;
-  DMA_InitStruct.PeriphOrM2MSrcIncMode    = LL_DMA_PERIPH_NOINCREMENT;
-  DMA_InitStruct.MemoryOrM2MDstIncMode    = LL_DMA_MEMORY_INCREMENT;
-  DMA_InitStruct.Mode                     = LL_DMA_MODE_CIRCULAR;
-  DMA_InitStruct.Priority                 = LL_DMA_PRIORITY_HIGH;
+  DMA_InitStruct.Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY;
+  DMA_InitStruct.PeriphOrM2MSrcAddress = (uint32_t)&ADC1->DR;
+  DMA_InitStruct.MemoryOrM2MDstAddress = (uint32_t)adc_dma_buffer;
+  DMA_InitStruct.PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD;
+  DMA_InitStruct.MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD;
+  DMA_InitStruct.NbData =
+      2 * APRS_BUFFER_SIZE; // single channel, two ping-pong halves
+  DMA_InitStruct.PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT;
+  DMA_InitStruct.MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT;
+  DMA_InitStruct.Mode = LL_DMA_MODE_CIRCULAR;
+  DMA_InitStruct.Priority = LL_DMA_PRIORITY_HIGH;
 
   LL_DMA_Init(DMA1, LL_DMA_CHANNEL_1, &DMA_InitStruct);
 
@@ -65,19 +69,18 @@ void BOARD_DMA_Init(void) {
 void DMA1_Channel1_IRQHandler(void) {
   if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
     LL_DMA_ClearFlag_HT1(DMA1);
-    // First half: CH9 samples are at odd indices 1, 3, 5, ...
+    // First half: indices 0 .. APRS_BUFFER_SIZE-1 (CH9 only, no interleaving)
     for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
-      aprs_process_buffer1[i] = adc_dma_buffer[2 * i + 1];
+      aprs_process_buffer1[i] = adc_dma_buffer[i];
     }
     aprs_ready1 = true;
   }
 
   if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
     LL_DMA_ClearFlag_TC1(DMA1);
-    // Second half: starts at offset 2 * APRS_BUFFER_SIZE
-    const uint32_t offset = 2 * APRS_BUFFER_SIZE;
+    // Second half: indices APRS_BUFFER_SIZE .. 2*APRS_BUFFER_SIZE-1
     for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
-      aprs_process_buffer2[i] = adc_dma_buffer[offset + 2 * i + 1];
+      aprs_process_buffer2[i] = adc_dma_buffer[APRS_BUFFER_SIZE + i];
     }
     aprs_ready2 = true;
   }
@@ -93,23 +96,22 @@ void DMA1_Channel1_IRQHandler(void) {
 // ---------------------------------------------------------------------------
 
 void BOARD_GPIO_Init(void) {
-  LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA |
-                          LL_IOP_GRP1_PERIPH_GPIOB |
-                          LL_IOP_GRP1_PERIPH_GPIOC |
-                          LL_IOP_GRP1_PERIPH_GPIOF);
+  LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA | LL_IOP_GRP1_PERIPH_GPIOB |
+                          LL_IOP_GRP1_PERIPH_GPIOC | LL_IOP_GRP1_PERIPH_GPIOF);
 
   LL_GPIO_InitTypeDef InitStruct;
   LL_GPIO_StructInit(&InitStruct);
   InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  InitStruct.Pull       = LL_GPIO_PULL_UP;
-  InitStruct.Speed      = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+  InitStruct.Pull = LL_GPIO_PULL_UP;
+  InitStruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
 
   // --- Input pins ---
 
   InitStruct.Mode = LL_GPIO_MODE_INPUT;
 
   // Keypad rows: PB12–PB15
-  InitStruct.Pin = LL_GPIO_PIN_15 | LL_GPIO_PIN_14 | LL_GPIO_PIN_13 | LL_GPIO_PIN_12;
+  InitStruct.Pin =
+      LL_GPIO_PIN_15 | LL_GPIO_PIN_14 | LL_GPIO_PIN_13 | LL_GPIO_PIN_12;
   LL_GPIO_Init(GPIOB, &InitStruct);
 
   // PTT: PB10
@@ -124,7 +126,8 @@ void BOARD_GPIO_Init(void) {
   InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
 
   // Keypad cols: PB3–PB6
-  InitStruct.Pin = LL_GPIO_PIN_6 | LL_GPIO_PIN_5 | LL_GPIO_PIN_4 | LL_GPIO_PIN_3;
+  InitStruct.Pin =
+      LL_GPIO_PIN_6 | LL_GPIO_PIN_5 | LL_GPIO_PIN_4 | LL_GPIO_PIN_3;
   LL_GPIO_Init(GPIOB, &InitStruct);
 
   // Audio PA: PA8 | LCD A0: PA6 | SPI flash CS: PA3
@@ -150,7 +153,7 @@ void BOARD_GPIO_Init(void) {
   // ADC inputs (analog): PB0, PB1
   InitStruct.Mode = LL_GPIO_MODE_ANALOG;
   InitStruct.Pull = LL_GPIO_PULL_NO;
-  InitStruct.Pin  = LL_GPIO_PIN_0 | LL_GPIO_PIN_1;
+  InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1;
   LL_GPIO_Init(GPIOB, &InitStruct);
 }
 
@@ -172,17 +175,32 @@ void BOARD_ADC_Init(void) {
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
 
+  // -----------------------------------------------------------------------
+  // Regular group: CH9 (APRS audio) → DMA circular
+  // -----------------------------------------------------------------------
   LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
   LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_SOFTWARE);
   LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_CONTINUOUS);
   LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
-  LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_2RANKS);
+  // Single rank — only CH9
+  LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
+  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
+  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
+                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
 
-  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
-  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_9);
-
-  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8, LL_ADC_SAMPLINGTIME_41CYCLES_5);
-  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9, LL_ADC_SAMPLINGTIME_41CYCLES_5);
+  // -----------------------------------------------------------------------
+  // Injected group: CH8 (battery voltage) → software-triggered, single shot
+  //
+  // Per reference manual 16.3.12.1: JAUTO=0, SCAN=1.
+  // Injected trigger fires on JSWSTART; result lands in JDR1.
+  // -----------------------------------------------------------------------
+  LL_ADC_INJ_SetTriggerSource(ADC1, LL_ADC_INJ_TRIG_SOFTWARE);
+  LL_ADC_INJ_SetSequencerLength(ADC1, LL_ADC_INJ_SEQ_SCAN_DISABLE); // 1 rank
+  LL_ADC_INJ_SetSequencerRanks(ADC1, LL_ADC_INJ_RANK_1, LL_ADC_CHANNEL_8);
+  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
+                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
+  // Automatic injection disabled (we trigger manually)
+  LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
 
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
@@ -238,10 +256,10 @@ uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
   volatile bool *flag = NULL;
 
   if (aprs_ready1) {
-    src  = aprs_process_buffer1;
+    src = aprs_process_buffer1;
     flag = &aprs_ready1;
   } else if (aprs_ready2) {
-    src  = aprs_process_buffer2;
+    src = aprs_process_buffer2;
     flag = &aprs_ready2;
   } else {
     return 0;
@@ -256,12 +274,25 @@ uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
 }
 
 void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
-  *pVoltage = adc_dma_buffer[0];
+  // Trigger a single injected conversion on CH8 (battery voltage).
+  // Per RM 16.3.12.1: set JSWSTART while ADC is running; wait for JEOC.
+  // The injected conversion interrupts the ongoing regular sequence and
+  // resumes it afterwards — no need to stop DMA/regular group.
+  LL_ADC_INJ_StartConversionSWStart(ADC1);
+
+  uint32_t timeout = 100000;
+  while (!LL_ADC_IsActiveFlag_JEOS(ADC1) && timeout--)
+    ;
+
+  *pVoltage =
+      (uint16_t)LL_ADC_INJ_ReadConversionData12(ADC1, LL_ADC_INJ_RANK_1);
   *pCurrent = 0;
+
+  LL_ADC_ClearFlag_JEOS(ADC1);
 }
 
 uint16_t BOARD_ADC_GetAPRS(void) {
-  return adc_dma_buffer[1];
+  return adc_dma_buffer[0]; // CH9 is the only regular channel now
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +339,6 @@ void BOARD_Init(void) {
 // Misc
 // ---------------------------------------------------------------------------
 
-void BOARD_FlashlightToggle(void)        { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }
-void BOARD_ToggleRed(bool on)            { BK4819_ToggleGpioOut(BK4819_RED, on); }
-void BOARD_ToggleGreen(bool on)          { BK4819_ToggleGpioOut(BK4819_GREEN, on); }
+void BOARD_FlashlightToggle(void) { GPIO_TogglePin(GPIO_PIN_FLASHLIGHT); }
+void BOARD_ToggleRed(bool on) { BK4819_ToggleGpioOut(BK4819_RED, on); }
+void BOARD_ToggleGreen(bool on) { BK4819_ToggleGpioOut(BK4819_GREEN, on); }
