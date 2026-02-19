@@ -643,6 +643,14 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_SetRegValue(RS_IF_F, 10923);
   }
 
+  uint16_t reg4A = BK4819_ReadRegister(0x4A);
+
+  if (isSsb || type == MOD_AM) {
+    BK4819_WriteRegister(0x4A, reg4A | 0b111111);
+  } else {
+    BK4819_WriteRegister(0x4A, reg4A & ~0b111111);
+  }
+
   BK4819_WriteRegister(
       BK4819_REG_48, isSsb ? 0x33A8 | (0b1111 << 0) | (0b111111 << 4) : 0x33A8);
 
