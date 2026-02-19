@@ -1123,7 +1123,7 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     break;
 
   case PARAM_FREQUENCY:
-    ctx->frequency = value;
+    ctx->frequency = value + gSettings.upconverter;
     break;
   /* case PARAM_MODULATION:
     ctx->modulation = (ModulationType)value;

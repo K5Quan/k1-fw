@@ -197,7 +197,7 @@ void BOARD_ADC_Init(void) {
   LL_ADC_INJ_SetSequencerLength(ADC1, LL_ADC_INJ_SEQ_SCAN_DISABLE); // 1 rank
   LL_ADC_INJ_SetSequencerRanks(ADC1, LL_ADC_INJ_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
-                                LL_ADC_SAMPLINGTIME_28CYCLES_5);
+                                LL_ADC_SAMPLINGTIME_5CYCLES_5);
   // Automatic injection disabled (we trigger manually)
   LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
 

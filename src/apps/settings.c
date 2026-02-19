@@ -24,6 +24,10 @@ static void doCalibrate(uint32_t v, uint32_t _) {
   (void)_;
   SETTINGS_SetValue(SETTING_BATTERYCALIBRATION, BATTERY_GetCal(v * 100));
 }
+static void setUpConv(uint32_t v, uint32_t _) {
+  (void)_;
+  SETTINGS_SetValue(SETTING_UPCONVERTER, v);
+}
 
 static bool calibrate(const MenuItem *item, KEY_Code_t key, Key_State_t state) {
   (void)item;
@@ -40,6 +44,17 @@ static bool calibrate(const MenuItem *item, KEY_Code_t key, Key_State_t state) {
   FINPUT_setup(500, 860, UNIT_VOLTS, false);
   FINPUT_init();
   gFInputActive = true;
+  return true;
+}
+static bool upconv(const MenuItem *item, KEY_Code_t key, Key_State_t state) {
+  (void)item;
+
+  if (state != KEY_RELEASED || key != KEY_MENU) {
+    return false;
+  }
+
+  FINPUT_setup(0, 50000000, UNIT_MHZ, false);
+  FINPUT_Show(setUpConv);
   return true;
 }
 
@@ -93,6 +108,7 @@ static const MenuItem radioMenuItems[] = {
     {"Multiwatch", SETTING_MULTIWATCH, getValS, updateValS},
     {"Mic", SETTING_MIC, getValS, updateValS},
     {"Freq corr", SETTING_FREQ_CORRECTION, getValS, updateValS},
+    {"Upconv", SETTING_UPCONVERTER, getValS, .action = upconv},
 };
 
 static Menu radioMenu = {.title = "Radio",
