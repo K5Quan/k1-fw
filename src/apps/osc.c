@@ -120,6 +120,9 @@ static void triggerArm(void) {
 // Клавиши
 // ---------------------------------------------------------------------------
 bool OSC_key(KEY_Code_t key, Key_State_t state) {
+  if (REGSMENU_Key(key, state)) {
+    return true;
+  }
   if (state != KEY_RELEASED && state != KEY_LONG_PRESSED_CONT)
     return false;
 
@@ -434,4 +437,5 @@ void OSC_render(void) {
   }
 
   drawStatus();
+  REGSMENU_Draw();
 }

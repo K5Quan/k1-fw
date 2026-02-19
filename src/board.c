@@ -175,8 +175,6 @@ void BOARD_ADC_Init(void) {
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
 
-  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV8);
-
   // -----------------------------------------------------------------------
   // Regular group: CH9 (APRS audio) → DMA circular
   // -----------------------------------------------------------------------
@@ -188,7 +186,7 @@ void BOARD_ADC_Init(void) {
   LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
-                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
+                                LL_ADC_SAMPLINGTIME_239CYCLES_5);
 
   // -----------------------------------------------------------------------
   // Injected group: CH8 (battery voltage) → software-triggered, single shot
@@ -196,13 +194,17 @@ void BOARD_ADC_Init(void) {
   // Per reference manual 16.3.12.1: JAUTO=0, SCAN=1.
   // Injected trigger fires on JSWSTART; result lands in JDR1.
   // -----------------------------------------------------------------------
-  LL_ADC_INJ_SetTriggerSource(ADC1, LL_ADC_INJ_TRIG_SOFTWARE);
+  /* LL_ADC_INJ_SetTriggerSource(ADC1, LL_ADC_INJ_TRIG_SOFTWARE);
   LL_ADC_INJ_SetSequencerLength(ADC1, LL_ADC_INJ_SEQ_SCAN_DISABLE); // 1 rank
   LL_ADC_INJ_SetSequencerRanks(ADC1, LL_ADC_INJ_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
-                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
+                                LL_ADC_SAMPLINGTIME_239CYCLES_5);
   // Automatic injection disabled (we trigger manually)
-  LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
+  LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT); */
+
+  LL_ADC_StartCalibration(ADC1);
+  while (LL_ADC_IsCalibrationOnGoing(ADC1))
+    ;
 
   // Route ADC1 requests to DMA1 Channel 1 via SYSCFG remap
   // (SYSCFG clock is already enabled by UART_Init before this call)
@@ -212,10 +214,7 @@ void BOARD_ADC_Init(void) {
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
   LL_ADC_Enable(ADC1);
-
-  LL_ADC_StartCalibration(ADC1);
-  while (LL_ADC_IsCalibrationOnGoing(ADC1))
-    ;
+  SYSTICK_DelayUs(10);
 
   LL_ADC_REG_StartConversionSWStart(ADC1);
 }
@@ -232,11 +231,11 @@ void BOARD_ADC_StartAPRS_DMA(void) {
 }
 
 void BOARD_ADC_StopAPRS_DMA(void) {
+  LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
   LL_ADC_StopConversion(ADC1);
   while (LL_ADC_REG_IsStopConversionOngoing(ADC1))
     ;
   LL_ADC_Disable(ADC1);
-  LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
   aprs_ready1 = false;
   aprs_ready2 = false;
 }
