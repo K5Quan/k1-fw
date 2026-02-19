@@ -163,7 +163,6 @@ void BOARD_GPIO_Init(void) {
 
 void BOARD_ADC_Init(void) {
   LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
-  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV4);
 
   LL_APB1_GRP2_ForceReset(LL_APB1_GRP2_PERIPH_ADC1);
   LL_APB1_GRP2_ReleaseReset(LL_APB1_GRP2_PERIPH_ADC1);
@@ -198,9 +197,11 @@ void BOARD_ADC_Init(void) {
   LL_ADC_INJ_SetSequencerLength(ADC1, LL_ADC_INJ_SEQ_SCAN_DISABLE); // 1 rank
   LL_ADC_INJ_SetSequencerRanks(ADC1, LL_ADC_INJ_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
-                                LL_ADC_SAMPLINGTIME_239CYCLES_5);
+                                LL_ADC_SAMPLINGTIME_28CYCLES_5);
   // Automatic injection disabled (we trigger manually)
   LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
+
+  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV8);
 
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))

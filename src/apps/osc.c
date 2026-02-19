@@ -9,8 +9,8 @@
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "apps.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 // ---------------------------------------------------------------------------
@@ -198,11 +198,11 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 // ---------------------------------------------------------------------------
 void OSC_init(void) {
   osc.mode = MODE_WAVE;
-  osc.scale_v = 5;
-  osc.scale_t = 16;
+  osc.scale_v = 10;
+  osc.scale_t = 8;
   osc.trigger_level = 2048;
-  osc.dc_offset = true;
-  osc.show_grid = true;
+  osc.dc_offset = false;
+  osc.show_grid = false;
   osc.show_trigger = true;
 
   triggerArm();
@@ -216,7 +216,7 @@ void OSC_deinit(void) {}
 
 static void push_sample(uint16_t raw) {
   // IIR DC-фильтр: alpha = 1/256, dc_iir хранит mean*256
-  // osc.dc_iir += (int32_t)raw - (int32_t)(osc.dc_iir >> 8);
+  osc.dc_iir += (int32_t)raw - (int32_t)(osc.dc_iir >> 8);
   uint16_t dc = (uint16_t)(osc.dc_iir >> 8);
 
   // --- WAVE: нормированное значение в кольцо ---
@@ -282,7 +282,7 @@ static void process_block(const uint16_t *src, uint32_t len) {
     }
     // Антиалиасинговый LPF: a = 1/32, срез ~Fs/(2π×32)
     // При Fs=48кГц: ~240 Гц — ниже Найквиста для scale_t=72
-    osc.lpf_iir += ((int32_t)((uint32_t)src[i] << 8) - osc.lpf_iir) >> 5;
+    // osc.lpf_iir += ((int32_t)((uint32_t)src[i] << 8) - osc.lpf_iir) >> 5;
 
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
