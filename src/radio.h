@@ -94,7 +94,7 @@ typedef struct {
   uint32_t min_freq;
   uint32_t max_freq;
   uint16_t available_bandwidths[10]; // Доступные полосы (кГц)
-  uint8_t available_mods[5];         // Доступные модуляции
+  uint8_t available_mods[6];         // Доступные модуляции
   uint8_t num_available_mods;
   uint8_t num_available_bandwidths;
 } FreqBand;

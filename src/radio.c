@@ -106,8 +106,8 @@ const char *TX_STATE_NAMES[7] = {
 const char *MOD_NAMES_BK4819[8] = {
     [MOD_FM] = "FM",   //
     [MOD_AM] = "AM",   //
-    [MOD_LSB] = "LSB", //
-    [MOD_USB] = "USB", //
+    [MOD_LSB] = "DSB", //
+    [MOD_USB] = "DSB", //
     [MOD_BYP] = "BYP", //
     [MOD_RAW] = "RAW", //
     [MOD_WFM] = "WFM", //
@@ -167,9 +167,9 @@ static const FreqBand bk4819_bands[] = {
     {
         .min_freq = BK4819_F_MIN,
         .max_freq = BK4819_F_MAX,
-        .num_available_mods = 5,
+        .num_available_mods = 6,
         .num_available_bandwidths = 10,
-        .available_mods = {MOD_FM, MOD_AM, MOD_LSB, MOD_USB, MOD_WFM},
+        .available_mods = {MOD_FM, MOD_AM, MOD_LSB, MOD_BYP, MOD_RAW, MOD_WFM},
         .available_bandwidths =
             {
                 BK4819_FILTER_BW_6k,  //  "U 6K"
