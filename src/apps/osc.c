@@ -222,8 +222,12 @@ static void push_sample(uint16_t raw) {
       v = MAX_VAL;
     val = (uint16_t)v;
   } else {
-    uint32_t v = (uint32_t)raw * osc.scale_v / 10;
-    val = v > MAX_VAL ? (uint16_t)MAX_VAL : (uint16_t)v;
+    int32_t v = ((int32_t)raw - 2048) * osc.scale_v / 10 + 2048;
+    if (v < 0)
+      v = 0;
+    if (v > (int32_t)MAX_VAL)
+      v = MAX_VAL;
+    val = (uint16_t)v;
   }
   osc.disp_buf[osc.disp_head] = val;
   osc.disp_head = (uint8_t)((osc.disp_head + 1) % LCD_WIDTH);
@@ -261,18 +265,13 @@ static void push_sample(uint16_t raw) {
 
 static void process_block(const uint16_t *src, uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
-    // IIR low-pass: lpf_iir += (src[i] - (lpf_iir >> 8)) * alpha; alpha = 1/256
-    // для слабого cutoff, подстройте
-    /* osc.lpf_iir += ((int32_t)src[i] -
-                    (osc.lpf_iir >> 8)); // alpha=1/256, cutoff ~ Fs_original /
-                                         // (2*pi*256) ≈ 3-5 кГц при Fs=48 кГц
-     */
-    // uint16_t filtered = (uint16_t)(osc.lpf_iir >> 8);
+    // Антиалиасинговый LPF: a = 1/32, срез ~Fs/(2π×32)
+    // При Fs=48кГц: ~240 Гц — ниже Найквиста для scale_t=72
+    osc.lpf_iir += ((int32_t)((uint32_t)src[i] << 8) - osc.lpf_iir) >> 5;
 
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
-      push_sample(src[i]); // Используйте filtered вместо src[i]
-      // push_sample(filtered); // Используйте filtered вместо src[i]
+      push_sample((uint16_t)(osc.lpf_iir >> 8));
       if (osc.mode == MODE_FFT) {
         gRedrawScreen = true;
       }
