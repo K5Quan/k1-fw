@@ -9,6 +9,7 @@
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "apps.h"
+#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -68,6 +69,9 @@ typedef struct {
 } OscContext;
 
 static OscContext osc;
+
+static uint16_t dmaMin;
+static uint16_t dmaMax;
 
 // ---------------------------------------------------------------------------
 // Вспомогательные
@@ -267,14 +271,23 @@ static void push_sample(uint16_t raw) {
 }
 
 static void process_block(const uint16_t *src, uint32_t len) {
+  dmaMin = UINT16_MAX;
+  dmaMax = 0;
   for (uint32_t i = 0; i < len; i++) {
+    if (src[i] > dmaMax) {
+      dmaMax = src[i];
+    }
+    if (src[i] < dmaMin) {
+      dmaMin = src[i];
+    }
     // Антиалиасинговый LPF: a = 1/32, срез ~Fs/(2π×32)
     // При Fs=48кГц: ~240 Гц — ниже Найквиста для scale_t=72
     osc.lpf_iir += ((int32_t)((uint32_t)src[i] << 8) - osc.lpf_iir) >> 5;
 
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
-      push_sample((uint16_t)(osc.lpf_iir >> 8));
+      // push_sample((uint16_t)(osc.lpf_iir >> 8));
+      push_sample(src[i]);
       if (osc.mode == MODE_FFT) {
         gRedrawScreen = true;
       }
@@ -402,6 +415,8 @@ static void drawStatus(void) {
   PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL,
                osc.mode == MODE_FFT ? "FFT" : "OSC");
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
+  PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "%4u / %4u",
+               dmaMin, dmaMax);
 
   // Строка 2: DC/RAW | масштаб
   PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL,
