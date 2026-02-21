@@ -647,11 +647,11 @@ void BK4819_SetModulation(ModulationType type) {
 
   if (isSsb || type == MOD_AM) {
     BK4819_WriteRegister(0x4A, reg4A | 0b111111);
-    BK4819_WriteRegister(BK4819_REG_48,
+    /* BK4819_WriteRegister(BK4819_REG_48,
                          (0b1100 << 10)        // ?
                              | (0b111111 << 4) // GAIN2
                              | (0b1111 << 0)   // AFTER G1 G2
-    );
+    ); */
   } else {
     BK4819_WriteRegister(0x4A, reg4A & ~0b111111);
     /* BK4819_WriteRegister(BK4819_REG_48,
@@ -661,11 +661,12 @@ void BK4819_SetModulation(ModulationType type) {
 
     );
                             */
-    BK4819_WriteRegister(BK4819_REG_48,
+    /* BK4819_WriteRegister(BK4819_REG_48,
                          (0b1100 << 10)        // ?
                              | (0b111111 << 4) // GAIN2
                              | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
     );
+                             */
   }
 
   uint16_t r31 = BK4819_ReadRegister(0x31);
@@ -1418,7 +1419,12 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
 
-  BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  // BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  BK4819_WriteRegister(BK4819_REG_48,
+                       (0b1100 << 10)        // ?
+                           | (0b111111 << 4) // GAIN2
+                           | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
+  );
 
   BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);

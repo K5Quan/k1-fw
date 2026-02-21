@@ -22,6 +22,7 @@ static uint32_t cursorRangeTimeout = 0;
 static bool pttWasLongPressed = false;
 
 static void setRange(uint32_t fs, uint32_t fe) {
+  gCurrentBand.step = RADIO_GetParam(ctx, PARAM_STEP);
   BANDS_RangeClear();
   SCAN_setRange(fs, fe);
   BANDS_RangePush(gCurrentBand);
