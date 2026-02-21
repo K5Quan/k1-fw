@@ -215,6 +215,10 @@ static void HandleStateSwitching(void) {
   }
 
   bool programOpen = scan.measurement.rssi >= scan.squelchLevel;
+  if (programOpen && gSettings.skipGarbageFrequencies &&
+      scan.currentF % 1300000 == 0) {
+    programOpen = false;
+  }
 
   if (programOpen) {
     // Потенциально есть сигнал - точная проверка
