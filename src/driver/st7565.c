@@ -16,11 +16,44 @@
 #define PIN_A0 GPIO_MAKE_PIN(GPIOA, LL_GPIO_PIN_6)
 
 uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
-uint8_t gPrevFrameBuffer[FRAME_LINES][LCD_WIDTH];
+
+// Контрольные суммы строк вместо gPrevFrameBuffer[FRAME_LINES][LCD_WIDTH].
+// Экономия: 1024 - 32 = 992 байта.
+// Алгоритм: сумма uint32_t слов строки (wrapping add).
+// Вероятность коллизии при случайных изменениях: ~1/2^32 на строку.
+static uint32_t gLineChecksum[FRAME_LINES];
+
 bool gLineChanged[FRAME_LINES];
 
 static uint32_t gLastRender;
 bool gRedrawScreen = true;
+
+// ---------------------------------------------------------------------------
+// Checksum helpers
+// ---------------------------------------------------------------------------
+
+static inline uint32_t compute_line_checksum(uint8_t line) {
+  const uint32_t *p = (const uint32_t *)gFrameBuffer[line];
+  uint32_t sum = 0;
+  // LCD_WIDTH кратен 4 (обычно 128), остаток обрабатываем отдельно
+  for (uint8_t i = 0; i < LCD_WIDTH / 4; i++) {
+    sum += p[i];
+  }
+#if (LCD_WIDTH % 4) != 0
+  for (uint8_t i = (LCD_WIDTH / 4) * 4; i < LCD_WIDTH; i++) {
+    sum += gFrameBuffer[line][i];
+  }
+#endif
+  return sum;
+}
+
+static inline void update_line_checksum(uint8_t line) {
+  gLineChecksum[line] = compute_line_checksum(line);
+}
+
+// ---------------------------------------------------------------------------
+// SPI
+// ---------------------------------------------------------------------------
 
 static void SPI_Init() {
   LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_SPI1);
@@ -69,7 +102,6 @@ static inline void A0_Set() { GPIO_SetOutputPin(PIN_A0); }
 
 static inline void A0_Reset() { GPIO_ResetOutputPin(PIN_A0); }
 
-// Оптимизированная передача без ожидания RXNE
 static inline void SPI_WriteByte(uint8_t Value) {
   while (!LL_SPI_IsActiveFlag_TXE(SPIx))
     ;
@@ -92,7 +124,6 @@ void ST7565_WriteByte(uint8_t Value) {
     ;
 }
 
-// Быстрая отрисовка строки
 static void DrawLine(uint8_t column, uint8_t line, const uint8_t *lineBuffer,
                      unsigned size) {
   ST7565_SelectColumnAndLine(column + 4, line);
@@ -125,45 +156,26 @@ void ST7565_MarkLineDirty(uint8_t line) {
 }
 
 void ST7565_MarkRegionDirty(uint8_t start_line, uint8_t end_line) {
-  for (uint8_t line = start_line; line <= end_line && line < FRAME_LINES;
-       line++) {
-    gRedrawScreen = true;
-  }
-}
-
-void ST7565_ForceFullRedraw(void) {
-  for (uint8_t line = 0; line < FRAME_LINES; line++) {
-    memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
-  }
+  (void)start_line;
+  (void)end_line;
   gRedrawScreen = true;
 }
 
-static inline bool line_changed_fast(uint8_t line) {
-  uint32_t *curr = (uint32_t *)gFrameBuffer[line];
-  uint32_t *prev = (uint32_t *)gPrevFrameBuffer[line];
-
-  // Сравниваем по 4 байта за раз
-  for (uint8_t i = 0; i < LCD_WIDTH / 4; i++) {
-    if (curr[i] != prev[i])
-      return true;
-  }
-
-  // Остаток (если LCD_WIDTH не кратен 4)
-  for (uint8_t i = (LCD_WIDTH / 4) * 4; i < LCD_WIDTH; i++) {
-    if (gFrameBuffer[line][i] != gPrevFrameBuffer[line][i])
-      return true;
-  }
-
-  return false;
+void ST7565_ForceFullRedraw(void) {
+  // Инвалидируем все checksums → все строки будут перерисованы
+  memset(gLineChecksum, 0xFF, sizeof(gLineChecksum));
+  gRedrawScreen = true;
 }
 
 void ST7565_Blit(void) {
   bool any_change = false;
 
   for (uint8_t line = 0; line < FRAME_LINES; line++) {
-    gLineChanged[line] = line_changed_fast(line);
-    if (gLineChanged[line])
+    uint32_t cs = compute_line_checksum(line);
+    gLineChanged[line] = (cs != gLineChecksum[line]);
+    if (gLineChanged[line]) {
       any_change = true;
+    }
   }
 
   if (!any_change) {
@@ -180,9 +192,8 @@ void ST7565_Blit(void) {
         start_line = line;
 
       DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
-      memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
+      update_line_checksum(line); // обновляем checksum вместо memcpy
 
-      // Если следующая строка не изменена - делаем паузу CS
       if (line + 1 < FRAME_LINES && !gLineChanged[line + 1]) {
         start_line = 0xFF;
       }
@@ -197,25 +208,22 @@ void ST7565_BlitLine(unsigned line) {
   if (line >= FRAME_LINES)
     return;
 
-  if (memcmp(gFrameBuffer[line], gPrevFrameBuffer[line], LCD_WIDTH) == 0) {
+  uint32_t cs = compute_line_checksum(line);
+  if (cs == gLineChecksum[line])
     return;
-  }
 
   CS_Assert();
   ST7565_WriteByte(0x40);
   DrawLine(0, line, gFrameBuffer[line], LCD_WIDTH);
   CS_Release();
 
-  memcpy(gPrevFrameBuffer[line], gFrameBuffer[line], LCD_WIDTH);
+  gLineChecksum[line] = cs;
 }
 
 void ST7565_FillScreen(uint8_t value) {
   memset(gFrameBuffer, value, sizeof(gFrameBuffer));
-
-  for (uint8_t i = 0; i < FRAME_LINES; i++) {
-    memset(gPrevFrameBuffer[i], ~value, LCD_WIDTH);
-  }
-
+  // Инвалидируем checksums, чтобы Blit точно отправил данные
+  memset(gLineChecksum, ~0, sizeof(gLineChecksum));
   gRedrawScreen = true;
 }
 
@@ -267,9 +275,9 @@ void ST7565_Init(void) {
 
   CS_Release();
 
-  ST7565_FillScreen(0x00);
+  // Нули в framebuffer, все checksums ≠ 0 → первый Blit прогонит все строки
   memset(gFrameBuffer, 0, sizeof(gFrameBuffer));
-  memset(gPrevFrameBuffer, 0xFF, sizeof(gPrevFrameBuffer));
+  memset(gLineChecksum, 0xFF, sizeof(gLineChecksum));
   gRedrawScreen = true;
 }
 
@@ -295,4 +303,9 @@ void ST7565_FixInterfGlitch(void) {
   ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1);
 
   CS_Release();
+
+  // После glitch-fix дисплей не знает что на экране — форсируем полную перерисовку
+  memset(gLineChecksum, 0xFF, sizeof(gLineChecksum));
+  gRedrawScreen = true;
 }
+
