@@ -1,4 +1,3 @@
-
 #include "board.h"
 #include "driver/backlight.h"
 #include "driver/bk4819-regs.h"
@@ -24,9 +23,6 @@
 // HT fires when half-A is full; TC fires when half-B is full.
 volatile uint16_t adc_dma_buffer[2 * APRS_BUFFER_SIZE]
     __attribute__((aligned(4)));
-
-uint16_t aprs_process_buffer1[APRS_BUFFER_SIZE];
-uint16_t aprs_process_buffer2[APRS_BUFFER_SIZE];
 
 volatile bool aprs_ready1 = false;
 volatile bool aprs_ready2 = false;
@@ -69,19 +65,13 @@ void BOARD_DMA_Init(void) {
 void DMA1_Channel1_IRQHandler(void) {
   if (LL_DMA_IsActiveFlag_HT1(DMA1)) {
     LL_DMA_ClearFlag_HT1(DMA1);
-    // First half: indices 0 .. APRS_BUFFER_SIZE-1 (CH9 only, no interleaving)
-    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
-      aprs_process_buffer1[i] = adc_dma_buffer[i];
-    }
+    // half-A (indices 0..APRS_BUFFER_SIZE-1) стабильна — DMA пишет в half-B
     aprs_ready1 = true;
   }
 
   if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
     LL_DMA_ClearFlag_TC1(DMA1);
-    // Second half: indices APRS_BUFFER_SIZE .. 2*APRS_BUFFER_SIZE-1
-    for (int i = 0; i < APRS_BUFFER_SIZE; i++) {
-      aprs_process_buffer2[i] = adc_dma_buffer[APRS_BUFFER_SIZE + i];
-    }
+    // half-B (indices APRS_BUFFER_SIZE..2*APRS_BUFFER_SIZE-1) стабильна — DMA пишет в half-A
     aprs_ready2 = true;
   }
 
@@ -250,14 +240,14 @@ uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
     return 0;
   }
 
-  uint16_t *src = NULL;
+  const volatile uint16_t *src = NULL;
   volatile bool *flag = NULL;
 
   if (aprs_ready1) {
-    src = aprs_process_buffer1;
+    src = &adc_dma_buffer[0];
     flag = &aprs_ready1;
   } else if (aprs_ready2) {
-    src = aprs_process_buffer2;
+    src = &adc_dma_buffer[APRS_BUFFER_SIZE];
     flag = &aprs_ready2;
   } else {
     return 0;

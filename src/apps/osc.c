@@ -289,24 +289,17 @@ static void push_sample(uint16_t raw) {
   }
 }
 
-static void process_block(const uint16_t *src, uint32_t len) {
+static void process_block(const volatile uint16_t *src, uint32_t len) {
   dmaMin = UINT16_MAX;
   dmaMax = 0;
   for (uint32_t i = 0; i < len; i++) {
-    if (src[i] > dmaMax) {
-      dmaMax = src[i];
-    }
-    if (src[i] < dmaMin) {
-      dmaMin = src[i];
-    }
-    // Антиалиасинговый LPF: a = 1/32, срез ~Fs/(2π×32)
-    // При Fs=48кГц: ~240 Гц — ниже Найквиста для scale_t=72
-    // osc.lpf_iir += ((int32_t)((uint32_t)src[i] << 8) - osc.lpf_iir) >> 5;
+    uint16_t s = src[i]; // однократное чтение volatile
+    if (s > dmaMax) dmaMax = s;
+    if (s < dmaMin) dmaMin = s;
 
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
-      // push_sample((uint16_t)(osc.lpf_iir >> 8));
-      push_sample(src[i]);
+      push_sample(s);
       if (osc.mode == MODE_FFT) {
         gRedrawScreen = true;
       }
@@ -316,13 +309,15 @@ static void process_block(const uint16_t *src, uint32_t len) {
 
 // Вызывается из main loop ~каждые 2 мс
 void OSC_update(void) {
+  // Читаем флаги атомарно: сбрасываем до обработки, чтобы не потерять
+  // следующий IRQ пока идёт process_block.
   if (aprs_ready1) {
     aprs_ready1 = false;
-    process_block(aprs_process_buffer1, APRS_BUFFER_SIZE);
+    process_block(&adc_dma_buffer[0], APRS_BUFFER_SIZE);
   }
   if (aprs_ready2) {
     aprs_ready2 = false;
-    process_block(aprs_process_buffer2, APRS_BUFFER_SIZE);
+    process_block(&adc_dma_buffer[APRS_BUFFER_SIZE], APRS_BUFFER_SIZE);
   }
 }
 
