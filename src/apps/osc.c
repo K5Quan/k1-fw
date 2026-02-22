@@ -98,6 +98,44 @@ static const uint16_t hann128[128] = {
     0,     0,     0,     0,     0,     0,     0,
 };
 
+// test_tone
+#include "../driver/gpio.h" // AUDIO_AudioPathOn/Off
+
+// LUT синуса, 32 точки, амплитуда ±1800 отсчётов вокруг 2048
+static const int16_t sine32[32] = {
+    0,     352,  680,  963,  1188, 1340, 1413,  1402,  1308,  1137,  899,
+    608,   282,  -60,  -400, -718, -992, -1204, -1341, -1402, -1385, -1293,
+    -1133, -916, -655, -370, -78,  208,  471,   693,   856,   945,
+};
+
+static uint32_t tone_phase = 0;
+
+// 440 Гц при Fs=9600: шаг фазы = 440 * 32 / 9600 ≈ 1.467
+// Используем fixed-point 8.8: шаг = (440 * 32 * 256) / 9600 = 375
+#define TONE_PHASE_STEP 375u // Q8
+
+static uint32_t tone_source(uint16_t *buf, uint32_t n) {
+  for (uint32_t i = 0; i < n; i++) {
+    int16_t s = sine32[(tone_phase >> 8) & 31];
+    buf[i] = (uint16_t)(2048 + s);
+    tone_phase += TONE_PHASE_STEP;
+  }
+  return n; // бесконечный источник
+}
+
+void TEST_TONE_Start(void) {
+  tone_phase = 0;
+  GPIO_EnableAudioPath();
+  AUDIO_IO_SourceSet(tone_source);
+  LogC(LOG_C_BRIGHT_WHITE, "TEST: 440Hz tone started on PA4");
+}
+
+void TEST_TONE_Stop(void) {
+  AUDIO_IO_SourceClear();
+  GPIO_DisableAudioPath();
+  LogC(LOG_C_BRIGHT_WHITE, "TEST: tone stopped");
+}
+
 // ---------------------------------------------------------------------------
 // val_to_y
 // ---------------------------------------------------------------------------
@@ -219,12 +257,19 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     FINPUT_setup(0, MAX_VAL, UNIT_RAW, false);
     FINPUT_Show(setTriggerLevel);
     return true;
+  case KEY_SIDE1:
+    TEST_TONE_Start();
+    SYSTICK_DelayMs(2000); // 2 секунды
+    TEST_TONE_Stop();
+    return true;
   case KEY_SIDE2: {
     uint16_t reg43 = BK4819_ReadRegister(0x43); // 15
     if ((reg43 >> 15) & 1) {
       reg43 &= ~(1 << 15);
+      BK4819_SetAF(BK4819_AF_MUTE);
     } else {
       reg43 |= 1 << 15;
+      BK4819_SetAF(BK4819_AF_FM);
     }
     BK4819_WriteRegister(0x43, reg43);
   }
