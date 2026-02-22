@@ -321,7 +321,7 @@ static void ook_push_sample(uint16_t raw) {
   if (av > osc.ook_envelope_iir)
     osc.ook_envelope_iir += (av - osc.ook_envelope_iir) >> 2;
   else
-    osc.ook_envelope_iir += (av - osc.ook_envelope_iir) >> 5;
+    osc.ook_envelope_iir += (av - osc.ook_envelope_iir) >> 3;
 
   uint16_t env = (uint16_t)(osc.ook_envelope_iir >> 8);
   uint8_t bit = env > osc.ook_threshold ? 1 : 0;
@@ -356,8 +356,8 @@ static void process_block(const volatile uint16_t *src, uint32_t len) {
 
     if (osc.mode == MODE_OOK) {
       ook_push_sample(s);
-      if (osc.ook_count >= PULSE_BUF_SIZE)
-        gRedrawScreen = true;
+      /* if (osc.ook_count >= PULSE_BUF_SIZE)
+        gRedrawScreen = true; */
     }
 
     if (++osc.decimate_cnt >= osc.scale_t) {
@@ -529,6 +529,10 @@ static void drawOOK(void) {
   // Счётчик и порог
   PrintSmallEx(LCD_WIDTH, y_text + SMALL_FONT_H, POS_R, C_FILL, "N:%d",
                osc.ook_count);
+
+  PrintSmallEx(0, LCD_HEIGHT - 8, POS_L, C_FILL, "E:%d S:%d C:%d",
+               (uint16_t)(osc.ook_envelope_iir >> 8), osc.ook_state,
+               osc.ook_counter);
 }
 
 // ---------------------------------------------------------------------------
