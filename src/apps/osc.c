@@ -3,6 +3,7 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../helper/audio_io.h"
+#include "../helper/audio_rec.h"
 #include "../helper/fft.h"
 #include "../helper/regs-menu.h"
 #include "../settings.h"
@@ -197,6 +198,9 @@ static void triggerArm(void) {
   osc.ook_envelope_iir = 0;
 }
 
+bool recording;
+bool playing;
+
 // ---------------------------------------------------------------------------
 // Клавиши
 // ---------------------------------------------------------------------------
@@ -251,6 +255,26 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
   case KEY_5:
     FINPUT_setup(BK4819_F_MIN, BK4819_F_MAX, UNIT_MHZ, false);
     FINPUT_Show(tuneTo);
+    return true;
+
+  case KEY_UP:
+    playing = !playing;
+    if (playing) {
+      AREC_StartPlayback();
+    } else {
+      AREC_StopPlayback();
+    }
+    return true;
+  case KEY_DOWN:
+    recording = !recording;
+    if (recording) {
+      AREC_StartRecording();
+      SYSTICK_DelayMs(5000);
+      AREC_StopRecording();
+      recording = false;
+    } else {
+      AREC_StopRecording();
+    }
     return true;
 
   case KEY_0:
@@ -658,5 +682,13 @@ void OSC_render(void) {
   }
 
   drawStatus();
+
+  if (recording) {
+    PrintMediumEx(LCD_XCENTER, 24, POS_C, C_FILL, "recording");
+  }
+  if (playing) {
+    PrintMediumEx(LCD_XCENTER, 24, POS_C, C_FILL, "playing");
+  }
+
   REGSMENU_Draw();
 }

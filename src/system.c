@@ -16,6 +16,7 @@
 #include "external/littlefs/lfs.h"
 #include "external/printf/printf.h"
 #include "helper/audio_io.h"
+#include "helper/audio_rec.h"
 #include "helper/bands.h"
 #include "helper/fsk2.h"
 #include "helper/keymap.h"
@@ -372,6 +373,7 @@ void SYS_Main() {
     } */
 
     AUDIO_IO_Update();
+    AREC_Update();
     APPS_update();
 
     if (Now() - toastTimer >= 40) {
