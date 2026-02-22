@@ -218,6 +218,16 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     FINPUT_setup(0, MAX_VAL, UNIT_RAW, false);
     FINPUT_Show(setTriggerLevel);
     return true;
+  case KEY_SIDE2: {
+    uint16_t reg43 = BK4819_ReadRegister(0x43); // 15
+    if ((reg43 >> 15) & 1) {
+      reg43 &= ~(1 << 15);
+    } else {
+      reg43 |= 1 << 15;
+    }
+    BK4819_WriteRegister(0x43, reg43);
+  }
+    return true;
 
   // Переключение режимов: WAVE → FFT → OOK → WAVE
   case KEY_6:
@@ -241,7 +251,7 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 void OSC_init(void) {
   osc.mode = MODE_WAVE;
   osc.scale_v = 10;
-  osc.scale_t = 4;
+  osc.scale_t = 2;
   osc.trigger_level = 2048;
   osc.dc_offset = false;
   osc.show_grid = false;

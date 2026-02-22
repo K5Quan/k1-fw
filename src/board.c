@@ -15,6 +15,7 @@
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_gpio.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_rcc.h"
 #include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_system.h"
+#include "external/PY32F071_HAL_Driver/Inc/py32f071_ll_tim.h"
 #include "ui/graphics.h"
 #include <stdint.h>
 
@@ -71,7 +72,8 @@ void DMA1_Channel1_IRQHandler(void) {
 
   if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
     LL_DMA_ClearFlag_TC1(DMA1);
-    // half-B (indices APRS_BUFFER_SIZE..2*APRS_BUFFER_SIZE-1) стабильна — DMA пишет в half-A
+    // half-B (indices APRS_BUFFER_SIZE..2*APRS_BUFFER_SIZE-1) стабильна — DMA
+    // пишет в half-A
     aprs_ready2 = true;
   }
 
@@ -147,6 +149,19 @@ void BOARD_GPIO_Init(void) {
   LL_GPIO_Init(GPIOB, &InitStruct);
 }
 
+void BOARD_TIM3_Init(void) {
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);
+
+  LL_TIM_SetPrescaler(TIM3, 0);
+  LL_TIM_SetAutoReload(TIM3, 4999); // 48MHz / 5000 = 9600 Hz точно
+
+  LL_TIM_SetCounterMode(TIM3, LL_TIM_COUNTERMODE_UP);
+  LL_TIM_SetTriggerOutput(TIM3, LL_TIM_TRGO_UPDATE);
+  LL_TIM_DisableMasterSlaveMode(TIM3);
+
+  LL_TIM_EnableCounter(TIM3);
+}
+
 // ---------------------------------------------------------------------------
 // ADC
 // ---------------------------------------------------------------------------
@@ -168,14 +183,23 @@ void BOARD_ADC_Init(void) {
   // Regular group: CH9 (APRS audio) → DMA circular
   // -----------------------------------------------------------------------
   LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
-  LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_SOFTWARE);
-  LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_CONTINUOUS);
+
+  /* LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_SOFTWARE);
+LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_CONTINUOUS); */
+
+  LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_EXT_TIM3_TRGO);
+  // LL_ADC_REG_SetTriggerEdge(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
+  SET_BIT(ADC1->CR2, ADC_CR2_EXTTRIG);
+  LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_SINGLE);
+
   LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
   // Single rank — only CH9
   LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
+  /* LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
+                                LL_ADC_SAMPLINGTIME_239CYCLES_5); */
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
-                                LL_ADC_SAMPLINGTIME_239CYCLES_5);
+                                LL_ADC_SAMPLINGTIME_28CYCLES_5);
 
   // -----------------------------------------------------------------------
   // Injected group: CH8 (battery voltage) → software-triggered, single shot
@@ -205,9 +229,9 @@ void BOARD_ADC_Init(void) {
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
   LL_ADC_Enable(ADC1);
-  SYSTICK_DelayUs(10);
+  /* SYSTICK_DelayUs(10);
 
-  LL_ADC_REG_StartConversionSWStart(ADC1);
+  LL_ADC_REG_StartConversionSWStart(ADC1); */
 }
 
 void BOARD_ADC_StartAPRS_DMA(void) {
@@ -310,6 +334,7 @@ void BOARD_Init(void) {
   BOARD_GPIO_Init();
   UART_Init(); // also enables SYSCFG clock, required before BOARD_ADC_Init
   LogC(LOG_C_BRIGHT_WHITE, "Init start");
+  BOARD_TIM3_Init();
   BOARD_ADC_Init();
   BOARD_DAC_Init();
   LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X ADC_SR=%08X", ADC1->CR2, ADC1->SR);
