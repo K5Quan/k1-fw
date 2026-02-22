@@ -419,6 +419,8 @@ static void drawWaveform(void) {
     DrawLine(x - 1, prev_y, x, y, C_FILL);
     prev_y = y;
   }
+  PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "%4u / %4u",
+               dmaMin, dmaMax);
 }
 
 static void drawTriggerMarker(void) {
@@ -470,6 +472,26 @@ static void drawSpectrum(void) {
     PutPixel(px, OSC_TOP_MARGIN, C_FILL);
     PutPixel(px - 1, OSC_TOP_MARGIN + 1, C_FILL);
     PutPixel(px + 1, OSC_TOP_MARGIN + 1, C_FILL);
+  }
+
+#define ADC_FS_HZ 9600U
+  // Частота пика.
+  // Эффективная Fs после децимации = ADC_FS_HZ / scale_t
+  // Разрешение по частоте = Fs_eff / 128
+  // F_peak = peak_bin * ADC_FS_HZ / (scale_t * 128)
+  uint32_t fs_eff = ADC_FS_HZ / (uint32_t)osc.scale_t; // Гц
+  uint32_t peak_hz = (uint32_t)peak_bin * fs_eff / 128U;
+
+  // Отображаем в нижней строке графика: "Pk: XXX Hz" или "Pk: X.X kHz"
+  if (peak_hz < 1000) {
+    PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "Pk:%luHz",
+                 peak_hz);
+  } else {
+    // Одна цифра после запятой: X.Y kHz
+    uint32_t khz_int = peak_hz / 1000;
+    uint32_t khz_frac = (peak_hz % 1000) / 100;
+    PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "Pk:%lu.%lukHz",
+                 khz_int, khz_frac);
   }
 }
 
@@ -557,8 +579,6 @@ static void drawStatus(void) {
                                                 : "OSC";
   PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
-  PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "%4u / %4u",
-               dmaMin, dmaMax);
   PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL,
                osc.dc_offset ? "DC" : "RAW");
 
