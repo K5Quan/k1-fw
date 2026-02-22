@@ -7,6 +7,7 @@
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "driver/uart.h"
+#include "helper/audio_io.h"
 #include "helper/fsk2.h"
 #include "misc.h"
 #include "system.h"
@@ -18,6 +19,8 @@
 int main(void) {
   SYSTICK_Init();
   BOARD_Init();
+  AUDIO_IO_Init();
+
   GPIO_TurnOnBacklight();
 
   SYS_Main();

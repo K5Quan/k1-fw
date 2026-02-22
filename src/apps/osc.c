@@ -2,6 +2,7 @@
 #include "../board.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
+#include "../helper/audio_io.h"
 #include "../helper/fft.h"
 #include "../helper/regs-menu.h"
 #include "../settings.h"
@@ -246,23 +247,6 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
 }
 
 // ---------------------------------------------------------------------------
-// Инициализация
-// ---------------------------------------------------------------------------
-void OSC_init(void) {
-  osc.mode = MODE_WAVE;
-  osc.scale_v = 10;
-  osc.scale_t = 2;
-  osc.trigger_level = 2048;
-  osc.dc_offset = false;
-  osc.show_grid = false;
-  osc.show_trigger = true;
-  osc.ook_threshold = 200;
-  triggerArm();
-}
-
-void OSC_deinit(void) {}
-
-// ---------------------------------------------------------------------------
 // push_sample — WAVE + FFT
 // ---------------------------------------------------------------------------
 static void push_sample(uint16_t raw) {
@@ -379,16 +363,29 @@ static void process_block(const volatile uint16_t *src, uint32_t len) {
   }
 }
 
-void OSC_update(void) {
-  if (aprs_ready1) {
-    aprs_ready1 = false;
-    process_block(&adc_dma_buffer[0], APRS_BUFFER_SIZE);
-  }
-  if (aprs_ready2) {
-    aprs_ready2 = false;
-    process_block(&adc_dma_buffer[APRS_BUFFER_SIZE], APRS_BUFFER_SIZE);
-  }
+static void osc_sink(const uint16_t *buf, uint32_t n) {
+  process_block(buf, n); // та же логика, но buf уже валиден
 }
+
+// ---------------------------------------------------------------------------
+// Инициализация
+// ---------------------------------------------------------------------------
+void OSC_init(void) {
+  osc.mode = MODE_WAVE;
+  osc.scale_v = 10;
+  osc.scale_t = 2;
+  osc.trigger_level = 2048;
+  osc.dc_offset = false;
+  osc.show_grid = false;
+  osc.show_trigger = true;
+  osc.ook_threshold = 200;
+  triggerArm();
+  AUDIO_IO_SinkRegister(osc_sink);
+}
+
+void OSC_deinit(void) { AUDIO_IO_SinkUnregister(osc_sink); }
+
+void OSC_update(void) {}
 
 // ---------------------------------------------------------------------------
 // Отрисовка — сетка
@@ -482,7 +479,6 @@ static void drawSpectrum(void) {
   uint32_t fs_eff = ADC_FS_HZ / (uint32_t)osc.scale_t; // Гц
   uint32_t peak_hz = (uint32_t)peak_bin * fs_eff / 128U;
 
-  // Отображаем в нижней строке графика: "Pk: XXX Hz" или "Pk: X.X kHz"
   if (peak_hz < 1000) {
     PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "Pk:%luHz",
                  peak_hz);

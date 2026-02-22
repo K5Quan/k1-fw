@@ -15,6 +15,7 @@
 #include "external/CMSIS/Device/PY32F071/Include/py32f071xB.h"
 #include "external/littlefs/lfs.h"
 #include "external/printf/printf.h"
+#include "helper/audio_io.h"
 #include "helper/bands.h"
 #include "helper/fsk2.h"
 #include "helper/keymap.h"
@@ -370,6 +371,7 @@ void SYS_Main() {
       CHLIST_update();
     } */
 
+    AUDIO_IO_Update();
     APPS_update();
 
     if (Now() - toastTimer >= 40) {
