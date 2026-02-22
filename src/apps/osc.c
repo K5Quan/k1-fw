@@ -266,10 +266,10 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     uint16_t reg43 = BK4819_ReadRegister(0x43); // 15
     if ((reg43 >> 15) & 1) {
       reg43 &= ~(1 << 15);
-      BK4819_SetAF(BK4819_AF_MUTE);
+      BK4819_SetAF(BK4819_AF_FM);
     } else {
       reg43 |= 1 << 15;
-      BK4819_SetAF(BK4819_AF_FM);
+      BK4819_SetAF(BK4819_AF_MUTE);
     }
     BK4819_WriteRegister(0x43, reg43);
   }

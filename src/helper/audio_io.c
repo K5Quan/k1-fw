@@ -173,11 +173,17 @@ static void dac_dma_init(void) {
 }
 
 static void dac_trigger_init(void) {
-  // Switch DAC trigger from software (board.c) to TIM6 TRGO
+  // Switch DAC trigger from software (board.c) to TIM6 TRGO.
+  // Must disable before changing trigger source (RM requirement).
   LL_DAC_Disable(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_SetTriggerSource(DAC1, LL_DAC_CHANNEL_1, LL_DAC_TRIG_EXT_TIM6_TRGO);
+  // EnableTrigger is separate from SetTriggerSource on PY32/STM32.
+  // Without this the DAC ignores TIM6 TRGO and never latches DHR → DOR.
+  LL_DAC_EnableTrigger(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_EnableDMAReq(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_1);
+  // DAC needs ~1 us after enable before it can drive output (per RM)
+  for (volatile int i = 0; i < 100; i++) {}
 }
 
 // ---------------------------------------------------------------------------
@@ -310,3 +316,4 @@ bool AUDIO_IO_SourceActive(void) { return active_source != NULL; }
 const AudioIO_Stats_t *AUDIO_IO_GetStats(void) { return &stats; }
 void AUDIO_IO_ResetStats(void) { memset(&stats, 0, sizeof(stats)); }
 #endif
+
