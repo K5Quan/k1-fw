@@ -258,19 +258,22 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     FINPUT_Show(setTriggerLevel);
     return true;
   case KEY_SIDE1:
+    BK4819_ToggleAFDAC(false);
+    BK4819_ToggleAFBit(false);
     TEST_TONE_Start();
     SYSTICK_DelayMs(2000); // 2 секунды
     TEST_TONE_Stop();
+    BK4819_ToggleAFDAC(true);
+    BK4819_ToggleAFBit(true);
     return true;
   case KEY_SIDE2: {
     uint16_t reg43 = BK4819_ReadRegister(0x43); // 15
     if ((reg43 >> 15) & 1) {
       reg43 &= ~(1 << 15);
-      BK4819_SetAF(BK4819_AF_FM);
     } else {
       reg43 |= 1 << 15;
-      BK4819_SetAF(BK4819_AF_MUTE);
     }
+
     BK4819_WriteRegister(0x43, reg43);
   }
     return true;
