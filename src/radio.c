@@ -103,9 +103,7 @@ static const ParamDesc PARAM_DESC[PARAM_COUNT] = {
 // Удобный алиас для совместимости с кодом, который обращается к PARAM_NAMES
 #define PARAM_NAMES(p) (PARAM_DESC[p].name)
 
-const char *RADIO_GetParamName(ParamType p) {
-  return PARAM_DESC[p].name;
-}
+const char *RADIO_GetParamName(ParamType p) { return PARAM_DESC[p].name; }
 
 const char *TX_STATE_NAMES[7] = {
     [TX_UNKNOWN] = "TX Off",              //
@@ -428,189 +426,19 @@ static TXStatus checkTX(VFOContext *ctx) {
   return TX_ON;
 }
 
-static void toggleBK4819(bool on) {
-  static bool bk4819_listen;
-  if (bk4819_listen == on) {
-    return;
-  }
-  bk4819_listen = on;
-
-  Log("[RADIO] BK4819 audio=%u", on);
-  if (on) {
-    BK4819_ToggleAFDAC(true);
-    BK4819_ToggleAFBit(true);
-    SYSTICK_DelayMs(8);
-    AUDIO_ToggleSpeaker(true);
-  } else {
-    AUDIO_ToggleSpeaker(false);
-    SYSTICK_DelayMs(8);
-    BK4819_ToggleAFBit(false);
-    BK4819_ToggleAFDAC(false);
-  }
-}
-
-static void toggleBK1080SI4732(bool on) {
-  static bool bc_listen;
-  if (bc_listen == on) {
-    return;
-  }
-  bc_listen = on;
-  Log("[RADIO] BK1080/SI audio=%u", on);
-  if (on) {
-    SYSTICK_DelayMs(8);
-    AUDIO_ToggleSpeaker(true);
-  } else {
-    AUDIO_ToggleSpeaker(false);
-    SYSTICK_DelayMs(8);
-  }
-}
-
-// Функция включения конкретного приёмника
-static void rxTurnOn(const VFOContext *ctx, RadioHardwareState *hw_state) {
-  Radio target = ctx->radio_type;
-
-  switch (target) {
-  case RADIO_BK4819:
-    LogC(LOG_C_BRIGHT_YELLOW, "BK4819 on");
-    BK4819_RX_TurnOn(); // Reset state
-    hw_state->bk4819_enabled = true;
-    break;
-
-  case RADIO_BK1080:
-    // Переводим BK4819 в Idle только если он был активен
-    if (hw_state->bk4819_enabled) {
-      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
-      BK4819_Idle();
-      hw_state->bk4819_enabled = false;
-    }
-
-    LogC(LOG_C_BRIGHT_YELLOW, "BK1080 on");
-    if (!hw_state->bk1080_enabled) {
-      BK4819_SelectFilter(ctx->frequency);
-      BK1080_Mute(false);
-      BK1080_Init(ctx->frequency, true);
-      hw_state->bk1080_enabled = true;
-    } else {
-      BK4819_SelectFilter(ctx->frequency);
-      BK1080_SetFrequency(ctx->frequency);
-      BK1080_Mute(false);
-    }
-    break;
-
-  case RADIO_SI4732:
-    // Переводим BK4819 в Idle только если он был активен
-    if (hw_state->bk4819_enabled) {
-      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
-      BK4819_Idle();
-      hw_state->bk4819_enabled = false;
-    }
-
-    if (!hw_state->si4732_enabled || gSettings.si4732PowerOff || !isSi4732On) {
-      if (RADIO_IsSSB(ctx)) {
-        SI47XX_PatchPowerUp();
-      } else {
-        SI47XX_PowerUp();
-      }
-      hw_state->si4732_enabled = true;
-      isSi4732On = true;
-    } else {
-      SI47XX_SetVolume(63);
-    }
-    break;
-
-  default:
-    break;
-  }
-}
-
-// Упрощённая функция выключения
-static void rxTurnOff(Radio r, RadioHardwareState *hw_state) {
-  switch (r) {
-  case RADIO_BK4819:
-    if (hw_state->bk4819_enabled) {
-      LogC(LOG_C_BRIGHT_YELLOW, "BK4819 idle");
-      BK4819_Idle();
-      hw_state->bk4819_enabled = false;
-    }
-    break;
-
-  case RADIO_BK1080:
-    if (hw_state->bk1080_enabled) {
-      LogC(LOG_C_BRIGHT_YELLOW, "BK1080 init false");
-      BK1080_Init(0, false);
-      hw_state->bk1080_enabled = false;
-    }
-    break;
-
-  case RADIO_SI4732:
-    if (hw_state->si4732_enabled) {
-      if (gSettings.si4732PowerOff) {
-        SI47XX_PowerDown();
-        isSi4732On = false;
-        hw_state->si4732_enabled = false;
-      } else {
-        SI47XX_SetVolume(0);
-      }
-    }
-    break;
-
-  default:
-    break;
-  }
-}
-
 void RADIO_SwitchAudioToVFO(RadioState *state, uint8_t vfo_index) {
   if (vfo_index >= state->num_vfos)
     return;
-
   Log("[RADIO] SW AUD to VFO %u", vfo_index);
-
-  const ExtendedVFOContext *new_vfo = &state->vfos[vfo_index];
-  Radio new_radio = new_vfo->context.radio_type;
-
-  // Сначала выключаем аудио со всех приёмников
-  toggleBK4819(false);
-  toggleBK1080SI4732(false);
-
-  // Выключаем ненужные приёмники
-  if (new_radio != RADIO_BK4819) {
-    rxTurnOff(RADIO_BK4819, &state->hw_state);
-  }
-
-  if (new_radio != RADIO_BK1080) {
-    rxTurnOff(RADIO_BK1080, &state->hw_state);
-  }
-
-  if (new_radio != RADIO_SI4732) {
-    rxTurnOff(RADIO_SI4732, &state->hw_state);
-  }
-
-  // Включаем нужный приёмник (это может включить BK4819_RX_TurnOn!)
-  rxTurnOn(&new_vfo->context, &state->hw_state);
-
-  // Включаем аудио для активного приёмника
-  switch (new_radio) {
-  case RADIO_BK4819:
-    toggleBK4819(new_vfo->is_open);
-    break;
-  case RADIO_SI4732:
-  case RADIO_BK1080:
-    toggleBK1080SI4732(new_vfo->is_open);
-    break;
-  default:
-    break;
-  }
-
-  BOARD_ToggleGreen(new_vfo->is_open);
-
-  if (new_vfo->is_open) {
-    if (gSettings.backlightOnSquelch != BL_SQL_OFF) {
+  const ExtendedVFOContext *ev = &state->vfos[vfo_index];
+  RXSW_SwitchTo(&state->rx_switch, &ev->context, ev->is_open);
+  BOARD_ToggleGreen(ev->is_open);
+  if (ev->is_open) {
+    if (gSettings.backlightOnSquelch != BL_SQL_OFF)
       BACKLIGHT_TurnOn();
-    }
   } else {
-    if (gSettings.backlightOnSquelch == BL_SQL_OPEN) {
+    if (gSettings.backlightOnSquelch == BL_SQL_OPEN)
       BACKLIGHT_TurnOff();
-    }
   }
 }
 
@@ -1383,7 +1211,8 @@ void RADIO_ApplySettings(VFOContext *ctx) {
          RADIO_GetParamValueString(ctx, PARAM_RADIO));
     ctx->dirty[PARAM_RADIO] = false;
 
-    rxTurnOn(ctx, &gRadioState->hw_state);
+    ExtendedVFOContext *ev = RADIO_GetCurrentVFO(gRadioState);
+    RXSW_SwitchTo(&gRadioState->rx_switch, ctx, ev ? ev->is_open : false);
   }
 
   const bool needSetupToneDetection =
@@ -1996,20 +1825,7 @@ void RADIO_LoadVFOs(RadioState *state) {
 
   initVfoFile();
 
-  // Инициализируем состояние железа
-  memset(&state->hw_state, 0, sizeof(RadioHardwareState));
-
-  // Инициализируем все доступные приёмники один раз
-  BK4819_Init();
-  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
-  BK4819_RX_TurnOn();
-  state->hw_state.bk4819_enabled = true;
-
-  BK1080_Init(0, false);
-  state->hw_state.bk1080_enabled = false;
-
-  // SI4732 не включаем сразу, включится при необходимости
-  state->hw_state.si4732_enabled = false;
+  RXSW_Init(&state->rx_switch);
 
   VFO vfos[4];
   Storage_LoadMultiple(vfosFileName, 0, vfos, sizeof(VFO), 4);
