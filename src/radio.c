@@ -2091,7 +2091,6 @@ void RADIO_LoadVFOs(RadioState *state) {
   state->hw_state.bk4819_enabled = true;
 
   BK1080_Init(0, false);
-  // BK1080_Mute(true);
   state->hw_state.bk1080_enabled = false;
 
   // SI4732 не включаем сразу, включится при необходимости
