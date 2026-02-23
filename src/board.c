@@ -158,8 +158,6 @@ void BOARD_TIM3_Init(void) {
   LL_TIM_SetCounterMode(TIM3, LL_TIM_COUNTERMODE_UP);
   LL_TIM_SetTriggerOutput(TIM3, LL_TIM_TRGO_UPDATE);
   LL_TIM_DisableMasterSlaveMode(TIM3);
-
-  LL_TIM_EnableCounter(TIM3);
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +227,8 @@ LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_CONTINUOUS); */
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
   LL_ADC_Enable(ADC1);
-  /* SYSTICK_DelayUs(10);
 
-  LL_ADC_REG_StartConversionSWStart(ADC1); */
+  LL_TIM_EnableCounter(TIM3);
 }
 
 void BOARD_ADC_StartAPRS_DMA(void) {
@@ -334,10 +331,11 @@ void BOARD_Init(void) {
   BOARD_GPIO_Init();
   UART_Init(); // also enables SYSCFG clock, required before BOARD_ADC_Init
   LogC(LOG_C_BRIGHT_WHITE, "Init start");
+
   BOARD_TIM3_Init();
   BOARD_ADC_Init();
   BOARD_DAC_Init();
-  LogC(LOG_C_BRIGHT_WHITE, "ADC_CR2=%08X ADC_SR=%08X", ADC1->CR2, ADC1->SR);
+
   LogC(LOG_C_BRIGHT_WHITE, "Flash init");
   PY25Q16_Init();
   LogC(LOG_C_BRIGHT_WHITE, "File system init");

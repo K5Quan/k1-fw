@@ -373,7 +373,6 @@ void SYS_Main() {
     } */
 
     AUDIO_IO_Update();
-    AREC_Update();
     APPS_update();
 
     if (Now() - toastTimer >= 40) {

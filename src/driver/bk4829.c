@@ -482,15 +482,15 @@ void BK4819_SetFilterBandwidth(BK4819_FilterBandwidth_t bw) {
     return;
 
   //                                       v
-  static const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};
+  /* static const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};
   static const uint8_t wb[] = {0, 0, 1, 2, 0, 2, 2, 3, 4, 6};
   static const uint8_t af[] = {1, 2, 0, 3, 0, 0, 7, 6, 5, 4};
-  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2};
+  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; */
 
-  /* static const uint8_t rf[] = {3, 3, 4, 4, 4, 5, 5, 6, 6, 7};
+  static const uint8_t rf[] = {3, 3, 4, 4, 4, 5, 5, 6, 6, 7};
   static const uint8_t wb[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 5};
   static const uint8_t af[] = {1, 1, 1, 1, 0, 0, 3, 3, 4, 4};
-  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; */
+  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2};
 
   const uint16_t value = //
       (0u << 15)         //
@@ -1419,12 +1419,12 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
 
-  // BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
-  BK4819_WriteRegister(BK4819_REG_48,
+  BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  /* BK4819_WriteRegister(BK4819_REG_48,
                        (0b1100 << 10)        // ?
                            | (0b111111 << 4) // GAIN2
                            | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
-  );
+  ); */
 
   BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
@@ -1446,7 +1446,7 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(0x77, 0x88EF);
 
   BK4819_WriteRegister(BK4819_REG_19, 0x104E); // MIC AGC on
-  BK4819_WriteRegister(BK4819_REG_28, 0x0B40); // RX noise gate
+  // BK4819_WriteRegister(BK4819_REG_28, 0x0B40); // RX noise gate
   BK4819_WriteRegister(BK4819_REG_29, 0xAA00); // TX noise gate
 
   // audio settings

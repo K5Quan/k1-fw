@@ -20,9 +20,7 @@ int main(void) {
   SYSTICK_Init();
   BOARD_Init();
   AUDIO_IO_Init();
-
   GPIO_TurnOnBacklight();
-
   SYS_Main();
 
   UI_ClearStatus();

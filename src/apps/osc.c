@@ -3,8 +3,8 @@
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../helper/audio_io.h"
-#include "../helper/audio_rec.h"
 #include "../helper/fft.h"
+#include "../helper/ook.h"
 #include "../helper/regs-menu.h"
 #include "../settings.h"
 #include "../ui/finput.h"
@@ -48,14 +48,6 @@ typedef struct {
   uint8_t fft_mag[FFT_BINS];
   bool fft_fresh;
 
-  // --- OOK ---
-  Pulse ook_pulses[PULSE_BUF_SIZE];
-  uint8_t ook_count;
-  uint32_t ook_envelope_iir;
-  uint16_t ook_threshold;
-  uint8_t ook_state;
-  uint16_t ook_counter;
-
   // --- Общие ---
   OscMode mode;
   uint8_t scale_v;
@@ -69,6 +61,11 @@ typedef struct {
   uint32_t dc_iir;
   uint8_t decimate_cnt;
   int32_t lpf_iir;
+
+  // --- Качество сигнала (обновляется в process_block) ---
+  uint16_t sig_amp;   // амплитуда = (max-min)/2, идеал ~1800..2000
+  uint16_t sig_mid;   // DC-центр  = min + amp,    идеал ~2048
+  bool clip_flag;     // true если касается 0 или 4095
 } OscContext;
 
 static OscContext osc;
@@ -192,14 +189,7 @@ static void triggerArm(void) {
   osc.fft_fresh = false;
   osc.dc_iir = 2048UL << 8;
   osc.lpf_iir = 2048L << 8;
-  osc.ook_count = 0;
-  osc.ook_state = 0;
-  osc.ook_counter = 0;
-  osc.ook_envelope_iir = 0;
 }
-
-bool recording;
-bool playing;
 
 // ---------------------------------------------------------------------------
 // Клавиши
@@ -214,7 +204,6 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
   // Вертикальный масштаб / порог OOK вверх
   case KEY_2:
     if (osc.mode == MODE_OOK) {
-      osc.ook_threshold += 20;
     } else {
       setScaleV(osc.scale_v + 1, 0);
     }
@@ -222,8 +211,6 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
   // Вертикальный масштаб / порог OOK вниз
   case KEY_8:
     if (osc.mode == MODE_OOK) {
-      if (osc.ook_threshold > 20)
-        osc.ook_threshold -= 20;
     } else {
       setScaleV(osc.scale_v - 1, 0);
     }
@@ -257,26 +244,6 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     FINPUT_Show(tuneTo);
     return true;
 
-  case KEY_UP:
-    playing = !playing;
-    if (playing) {
-      AREC_StartPlayback();
-    } else {
-      AREC_StopPlayback();
-    }
-    return true;
-  case KEY_DOWN:
-    recording = !recording;
-    if (recording) {
-      AREC_StartRecording();
-      SYSTICK_DelayMs(5000);
-      AREC_StopRecording();
-      recording = false;
-    } else {
-      AREC_StopRecording();
-    }
-    return true;
-
   case KEY_0:
     FINPUT_setup(0, MAX_VAL, UNIT_RAW, false);
     FINPUT_Show(setTriggerLevel);
@@ -305,11 +272,9 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
   // Переключение режимов: WAVE → FFT → OOK → WAVE
   case KEY_6:
     osc.mode = (OscMode)((osc.mode + 1) % 3);
-    osc.ook_count = 0;
     return true;
 
   case KEY_STAR:
-    osc.ook_count = 0;
     triggerArm();
     return true;
 
@@ -378,36 +343,6 @@ static void push_sample(uint16_t raw) {
 }
 
 // ---------------------------------------------------------------------------
-// ook_push_sample — детектор огибающей + фронтов
-// ---------------------------------------------------------------------------
-static void ook_push_sample(uint16_t raw) {
-  // Огибающая: быстрая атака (1/4), медленный спад (1/32)
-  int32_t v = (int32_t)raw - 2048;
-  uint32_t av = (uint32_t)((v < 0 ? -v : v) << 8);
-  if (av > osc.ook_envelope_iir)
-    osc.ook_envelope_iir += (av - osc.ook_envelope_iir) >> 2;
-  else
-    osc.ook_envelope_iir += (av - osc.ook_envelope_iir) >> 3;
-
-  uint16_t env = (uint16_t)(osc.ook_envelope_iir >> 8);
-  uint8_t bit = env > osc.ook_threshold ? 1 : 0;
-
-  if (bit == osc.ook_state) {
-    if (osc.ook_counter < 65535)
-      osc.ook_counter++;
-  } else {
-    // Фронт — сохранить импульс (фильтр дребезга: минимум 3 сэмпла)
-    if (osc.ook_counter > 3 && osc.ook_count < PULSE_BUF_SIZE) {
-      osc.ook_pulses[osc.ook_count].duration = osc.ook_counter;
-      osc.ook_pulses[osc.ook_count].high = osc.ook_state;
-      osc.ook_count++;
-    }
-    osc.ook_state = bit;
-    osc.ook_counter = 1;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // process_block
 // ---------------------------------------------------------------------------
 static void process_block(const volatile uint16_t *src, uint32_t len) {
@@ -420,12 +355,6 @@ static void process_block(const volatile uint16_t *src, uint32_t len) {
     if (s < dmaMin)
       dmaMin = s;
 
-    if (osc.mode == MODE_OOK) {
-      ook_push_sample(s);
-      /* if (osc.ook_count >= PULSE_BUF_SIZE)
-        gRedrawScreen = true; */
-    }
-
     if (++osc.decimate_cnt >= osc.scale_t) {
       osc.decimate_cnt = 0;
       push_sample(s);
@@ -433,10 +362,30 @@ static void process_block(const volatile uint16_t *src, uint32_t len) {
         gRedrawScreen = true;
     }
   }
+
+  // Обновляем метрики качества сигнала
+  uint16_t amp = (dmaMax - dmaMin) / 2;
+  osc.sig_amp  = amp;
+  osc.sig_mid  = dmaMin + amp;
+  // Клиппинг: касание краёв ADC с порогом 8 отсчётов
+  osc.clip_flag = (dmaMin <= 8) || (dmaMax >= 4087);
 }
 
 static void osc_sink(const uint16_t *buf, uint32_t n) {
   process_block(buf, n); // та же логика, но buf уже валиден
+  ook_sink(buf, n);
+}
+
+uint8_t ookData[128];
+uint16_t ookLen;
+
+void myOokHandler(const uint8_t *data, uint16_t nbytes) {
+  if (nbytes > 0) {
+    for (uint16_t i = 0; i < nbytes; ++i) {
+      ookData[i] = data[i];
+    }
+    ookLen = nbytes;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -450,9 +399,11 @@ void OSC_init(void) {
   osc.dc_offset = false;
   osc.show_grid = false;
   osc.show_trigger = true;
-  osc.ook_threshold = 200;
   triggerArm();
+  ook_reset();
+  ookHandler = myOokHandler;
   AUDIO_IO_SinkRegister(osc_sink);
+  // AUDIO_IO_SinkRegister(ook_sink);
 }
 
 void OSC_deinit(void) { AUDIO_IO_SinkUnregister(osc_sink); }
@@ -488,8 +439,12 @@ static void drawWaveform(void) {
     DrawLine(x - 1, prev_y, x, y, C_FILL);
     prev_y = y;
   }
-  PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 3, POS_C, C_FILL, "%4u / %4u",
-               dmaMin, dmaMax);
+  // Линия идеального центра (2048) — пунктиром
+  {
+    int cy = val_to_y(2048);
+    for (int x = 0; x < LCD_WIDTH; x += 6)
+      PutPixel(x, cy, C_FILL);
+  }
 }
 
 static void drawTriggerMarker(void) {
@@ -567,72 +522,61 @@ static void drawSpectrum(void) {
 // Отрисовка — OOK
 // ---------------------------------------------------------------------------
 static void drawOOK(void) {
-  if (osc.ook_count == 0) {
-    PrintSmallEx(LCD_XCENTER, OSC_TOP_MARGIN + OSC_GRAPH_H / 2, POS_C, C_FILL,
-                 "OOK...");
-    return;
+  PrintSmallEx(0, 24, POS_L, C_FILL, "LEN: %u", ookLen);
+  for (uint16_t i = 0; i < ookLen; ++i) {
+    PrintSmallEx((i % 8) * 10, 32 + i / 8, POS_L, C_FILL, "%02X", ookData[i]);
   }
+}
 
-  // Найти максимальную длительность для масштаба по X
-  uint16_t max_dur = 1;
-  for (int i = 0; i < osc.ook_count; i++)
-    if (osc.ook_pulses[i].duration > max_dur)
-      max_dur = osc.ook_pulses[i].duration;
+// ---------------------------------------------------------------------------
+// Отрисовка — метрики качества сигнала (VU-бар, DC, клиппинг)
+// Занимает строки 3-4 в шапке (y = SMALL_FONT_H*3 и SMALL_FONT_H*4-1)
+// ---------------------------------------------------------------------------
+#define SIG_FULL_AMP 2048u  // полная амплитуда = Vref/2
 
-  // Уровни Y для осциллограммы (верхняя половина экрана)
-  int y_hi = OSC_TOP_MARGIN + 2;
-  int y_lo = OSC_TOP_MARGIN + OSC_GRAPH_H / 2 - 6;
+static void drawSignalInfo(void) {
+  // --- Уровень в процентах (0..100%) ---
+  uint8_t level_pct = (uint8_t)((uint32_t)osc.sig_amp * 100u / SIG_FULL_AMP);
+  if (level_pct > 100)
+    level_pct = 100;
 
-  // Рисуем импульсы
-  int x = 0;
-  for (int i = 0; i < osc.ook_count && x < LCD_WIDTH; i++) {
-    int w =
-        (int)((uint32_t)osc.ook_pulses[i].duration * (LCD_WIDTH - 1) / max_dur);
-    if (w < 1)
-      w = 1;
-    int y = osc.ook_pulses[i].high ? y_hi : y_lo;
+  // --- DC-смещение от идеального центра ---
+  int16_t dc_err = (int16_t)osc.sig_mid - 2048;
 
-    // Горизонтальная линия импульса
-    DrawLine(x, y, x + w, y, C_FILL);
+  // --- VU-бар: y-позиция строки 3 (y=18), высота 4 пикселя ---
+  // Ширина бара = LCD_WIDTH - 28 (оставляем 28px слева для текста)
+  const int BAR_X   = 28; // начало бара
+  const int BAR_W   = LCD_WIDTH - BAR_X - 1;
+  const int BAR_Y   = SMALL_FONT_H * 3 - 4; // верх бара
+  const int BAR_H   = 4;
 
-    // Вертикальный фронт к следующему импульсу
-    if (i + 1 < osc.ook_count) {
-      int y_next = osc.ook_pulses[i + 1].high ? y_hi : y_lo;
-      DrawLine(x + w, y, x + w, y_next, C_FILL);
-    }
-    x += w;
-  }
+  // Рамка
+  DrawLine(BAR_X,          BAR_Y,        BAR_X + BAR_W, BAR_Y,        C_FILL);
+  DrawLine(BAR_X,          BAR_Y + BAR_H, BAR_X + BAR_W, BAR_Y + BAR_H, C_FILL);
+  DrawLine(BAR_X,          BAR_Y,        BAR_X,          BAR_Y + BAR_H, C_FILL);
+  DrawLine(BAR_X + BAR_W,  BAR_Y,        BAR_X + BAR_W,  BAR_Y + BAR_H, C_FILL);
 
-  // Разделитель между осциллограммой и таблицей
-  int y_sep = OSC_TOP_MARGIN + OSC_GRAPH_H / 2 - 2;
-  for (int xi = 0; xi < LCD_WIDTH; xi += 2)
-    PutPixel(xi, y_sep, C_FILL);
+  // Заливка уровня
+  int fill_w = (int)((uint32_t)level_pct * (BAR_W - 2) / 100);
+  if (fill_w > 0)
+    FillRect(BAR_X + 1, BAR_Y + 1, fill_w, BAR_H - 1, C_FILL);
 
-  // Таблица длительностей (нижняя половина): мкс при Fs~31 кГц → 32 мкс/сэмпл
-  // Показываем первые 8 импульсов, по 16 пикселей на столбец
-  int y_text = OSC_TOP_MARGIN + OSC_GRAPH_H / 2;
-  int cols = LCD_WIDTH / 16; // сколько влезает
-  if (cols > 8)
-    cols = 8;
-  for (int i = 0; i < osc.ook_count && i < cols; i++) {
-    uint32_t us = (uint32_t)osc.ook_pulses[i].duration * 32;
-    // Если больше 9999 мкс — показываем в мс
-    if (us < 10000) {
-      PrintSmallEx(i * 16, y_text, POS_L, C_FILL, "%c%lu",
-                   osc.ook_pulses[i].high ? 'H' : 'L', us);
-    } else {
-      PrintSmallEx(i * 16, y_text, POS_L, C_FILL, "%c%lum",
-                   osc.ook_pulses[i].high ? 'H' : 'L', us / 1000);
-    }
-  }
+  // Маркер зоны предклиппинга (~87%)
+  int warn_x = BAR_X + 1 + (BAR_W - 2) * 87 / 100;
+  PutPixel(warn_x, BAR_Y,     C_FILL);
+  PutPixel(warn_x, BAR_Y + BAR_H, C_FILL);
 
-  // Счётчик и порог
-  PrintSmallEx(LCD_WIDTH, y_text + SMALL_FONT_H, POS_R, C_FILL, "N:%d",
-               osc.ook_count);
+  // --- Текст: уровень% слева от бара ---
+  PrintSmallEx(BAR_X - 1, SMALL_FONT_H * 3, POS_R, C_FILL, "%3u%%", level_pct);
 
-  PrintSmallEx(0, LCD_HEIGHT - 8, POS_L, C_FILL, "E:%d S:%d C:%d",
-               (uint16_t)(osc.ook_envelope_iir >> 8), osc.ook_state,
-               osc.ook_counter);
+  // --- Строка 4: DC-смещение | CLIP ---
+  if (dc_err >= 0)
+    PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "DC+%d", dc_err);
+  else
+    PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "DC%d",  dc_err);
+
+  if (osc.clip_flag)
+    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 4, POS_R, C_FILL, "!CLIP!");
 }
 
 // ---------------------------------------------------------------------------
@@ -645,23 +589,17 @@ static void drawStatus(void) {
   const char *mode_str = osc.mode == MODE_FFT   ? "FFT"
                          : osc.mode == MODE_OOK ? "OOK"
                                                 : "OSC";
-  PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
+  // Строка 2: режим | частота
+  PrintSmallEx(0,          SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
-  PrintSmallEx(0, SMALL_FONT_H * 3, POS_L, C_FILL,
-               osc.dc_offset ? "DC" : "RAW");
 
-  if (osc.mode == MODE_WAVE) {
-    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 3, POS_R, C_FILL, "V:%d T:%d",
-                 osc.scale_v, osc.scale_t);
-    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 4, POS_R, C_FILL, "T:%d",
-                 osc.trigger_level);
-  } else if (osc.mode == MODE_OOK) {
-    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 3, POS_R, C_FILL, "THR:%d",
-                 osc.ook_threshold);
-  } else {
-    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 3, POS_R, C_FILL, "T:%d",
-                 osc.scale_t);
-  }
+  // Строка 3 (правый край): масштаб времени
+  PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 2, POS_R, C_FILL, "T:%d", osc.scale_t);
+
+  // Строка 1: DC/RAW | вертикальный масштаб (только WAVE)
+  PrintSmallEx(0, SMALL_FONT_H, POS_L, C_FILL, osc.dc_offset ? "DC" : "RAW");
+  if (osc.mode == MODE_WAVE)
+    PrintSmallEx(LCD_WIDTH, SMALL_FONT_H, POS_R, C_FILL, "V:%d", osc.scale_v);
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +613,7 @@ void OSC_render(void) {
   if (osc.mode == MODE_WAVE) {
     drawWaveform();
     drawTriggerMarker();
+    drawSignalInfo();
   } else if (osc.mode == MODE_FFT) {
     drawSpectrum();
   } else {
@@ -683,12 +622,6 @@ void OSC_render(void) {
 
   drawStatus();
 
-  if (recording) {
-    PrintMediumEx(LCD_XCENTER, 24, POS_C, C_FILL, "recording");
-  }
-  if (playing) {
-    PrintMediumEx(LCD_XCENTER, 24, POS_C, C_FILL, "playing");
-  }
-
   REGSMENU_Draw();
 }
+
