@@ -57,41 +57,55 @@ const char *FILTER_NAMES[4] = {
     [FILTER_AUTO] = "Auto",
 };
 
-const char *PARAM_NAMES[] = {
-    [PARAM_FREQUENCY] = "f",                 //
-    [PARAM_STEP] = "Step",                   //
-    [PARAM_POWER] = "Power",                 //
-    [PARAM_TX_OFFSET] = "TX offset",         //
-    [PARAM_TX_OFFSET_DIR] = "TX offset dir", //
-    [PARAM_MODULATION] = "Mod",              //
-    [PARAM_SQUELCH_VALUE] = "SQ",            //
-    [PARAM_SQUELCH_TYPE] = "SQ type",        //
-    [PARAM_VOLUME] = "Volume",               //
-    [PARAM_GAIN] = "ATT",                    //
-    [PARAM_BANDWIDTH] = "BW",                //
-    [PARAM_TX_STATE] = "TX state",           //
-    [PARAM_RADIO] = "Radio",                 //
-    [PARAM_RX_CODE] = "RX code",             //
-    [PARAM_TX_CODE] = "TX code",             //
-    [PARAM_RSSI] = "RSSI",                   //
-    [PARAM_GLITCH] = "Glitch",               //
-    [PARAM_NOISE] = "Noise",                 //
-    [PARAM_SNR] = "SNR",                     //
-    [PARAM_PRECISE_F_CHANGE] = "Precise f",  //
+// Дескриптор параметра: имя + диапазон для RADIO_AdjustParam.
+// UINT32_MAX в max_val означает динамический диапазон (зависит от
+// радио/диапазона). Для read-only параметров min_val == max_val == 0.
+typedef struct {
+  const char *name;
+  uint32_t min_val;
+  uint32_t max_val;
+} ParamDesc;
 
-    [PARAM_TX_POWER] = "TX Power",
-    [PARAM_TX_POWER_AMPLIFIER] = "TX PA",
-    [PARAM_TX_FREQUENCY] = "TX f",
-    [PARAM_TX_FREQUENCY_FACT] = "TX f fact",
-
-    [PARAM_AFC] = "AFC",         //
-    [PARAM_AFC_SPD] = "AFC SPD", //
-    [PARAM_DEV] = "DEV",         //
-    [PARAM_MIC] = "MIC",         //
-    [PARAM_XTAL] = "XTAL",       //
-    [PARAM_SCRAMBLER] = "SCR",   //
-    [PARAM_FILTER] = "Filter",   //
+static const ParamDesc PARAM_DESC[PARAM_COUNT] = {
+    [PARAM_FREQUENCY] = {"f", 0, UINT32_MAX}, // диапазон из band
+    [PARAM_STEP] = {"Step", 0, STEP_COUNT},
+    [PARAM_POWER] = {"Power", 0, 4},
+    [PARAM_TX_OFFSET] = {"TX offset", 0, UINT32_MAX}, // диапазон из band
+    [PARAM_TX_OFFSET_DIR] = {"TX offset dir", 0, OFFSET_FREQ + 1},
+    [PARAM_MODULATION] = {"Mod", 0, UINT32_MAX}, // index-based
+    [PARAM_SQUELCH_VALUE] = {"SQ", 0, 11},
+    [PARAM_SQUELCH_TYPE] = {"SQ type", 0, 4},
+    [PARAM_VOLUME] = {"Volume", 0, 100},
+    [PARAM_GAIN] = {"ATT", 0, UINT32_MAX},     // зависит от радио
+    [PARAM_BANDWIDTH] = {"BW", 0, UINT32_MAX}, // index-based
+    [PARAM_TX_STATE] = {"TX state", 0, 0},     // read-only
+    [PARAM_RADIO] = {"Radio", 0, 3},
+    [PARAM_RX_CODE] = {"RX code", 0, UINT32_MAX},
+    [PARAM_TX_CODE] = {"TX code", 0, UINT32_MAX},
+    [PARAM_RSSI] = {"RSSI", 0, 0},     // read-only
+    [PARAM_GLITCH] = {"Glitch", 0, 0}, // read-only
+    [PARAM_NOISE] = {"Noise", 0, 0},   // read-only
+    [PARAM_SNR] = {"SNR", 0, 0},       // read-only
+    [PARAM_PRECISE_F_CHANGE] = {"Precise f", 0, 1},
+    [PARAM_TX_POWER] = {"TX Power", 0, 255},
+    [PARAM_TX_POWER_AMPLIFIER] = {"TX PA", 0, 2},
+    [PARAM_TX_FREQUENCY] = {"TX f", 0, UINT32_MAX}, // диапазон из band
+    [PARAM_TX_FREQUENCY_FACT] = {"TX f fact", 0, 0}, // computed, read-only
+    [PARAM_AFC] = {"AFC", 0, 9},
+    [PARAM_AFC_SPD] = {"AFC SPD", 0, 64},
+    [PARAM_DEV] = {"DEV", 0, 2550},
+    [PARAM_MIC] = {"MIC", 0, 16},
+    [PARAM_XTAL] = {"XTAL", 0, XTAL_3_38_4M + 1},
+    [PARAM_SCRAMBLER] = {"SCR", 0, 10},
+    [PARAM_FILTER] = {"Filter", 0, FILTER_AUTO + 1},
 };
+
+// Удобный алиас для совместимости с кодом, который обращается к PARAM_NAMES
+#define PARAM_NAMES(p) (PARAM_DESC[p].name)
+
+const char *RADIO_GetParamName(ParamType p) {
+  return PARAM_DESC[p].name;
+}
 
 const char *TX_STATE_NAMES[7] = {
     [TX_UNKNOWN] = "TX Off",              //
@@ -283,15 +297,14 @@ static void initVfoFile() {
 }
 
 static void saveVfo(uint8_t i, VFO *vfo) {
-  snprintf(vfosDirName, 16, "/%s", apps[gCurrentApp].name);
-  snprintf(vfosFileName, 32, "%s/vfos.vfo", vfosDirName);
-
+  // vfosDirName и vfosFileName должны быть инициализированы через initVfoFile()
+  // (она вызывается в RADIO_LoadVFOs перед любым saveVfo)
   struct lfs_info info;
   if (lfs_stat(&gLfs, vfosDirName, &info) < 0) {
     lfs_mkdir(&gLfs, vfosDirName);
   }
 
-  Log("[RADIO] SAFE VFO %u", i);
+  Log("[RADIO] SAVE VFO %u", i);
   STORAGE_SAVE(vfosFileName, i, vfo);
 }
 
@@ -627,14 +640,6 @@ static bool setParamBK4819(VFOContext *ctx, ParamType p) {
     }
     BK4819_TuneTo(ctx->frequency, ctx->preciseFChange);
     return true;
-  /* case PARAM_TX_POWER_AMPLIFIER:
-    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE,
-                         ctx->tx_state.pa_enabled);
-    return true;
-  case PARAM_TX_POWER:
-    BK4819_SetupPowerAmplifier(ctx->tx_state.power_level,
-                               ctx->tx_state.frequency);
-    return true; */
   case PARAM_AFC:
     BK4819_SetAFC(ctx->afc);
     return true;
@@ -663,8 +668,6 @@ static bool setParamBK4819(VFOContext *ctx, ParamType p) {
     BK4819_SetRegValue(RS_DEV, ctx->dev);
     return true;
   case PARAM_VOLUME:
-    /* BK4819_SetRegValue(RS_AF_DAC_GAIN,
-                       ConvertDomain(ctx->volume, 0, 100, 0, 15)); */
     return true;
   case PARAM_RADIO:
   case PARAM_PRECISE_F_CHANGE:
@@ -961,24 +964,14 @@ void RADIO_Init(VFOContext *ctx, Radio radio_type) {
     ctx->current_band = &bk4819_bands[0];
     ctx->frequency = 14550000; // 145.5 МГц (диапазон FM)
     ctx->gain = AUTO_GAIN_INDEX;
-    // ctx->afc_speed = BK4819_GetAFCSpeed();
-
-    /* ctx->xtal = BK4819_GetRegValue(RS_XTAL_MODE);
-    ctx->afc = BK4819_GetAFC();
-    ctx->dev = BK4819_GetRegValue(RS_DEV);
-    ctx->mic = BK4819_GetRegValue(RS_MIC);
-    */
-
     break;
   case RADIO_SI4732:
     ctx->current_band = &si4732_bands[0];
-    ctx->frequency = 7100000; // 7.1 МГц (диапазон AM)
+    ctx->frequency = 710000; // 7.1 МГц (диапазон AM)
     break;
   default:
     break;
   }
-  /* RADIO_UpdateCurrentBand(ctx);
-  RADIO_ApplyCorrections(ctx, false); */
 }
 
 // Проверка параметра для текущего диапазона
@@ -1027,7 +1020,7 @@ bool RADIO_IsParamValid(VFOContext *ctx, ParamType param, uint32_t value) {
 void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
                     bool save_to_eeprom) {
   if (!RADIO_IsParamValid(ctx, param, value)) {
-    LogC(LOG_C_RED, "[RADIO] ERR: %-12s -> %u", PARAM_NAMES[param], value);
+    LogC(LOG_C_RED, "[RADIO] ERR: %-12s -> %u", PARAM_NAMES(param), value);
     return;
   }
 
@@ -1125,12 +1118,6 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
   case PARAM_FREQUENCY:
     ctx->frequency = value + gSettings.upconverter;
     break;
-  /* case PARAM_MODULATION:
-    ctx->modulation = (ModulationType)value;
-    break;
-  case PARAM_BANDWIDTH:
-    ctx->bandwidth = (uint16_t)value;
-    break; */
   case PARAM_VOLUME:
     ctx->volume = (uint8_t)value;
     break;
@@ -1188,7 +1175,7 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
   }
 
 #ifdef DEBUG_PARAMS
-  LogC(LOG_C_WHITE, "[SET] %-12s -> %s%s", PARAM_NAMES[param],
+  LogC(LOG_C_WHITE, "[SET] %-12s -> %s%s", PARAM_NAMES(param),
        RADIO_GetParamValueString(ctx, param), save_to_eeprom ? " [W]" : "");
 #endif /* ifdef DEBUG_PARAMS */
 
@@ -1200,7 +1187,7 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
 
   // Если значение изменилось и требуется сохранение - устанавливаем флаг
   if (save_to_eeprom && (old_value != value)) {
-    LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] SAVE %s", PARAM_NAMES[param]);
+    LogC(LOG_C_BRIGHT_YELLOW, "[RADIO] SAVE %s", PARAM_NAMES(param));
     ctx->save_to_eeprom = true;
     ctx->last_save_time = Now();
   }
@@ -1283,105 +1270,65 @@ bool RADIO_AdjustParam(VFOContext *ctx, ParamType param, uint32_t inc,
     return false;
   }
 
-  uint32_t mi = 0, ma = UINT32_MAX, v = RADIO_GetParam(ctx, param);
+  uint32_t v = RADIO_GetParam(ctx, param);
 
-  switch (param) {
-
-  case PARAM_MODULATION:
-    ma = band->num_available_mods;
-    if (ma == 0)
+  // Индексные параметры (зависят от band, не от простого диапазона)
+  if (param == PARAM_MODULATION) {
+    if (band->num_available_mods == 0)
       return false;
-    // Работаем с индексом!
-    ctx->modulation_index = AdjustU(ctx->modulation_index, 0, ma, inc);
+    ctx->modulation_index =
+        AdjustU(ctx->modulation_index, 0, band->num_available_mods, inc);
     RADIO_SetParam(ctx, param, band->available_mods[ctx->modulation_index],
                    save_to_eeprom);
     RADIO_ApplySettings(ctx);
     return true;
+  }
 
-  case PARAM_BANDWIDTH:
-    ma = band->num_available_bandwidths;
-    if (ma == 0)
+  if (param == PARAM_BANDWIDTH) {
+    if (band->num_available_bandwidths == 0)
       return false;
-    ctx->bandwidth_index = AdjustU(ctx->bandwidth_index, 0, ma, inc);
+    ctx->bandwidth_index =
+        AdjustU(ctx->bandwidth_index, 0, band->num_available_bandwidths, inc);
     RADIO_SetParam(ctx, param, band->available_bandwidths[ctx->bandwidth_index],
                    save_to_eeprom);
     RADIO_ApplySettings(ctx);
     return true;
+  }
 
-  case PARAM_FREQUENCY:
-    mi = band->min_freq;
-    ma = band->max_freq;
-    break;
-  case PARAM_TX_OFFSET:
-  case PARAM_TX_FREQUENCY:
-    mi = band->min_freq;
-    ma = band->max_freq;
-    break;
-  case PARAM_POWER:
-    ma = 4;
-    break;
-  case PARAM_TX_POWER:
-    ma = 255;
-    break;
-  case PARAM_TX_OFFSET_DIR:
-    ma = OFFSET_FREQ + 1;
-    break;
-  case PARAM_TX_POWER_AMPLIFIER:
-    ma = 2;
-    break;
-  /* case PARAM_MODULATION:
-    ma = band->num_available_mods;
-    break;
-  case PARAM_BANDWIDTH:
-    ma = band->num_available_bandwidths;
-    break; */
-  case PARAM_STEP:
-    ma = STEP_COUNT;
-    break;
-  case PARAM_SQUELCH_VALUE:
-    ma = 11;
-    break;
-  case PARAM_SQUELCH_TYPE:
-    ma = 4;
-    break;
-  case PARAM_AFC:
-    ma = 9;
-    break;
-  case PARAM_AFC_SPD:
-    ma = 64;
-    break;
-  case PARAM_DEV:
-    ma = 2550;
-    break;
-  case PARAM_MIC:
-    ma = 16;
-    break;
-  case PARAM_XTAL:
-    ma = XTAL_3_38_4M + 1;
-    break;
-  case PARAM_SCRAMBLER:
-    ma = 10;
-    break;
-  case PARAM_FILTER:
-    ma = FILTER_AUTO + 1;
-    break;
-  case PARAM_GAIN:
+  // Параметры с диапазоном из FreqBand
+  if (param == PARAM_FREQUENCY || param == PARAM_TX_OFFSET ||
+      param == PARAM_TX_FREQUENCY) {
+    RADIO_SetParam(ctx, param, AdjustU(v, band->min_freq, band->max_freq, inc),
+                   save_to_eeprom);
+    RADIO_ApplySettings(ctx);
+    return true;
+  }
+
+  // Параметры с динамическим диапазоном (зависит от радио)
+  if (param == PARAM_GAIN) {
+    uint32_t ma;
     if (ctx->radio_type == RADIO_BK4819) {
       ma = ARRAY_SIZE(GAIN_TABLE);
     } else if (ctx->radio_type == RADIO_SI4732) {
       ma = 28;
     } else {
-      ma = 0;
+      return false;
     }
-    break;
-  case PARAM_RADIO:
-    ma = 3;
-    break;
-  default:
-    LogC(LOG_C_RED, "[RADIO] ERR: range %s", PARAM_NAMES[param]);
+    RADIO_SetParam(ctx, param, AdjustU(v, 0, ma, inc), save_to_eeprom);
+    RADIO_ApplySettings(ctx);
+    return true;
+  }
+
+  // Остальные параметры — берём диапазон из таблицы PARAM_DESC
+  const ParamDesc *d = &PARAM_DESC[param];
+  if (d->max_val == 0) {
+    // read-only или неподдерживаемый
+    LogC(LOG_C_RED, "[RADIO] ERR: range %s", PARAM_NAMES(param));
     return false;
   }
-  RADIO_SetParam(ctx, param, AdjustU(v, mi, ma, inc), save_to_eeprom);
+
+  RADIO_SetParam(ctx, param, AdjustU(v, d->min_val, d->max_val, inc),
+                 save_to_eeprom);
   RADIO_ApplySettings(ctx);
   return true;
 }
@@ -1469,14 +1416,14 @@ void RADIO_ApplySettings(VFOContext *ctx) {
 
     if (!setParamForRadio[ctx->radio_type](ctx, p)) {
 #ifdef DEBUG_PARAMS
-      /* LogC(LOG_C_YELLOW, "[W] Param %s not set for %s", PARAM_NAMES[p],
+      /* LogC(LOG_C_YELLOW, "[W] Param %s not set for %s", PARAM_NAMES(p),
            RADIO_NAMES[ctx->radio_type]); */
 #endif
       continue;
     }
     ctx->dirty[p] = false;
 #ifdef DEBUG_PARAMS
-    LogC(LOG_C_BRIGHT_WHITE, "[SET] %-12s -> %s", PARAM_NAMES[p],
+    LogC(LOG_C_BRIGHT_WHITE, "[SET] %-12s -> %s", PARAM_NAMES(p),
          RADIO_GetParamValueString(ctx, p));
 #endif /* ifdef DEBUG_PARAMS */
   }
@@ -1569,13 +1516,10 @@ void RADIO_InitState(RadioState *state, uint8_t num_vfos) {
   state->primary_vfo_index = state->active_vfo_index = gSettings.activeVFO;
 
   for (uint8_t i = 0; i < state->num_vfos; i++) {
-    // RADIO_Init(&state->vfos[i].context, RADIO_BK4819); // Default to BK4819
     memset(&state->vfos[i].context, 0, sizeof(VFOContext));
-    // RADIO_UpdateCurrentBand(&state->vfos[i].context);
     state->vfos[i].mode = MODE_VFO;
     state->vfos[i].channel_index = 0;
-    state->vfos[i].is_active =
-        (i == state->primary_vfo_index); // First VFO is active by default
+    state->vfos[i].is_active = (i == state->primary_vfo_index);
     state->vfos[i].is_open = false;
   }
 
@@ -1622,16 +1566,10 @@ static bool RADIO_SwitchVFOTemp(RadioState *state, uint8_t vfo_index) {
     newCtx->dirty[p] = RADIO_GetParam(oldCtx, p) != RADIO_GetParam(newCtx, p);
   }
 
-  // mute previous vfo (fast fix)
-  /* state->vfos[state->active_vfo_index].is_open = false;
-  RADIO_SwitchAudioToVFO(state, state->active_vfo_index);
-  RADIO_SwitchAudioToVFO(state, vfo_index); */
-
   // Activate new VFO
   state->vfos[vfo_index].is_active = true;
   state->active_vfo_index = vfo_index;
   gRedrawScreen = true;
-  // updateContext();
 
   // Apply settings for the new VFO
   RADIO_ApplySettings(&state->vfos[vfo_index].context);
@@ -1678,7 +1616,20 @@ bool RADIO_SwitchVFO(RadioState *state, uint8_t vfo_index) {
   return true;
 }
 
+// Общие умолчания, одинаковые для VFO и Channel
+static void applyGlobalDefaults(VFOContext *ctx) {
+  RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
+  RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
+  RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
+  RADIO_SetParam(ctx, PARAM_SCRAMBLER, 0, false);
+  RADIO_SetParam(ctx, PARAM_AFC, 0, false);
+  RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
+  RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
+}
+
 static void setCommonParamsFromVFO(VFOContext *ctx, const VFO *storage) {
+  // Инициализируем radio/frequency/band до SetParam, чтобы IsParamValid работал
   ctx->radio_type = storage->radio;
   ctx->modulation = storage->modulation;
   ctx->frequency = storage->rxF;
@@ -1687,7 +1638,6 @@ static void setCommonParamsFromVFO(VFOContext *ctx, const VFO *storage) {
 
   RADIO_SetParam(ctx, PARAM_RADIO, storage->radio, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, storage->rxF, false);
-
   RADIO_SetParam(ctx, PARAM_BANDWIDTH, storage->bw, false);
   RADIO_SetParam(ctx, PARAM_STEP, storage->step, false);
   RADIO_SetParam(ctx, PARAM_GAIN, storage->gainIndex, false);
@@ -1700,27 +1650,12 @@ static void setCommonParamsFromVFO(VFOContext *ctx, const VFO *storage) {
   RADIO_SetParam(ctx, PARAM_TX_OFFSET_DIR, storage->offsetDir, false);
 
   strcpy(ctx->name, storage->name);
-
   ctx->code = storage->code.rx;
   ctx->tx_state.code = storage->code.tx;
-
-  // Initialize TX state
   ctx->tx_state.is_active = false;
   ctx->tx_state.last_error = TX_UNKNOWN;
 
-  RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
-  RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
-  RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
-  RADIO_SetParam(ctx, PARAM_SCRAMBLER, 0, false);
-  RADIO_SetParam(ctx, PARAM_AFC, 0, false);
-  RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
-  RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
-
-  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
-  // RADIO_SetParam(ctx, PARAM_VOLUME, 80, false);
-
-  // RADIO_UpdateCurrentBand(ctx);
-  // RADIO_ApplyCorrections(ctx, false);
+  applyGlobalDefaults(ctx);
 }
 
 static void setCommonParamsFromCh(VFOContext *ctx, const CH *storage) {
@@ -1732,7 +1667,6 @@ static void setCommonParamsFromCh(VFOContext *ctx, const CH *storage) {
 
   RADIO_SetParam(ctx, PARAM_RADIO, storage->radio, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, storage->rxF, false);
-
   RADIO_SetParam(ctx, PARAM_BANDWIDTH, storage->bw, false);
   RADIO_SetParam(ctx, PARAM_GAIN, storage->gainIndex, false);
   RADIO_SetParam(ctx, PARAM_MODULATION, storage->modulation, false);
@@ -1744,27 +1678,12 @@ static void setCommonParamsFromCh(VFOContext *ctx, const CH *storage) {
   RADIO_SetParam(ctx, PARAM_TX_OFFSET_DIR, storage->offsetDir, false);
 
   strcpy(ctx->name, storage->name);
-
   ctx->code = storage->code.rx;
   ctx->tx_state.code = storage->code.tx;
-
-  // Initialize TX state
   ctx->tx_state.is_active = false;
   ctx->tx_state.last_error = TX_UNKNOWN;
 
-  RADIO_SetParam(ctx, PARAM_MIC, gSettings.mic, false);
-  RADIO_SetParam(ctx, PARAM_DEV, gSettings.deviation * 10, false);
-  RADIO_SetParam(ctx, PARAM_XTAL, XTAL_2_26M, false);
-  RADIO_SetParam(ctx, PARAM_SCRAMBLER, 0, false);
-  RADIO_SetParam(ctx, PARAM_AFC, 0, false);
-  RADIO_SetParam(ctx, PARAM_AFC_SPD, 63, false);
-  RADIO_SetParam(ctx, PARAM_FILTER, FILTER_AUTO, false);
-
-  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
-  // RADIO_SetParam(ctx, PARAM_VOLUME, 80, false);
-
-  // RADIO_UpdateCurrentBand(ctx);
-  // RADIO_ApplyCorrections(ctx, false);
+  applyGlobalDefaults(ctx);
 }
 
 // Load VFO settings from EEPROM storage
@@ -1781,13 +1700,9 @@ void RADIO_LoadVFOFromStorage(RadioState *state, uint8_t vfo_index,
   // Set basic parameters
   setCommonParamsFromVFO(ctx, storage);
 
-  // Handle channel mode
   if (vfo->mode == MODE_CHANNEL) {
     vfo->channel_index = storage->channel;
-    // Optionally validate the channel here
   }
-
-  // RADIO_ApplySettings(&vfo->context);
 }
 
 // Save VFO settings to EEPROM storage
@@ -2213,7 +2128,7 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
     sprintf(buf, "%s", RADIO_NAMES[ctx->radio_type]);
     break;
   case PARAM_TX_OFFSET_DIR:
-    sprintf(buf, "%s", TX_OFFSET_NAMES[ctx->radio_type]);
+    sprintf(buf, "%s", TX_OFFSET_NAMES[ctx->tx_state.offsetDirection]);
     break;
   case PARAM_GAIN:
     if (ctx->radio_type == RADIO_BK4819) {
@@ -2270,12 +2185,6 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
  * @return Номер VFO (0..MAX_VFOS-1) или 0xFF если не найдено
  */
 uint8_t RADIO_GetCurrentVFONumber(const RadioState *state) {
-  /* for (uint8_t i = 0; i < state->num_vfos; i++) {
-    if (state->vfos[i].is_active) {
-      return i;
-    }
-  }
-  return 0xFF; // Ошибка - активный VFO не найден */
   return state->primary_vfo_index;
 }
 

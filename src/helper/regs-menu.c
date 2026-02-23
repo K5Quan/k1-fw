@@ -76,7 +76,7 @@ static void initMenu() {
   regsMenu.num_items = radioParamCount[ctx->radio_type];
   for (uint8_t i = 0; i < regsMenu.num_items; ++i) {
     ParamType p = radioParams[ctx->radio_type][i];
-    menuItems[i].name = PARAM_NAMES[p];
+    menuItems[i].name = RADIO_GetParamName(p);
     menuItems[i].setting = p;
     menuItems[i].change_value = updateVal;
     menuItems[i].get_value_text = getValS;

@@ -237,6 +237,8 @@ uint8_t RADIO_GetGlitch(const VFOContext *ctx);
 void RADIO_FastSquelchUpdate();
 void RADIO_SlowRSSIUpdate();
 
+inline const char *RADIO_GetParamName(ParamType p);
+
 extern RadioState *gRadioState;
 extern ExtendedVFOContext *vfo;
 extern VFOContext *ctx;
