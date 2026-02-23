@@ -1406,18 +1406,15 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(BK4819_REG_00, 0x8000);
   BK4819_WriteRegister(BK4819_REG_00, 0x0000);
 
-  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
-  BK4819_WriteRegister(BK4819_REG_36, 0x0022);
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F); // LDO, XTAL EN
+  BK4819_WriteRegister(BK4819_REG_36, 0x0022); // PA
 
-  BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
-  BK4819_WriteRegister(BK4819_REG_12, 0x037B);
-  BK4819_WriteRegister(BK4819_REG_11, 0x027B);
   BK4819_WriteRegister(BK4819_REG_10, 0x007A);
+  BK4819_WriteRegister(BK4819_REG_11, 0x027B);
+  BK4819_WriteRegister(BK4819_REG_12, 0x037B);
+  BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
 
-  BK4819_WriteRegister(BK4819_REG_49, 0x2AB2);
   BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
-
-  BK4819_WriteRegister(BK4819_REG_7D, 0xE920);
 
   // BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
   BK4819_WriteRegister(BK4819_REG_48,
@@ -1428,7 +1425,7 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
-  RF_SetXtal(XTAL26M);
+  // RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
@@ -1438,27 +1435,28 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(0x1C, 0x07C0);
   BK4819_WriteRegister(0x1D, 0xE555);
   BK4819_WriteRegister(0x1E, 0x4C58);
+  BK4819_WriteRegister(0x1F, 0xC65A);
 
-  BK4819_WriteRegister(BK4819_REG_1F, 0xC65A);
   BK4819_WriteRegister(BK4819_REG_3E, 0x94C6);
 
   BK4819_WriteRegister(0x73, 0x4691); // AFC DIS
   BK4819_WriteRegister(0x77, 0x88EF);
 
+  BK4819_WriteRegister(BK4819_REG_7D, 0xE920); // mic sens
   BK4819_WriteRegister(BK4819_REG_19, 0x104E); // MIC AGC on
   BK4819_WriteRegister(BK4819_REG_28, 0x0B40); // RX noise gate
   BK4819_WriteRegister(BK4819_REG_29, 0xAA00); // TX noise gate
 
   // audio settings
-  BK4819_WriteRegister(0x2A, 0x6600);
-  BK4819_WriteRegister(0x2C, 0x1822);
-  BK4819_WriteRegister(0x2F, 0x9890);
-  BK4819_WriteRegister(0x53, 0x2028);
+  BK4819_WriteRegister(0x2A, 0x6600); // audio gain1 tc
+  BK4819_WriteRegister(0x2C, 0x1822); // audio emph tc, tx gain
+  BK4819_WriteRegister(0x2F, 0x9890); // audio tx limit, emph rx gain
+  BK4819_WriteRegister(0x53, 0x2028); // audio alc tc
 
-  BK4819_WriteRegister(BK4819_REG_7E, 0x303E);
+  BK4819_WriteRegister(BK4819_REG_7E, 0x303E); // tx dcc before alc
   BK4819_WriteRegister(BK4819_REG_46, 0x600A);
   BK4819_WriteRegister(0x4A, 0x5430);
-  BK4819_WriteRegister(BK4819_REG_07, 0x61CE);
+  // BK4819_WriteRegister(BK4819_REG_07, 0x61CE); // CTCSS
 
   gGpioOutState = 0x9000;
 
