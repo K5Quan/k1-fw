@@ -41,19 +41,23 @@
  * Если чип уже ACTIVE — только сбросить DSP (BK4819_RX_TurnOn).
  */
 static void bk4819_power_up(ReceiverPowerState from, const VFOContext *ctx) {
-  if (from == RXPWR_SLEEP) {
-    /* Выводим из power-down: восстанавливаем REG_37. */
-    BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
-    SYSTICK_DelayMs(2); /* дать PLL время стабилизироваться */
-  }
-
   if (from == RXPWR_OFF) {
+    // Первый старт — полная инициализация чипа
     BK4819_Init();
     BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
   }
 
-  /* Сброс/запуск DSP и цепей RX (всегда, даже при IDLE→ACTIVE). */
+  // OFF и SLEEP физически одинаковы для BK4819 (оба = REG_37 0x1D00)
+  // поэтому REG_37 нужно восстанавливать в обоих случаях
+  if (from == RXPWR_SLEEP || from == RXPWR_OFF) {
+    BK4819_WriteRegister(BK4819_REG_37, 0x9D1F);
+    SYSTICK_DelayMs(2);
+  }
+
   BK4819_RX_TurnOn();
+
+  BK4819_ToggleAFDAC(false);
+  BK4819_ToggleAFBit(false);
 
   LogC(LOG_C_BRIGHT_YELLOW, "[RXSW] BK4819 ACTIVE (from %d)", (int)from);
 }
@@ -63,8 +67,7 @@ static void bk4819_power_up(ReceiverPowerState from, const VFOContext *ctx) {
  * Экономия ~5 мА по сравнению с IDLE при выключенном DSP.
  */
 static void bk4819_sleep(void) {
-  BK4819_Idle();                              /* REG_30 = 0x0000, DSP off */
-  BK4819_WriteRegister(BK4819_REG_37, 0x1D00); /* Power-down (SLEEP) */
+  BK4819_Sleep();
   LogC(LOG_C_BRIGHT_YELLOW, "[RXSW] BK4819 SLEEP");
 }
 
@@ -178,16 +181,22 @@ static void audio_open(RadioSwitchCtx *sw, Radio source) {
  * @param to  Желаемое целевое состояние.
  * @param ctx Контекст VFO (нужен при переходе в ACTIVE).
  */
-static void set_power_state(RadioSwitchCtx *sw, Radio r,
-                            ReceiverPowerState to,
+static void set_power_state(RadioSwitchCtx *sw, Radio r, ReceiverPowerState to,
                             const VFOContext *ctx) {
   ReceiverPowerState *cur = NULL;
 
   switch (r) {
-  case RADIO_BK4819: cur = &sw->bk4819; break;
-  case RADIO_BK1080: cur = &sw->bk1080; break;
-  case RADIO_SI4732: cur = &sw->si4732; break;
-  default: return;
+  case RADIO_BK4819:
+    cur = &sw->bk4819;
+    break;
+  case RADIO_BK1080:
+    cur = &sw->bk1080;
+    break;
+  case RADIO_SI4732:
+    cur = &sw->si4732;
+    break;
+  default:
+    return;
   }
 
   if (*cur == to) {
@@ -205,13 +214,15 @@ static void set_power_state(RadioSwitchCtx *sw, Radio r,
       bk4819_idle();
     } else { /* OFF */
       bk4819_sleep(); /* через SLEEP, чтобы корректно завершить PLL */
+      to = RXPWR_SLEEP;
     }
     break;
 
   case RADIO_BK1080:
     if (to == RXPWR_ACTIVE) {
       bk1080_power_up(*cur, ctx);
-    } else if (to <= RXPWR_SLEEP) { /* SLEEP или OFF — для BK1080 одно и то же */
+    } else if (to <=
+               RXPWR_SLEEP) { /* SLEEP или OFF — для BK1080 одно и то же */
       bk1080_power_off();
       to = RXPWR_OFF; /* приводим к OFF, т.к. нет реального SLEEP */
     }
@@ -234,13 +245,13 @@ static void set_power_state(RadioSwitchCtx *sw, Radio r,
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
-/*  Public API                                                                 */
+/*  Public API */
 /* ══════════════════════════════════════════════════════════════════════════ */
 
 void RXSW_Init(RadioSwitchCtx *sw) {
-  sw->bk4819      = RXPWR_OFF;
-  sw->bk1080      = RXPWR_OFF;
-  sw->si4732      = RXPWR_OFF;
+  sw->bk4819 = RXPWR_OFF;
+  sw->bk1080 = RXPWR_OFF;
+  sw->si4732 = RXPWR_OFF;
   sw->audio_source = AUDIO_NONE;
 
   /* BK4819 всегда поднимаем при старте. */
@@ -258,9 +269,10 @@ void RXSW_SwitchTo(RadioSwitchCtx *sw, const VFOContext *ctx,
                    bool vfo_is_open) {
   Radio target = ctx->radio_type;
 
-  Log("[RXSW] Switch -> %s, open=%d", 
-      (target == RADIO_BK4819) ? "BK4819" :
-      (target == RADIO_BK1080) ? "BK1080" : "SI4732",
+  Log("[RXSW] Switch -> %s, open=%d",
+      (target == RADIO_BK4819)   ? "BK4819"
+      : (target == RADIO_BK1080) ? "BK1080"
+                                 : "SI4732",
       (int)vfo_is_open);
 
   /* 1. Заглушить аудио — до любых переключений питания. */
@@ -331,10 +343,14 @@ void RXSW_WakeReceiver(RadioSwitchCtx *sw, Radio r, const VFOContext *ctx) {
 
 ReceiverPowerState RXSW_GetPowerState(const RadioSwitchCtx *sw, Radio r) {
   switch (r) {
-  case RADIO_BK4819: return sw->bk4819;
-  case RADIO_BK1080: return sw->bk1080;
-  case RADIO_SI4732: return sw->si4732;
-  default:           return RXPWR_OFF;
+  case RADIO_BK4819:
+    return sw->bk4819;
+  case RADIO_BK1080:
+    return sw->bk1080;
+  case RADIO_SI4732:
+    return sw->si4732;
+  default:
+    return RXPWR_OFF;
   }
 }
 
