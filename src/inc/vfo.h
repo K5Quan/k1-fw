@@ -68,6 +68,7 @@ typedef const enum {
 
   // IMPORTANT FOR SI47xx (know modulation before f set)
   PARAM_FREQUENCY,
+  PARAM_FREQUENCY_FACT,
 
   PARAM_COUNT,
 } ParamType;

@@ -1050,6 +1050,8 @@ uint32_t RADIO_GetParam(const VFOContext *ctx, ParamType param) {
   case PARAM_SNR:
     return vfo->msm.snr;
   case PARAM_FREQUENCY:
+    return ctx->frequency - gSettings.upconverter;
+  case PARAM_FREQUENCY_FACT:
     return ctx->frequency;
   case PARAM_PRECISE_F_CHANGE:
     return ctx->preciseFChange;
@@ -1935,6 +1937,7 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
             StepFrequencyTable[v] % KHZ);
     break;
   case PARAM_FREQUENCY:
+  case PARAM_FREQUENCY_FACT:
   case PARAM_TX_OFFSET:
   case PARAM_TX_FREQUENCY:
   case PARAM_TX_FREQUENCY_FACT:

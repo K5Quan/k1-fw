@@ -329,9 +329,12 @@ static void renderExtraInfo(uint8_t BASE) {
     PrintSmallEx(14, 21, POS_L, C_FILL, "%+d", BK4819_GetAFCValue() * 10);
   } */
 
-  if (isTxFDifferent) {
+  if (isTxFDifferent && gSettings.upconverter == 0) {
     PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "TX: %s",
                  RADIO_GetParamValueString(ctx, PARAM_TX_FREQUENCY_FACT));
+  } else if (gSettings.upconverter != 0) {
+    PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "RX: %s",
+                 RADIO_GetParamValueString(ctx, PARAM_FREQUENCY_FACT));
   }
 }
 
