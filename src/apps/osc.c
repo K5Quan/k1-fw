@@ -63,9 +63,9 @@ typedef struct {
   int32_t lpf_iir;
 
   // --- Качество сигнала (обновляется в process_block) ---
-  uint16_t sig_amp;   // амплитуда = (max-min)/2, идеал ~1800..2000
-  uint16_t sig_mid;   // DC-центр  = min + amp,    идеал ~2048
-  bool clip_flag;     // true если касается 0 или 4095
+  uint16_t sig_amp; // амплитуда = (max-min)/2, идеал ~1800..2000
+  uint16_t sig_mid; // DC-центр  = min + amp,    идеал ~2048
+  bool clip_flag;   // true если касается 0 или 4095
 } OscContext;
 
 static OscContext osc;
@@ -252,10 +252,6 @@ bool OSC_key(KEY_Code_t key, Key_State_t state) {
     BK4819_ToggleAFDAC(false);
     BK4819_ToggleAFBit(false);
     TEST_TONE_Start();
-    SYSTICK_DelayMs(2000); // 2 секунды
-    TEST_TONE_Stop();
-    BK4819_ToggleAFDAC(true);
-    BK4819_ToggleAFBit(true);
     return true;
   case KEY_SIDE2: {
     uint16_t reg43 = BK4819_ReadRegister(0x43); // 15
@@ -365,8 +361,8 @@ static void process_block(const volatile uint16_t *src, uint32_t len) {
 
   // Обновляем метрики качества сигнала
   uint16_t amp = (dmaMax - dmaMin) / 2;
-  osc.sig_amp  = amp;
-  osc.sig_mid  = dmaMin + amp;
+  osc.sig_amp = amp;
+  osc.sig_mid = dmaMin + amp;
   // Клиппинг: касание краёв ADC с порогом 8 отсчётов
   osc.clip_flag = (dmaMin <= 8) || (dmaMax >= 4087);
 }
@@ -532,7 +528,7 @@ static void drawOOK(void) {
 // Отрисовка — метрики качества сигнала (VU-бар, DC, клиппинг)
 // Занимает строки 3-4 в шапке (y = SMALL_FONT_H*3 и SMALL_FONT_H*4-1)
 // ---------------------------------------------------------------------------
-#define SIG_FULL_AMP 2048u  // полная амплитуда = Vref/2
+#define SIG_FULL_AMP 2048u // полная амплитуда = Vref/2
 
 static void drawSignalInfo(void) {
   // --- Уровень в процентах (0..100%) ---
@@ -545,16 +541,16 @@ static void drawSignalInfo(void) {
 
   // --- VU-бар: y-позиция строки 3 (y=18), высота 4 пикселя ---
   // Ширина бара = LCD_WIDTH - 28 (оставляем 28px слева для текста)
-  const int BAR_X   = 28; // начало бара
-  const int BAR_W   = LCD_WIDTH - BAR_X - 1;
-  const int BAR_Y   = SMALL_FONT_H * 3 - 4; // верх бара
-  const int BAR_H   = 4;
+  const int BAR_X = 28; // начало бара
+  const int BAR_W = LCD_WIDTH - BAR_X - 1;
+  const int BAR_Y = SMALL_FONT_H * 3 - 4; // верх бара
+  const int BAR_H = 4;
 
   // Рамка
-  DrawLine(BAR_X,          BAR_Y,        BAR_X + BAR_W, BAR_Y,        C_FILL);
-  DrawLine(BAR_X,          BAR_Y + BAR_H, BAR_X + BAR_W, BAR_Y + BAR_H, C_FILL);
-  DrawLine(BAR_X,          BAR_Y,        BAR_X,          BAR_Y + BAR_H, C_FILL);
-  DrawLine(BAR_X + BAR_W,  BAR_Y,        BAR_X + BAR_W,  BAR_Y + BAR_H, C_FILL);
+  DrawLine(BAR_X, BAR_Y, BAR_X + BAR_W, BAR_Y, C_FILL);
+  DrawLine(BAR_X, BAR_Y + BAR_H, BAR_X + BAR_W, BAR_Y + BAR_H, C_FILL);
+  DrawLine(BAR_X, BAR_Y, BAR_X, BAR_Y + BAR_H, C_FILL);
+  DrawLine(BAR_X + BAR_W, BAR_Y, BAR_X + BAR_W, BAR_Y + BAR_H, C_FILL);
 
   // Заливка уровня
   int fill_w = (int)((uint32_t)level_pct * (BAR_W - 2) / 100);
@@ -563,7 +559,7 @@ static void drawSignalInfo(void) {
 
   // Маркер зоны предклиппинга (~87%)
   int warn_x = BAR_X + 1 + (BAR_W - 2) * 87 / 100;
-  PutPixel(warn_x, BAR_Y,     C_FILL);
+  PutPixel(warn_x, BAR_Y, C_FILL);
   PutPixel(warn_x, BAR_Y + BAR_H, C_FILL);
 
   // --- Текст: уровень% слева от бара ---
@@ -573,7 +569,7 @@ static void drawSignalInfo(void) {
   if (dc_err >= 0)
     PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "DC+%d", dc_err);
   else
-    PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "DC%d",  dc_err);
+    PrintSmallEx(0, SMALL_FONT_H * 4, POS_L, C_FILL, "DC%d", dc_err);
 
   if (osc.clip_flag)
     PrintSmallEx(LCD_WIDTH, SMALL_FONT_H * 4, POS_R, C_FILL, "!CLIP!");
@@ -590,7 +586,7 @@ static void drawStatus(void) {
                          : osc.mode == MODE_OOK ? "OOK"
                                                 : "OSC";
   // Строка 2: режим | частота
-  PrintSmallEx(0,          SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
+  PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
 
   // Строка 3 (правый край): масштаб времени
@@ -624,4 +620,3 @@ void OSC_render(void) {
 
   REGSMENU_Draw();
 }
-
