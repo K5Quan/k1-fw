@@ -606,11 +606,9 @@ static void drawStatus(void) {
   char buf[16];
   mhzToS(buf, RADIO_GetParam(ctx, PARAM_FREQUENCY));
 
-  const char *mode_str = osc.mode == MODE_FFT   ? "FFT"
-                         : osc.mode == MODE_OOK ? "OOK"
-                                                : "OSC";
   // Строка 2: режим | частота
-  PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s", mode_str);
+  PrintSmallEx(0, SMALL_FONT_H * 2, POS_L, C_FILL, "%s",
+               (const char[][4]){"OSC", "FFT", "OOK"}[osc.mode]);
   PrintSmallEx(LCD_XCENTER, SMALL_FONT_H * 2, POS_C, C_FILL, "%s", buf);
 
   // Строка 3 (правый край): масштаб времени

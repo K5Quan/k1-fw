@@ -131,24 +131,26 @@ void APPS_deinit(void) {
 
 RadioState radioState;
 void APPS_run(AppType_t app) {
-  if (appsStack[stackIndex] == app) {
+  if (appsStack[stackIndex] == app)
     return;
-  }
+
   APPS_deinit();
   pushApp(app);
   gCurrentApp = app;
 
-  if (loadedVfoApp != gCurrentApp && apps[gCurrentApp].needsRadioState) {
-    LogC(LOG_C_MAGENTA, "[APP] Load radio state for %s",
-         apps[gCurrentApp].name);
-    gRadioState = &radioState;
-    RADIO_InitState(gRadioState, 16);
+  if (apps[gCurrentApp].needsRadioState) {
+    if (gRadioState) {
+      RADIO_SaveCurrentVFO(gRadioState);
+    }
+    if (!gRadioState) {
+      // Один раз: выделяем структуру и настраиваем
+      gRadioState = &radioState;
+      RADIO_InitState(gRadioState, 16);
+      KEYMAP_Load();
+      RADIO_ToggleMultiwatch(gRadioState, gSettings.mWatch);
+    }
+    // Каждый раз: загружаем актуальное состояние из хранилища
     RADIO_LoadVFOs(gRadioState);
-
-    KEYMAP_Load();
-
-    RADIO_ToggleMultiwatch(gRadioState, gSettings.mWatch);
-    loadedVfoApp = gCurrentApp;
   }
 
   APPS_init(app);

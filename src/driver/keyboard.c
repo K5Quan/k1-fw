@@ -26,26 +26,13 @@ typedef struct {
 } key_context_t;
 
 const char *KEY_NAMES[] = {
-  [KEY_NONE] = "NONE",
-  [KEY_MENU] = "MENU",
-  [KEY_UP] = "UP",
-  [KEY_DOWN] = "DOWN",
-  [KEY_EXIT] = "EXIT",
-  [KEY_0] = "0",
-  [KEY_1] = "1",
-  [KEY_2] = "2",
-  [KEY_3] = "3",
-  [KEY_4] = "4",
-  [KEY_5] = "5",
-  [KEY_6] = "6",
-  [KEY_7] = "7",
-  [KEY_8] = "8",
-  [KEY_9] = "9",
-  [KEY_STAR] = "STAR",
-  [KEY_F] = "F",
-  [KEY_SIDE1] = "SIDE1",
-  [KEY_SIDE2] = "SIDE2",
-  [KEY_PTT] = "PTT",
+    [KEY_NONE] = "NONE",   [KEY_MENU] = "MENU", [KEY_UP] = "UP",
+    [KEY_DOWN] = "DOWN",   [KEY_EXIT] = "EXIT", [KEY_0] = "0",
+    [KEY_1] = "1",         [KEY_2] = "2",       [KEY_3] = "3",
+    [KEY_4] = "4",         [KEY_5] = "5",       [KEY_6] = "6",
+    [KEY_7] = "7",         [KEY_8] = "8",       [KEY_9] = "9",
+    [KEY_STAR] = "STAR",   [KEY_F] = "F",       [KEY_SIDE1] = "SIDE1",
+    [KEY_SIDE2] = "SIDE2", [KEY_PTT] = "PTT",
 };
 
 // Глобальные переменные
@@ -193,13 +180,14 @@ static void process_key_fsm(KEY_Code_t key, bool is_pressed) {
 
   case STATE_RELEASE_DEBOUNCE:
     if (is_pressed) {
-      ctx->state = STATE_PRESSED; // повторное нажатие
+      ctx->state = STATE_PRESSED;
       break;
     }
     if (ctx->counter >= g_timing.debounce_ms) {
       ctx->state = STATE_IDLE;
       ctx->counter = 0;
-      if (g_callback && !(gkeyWasLongPressed[key])) {
+      // PTT всегда должен получать release, независимо от long press
+      if (g_callback && (!gkeyWasLongPressed[key] || key == KEY_PTT)) {
         g_callback(key, KEY_EVENT_RELEASE);
       }
       gkeyWasLongPressed[key] = false;
