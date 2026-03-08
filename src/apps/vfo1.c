@@ -158,6 +158,25 @@ static bool handleLongPress(KEY_Code_t key) {
 static bool handleRelease(KEY_Code_t key, Key_State_t state) {
   uint8_t vfoN = RADIO_GetCurrentVFONumber(gRadioState);
 
+  if (gSettings.iAmPro) {
+    switch (key) {
+    case KEY_1:
+    case KEY_7:
+      // step
+      RADIO_IncDecParam(ctx, PARAM_STEP, key == KEY_1, true);
+      return true;
+    case KEY_3:
+    case KEY_9:
+      // sq
+      RADIO_IncDecParam(ctx, PARAM_SQUELCH_VALUE, key == KEY_3, true);
+      return true;
+    case KEY_6:
+      // mod
+      RADIO_IncDecParam(ctx, PARAM_MODULATION, true, true);
+      return true;
+    }
+  }
+
   switch (key) {
   case KEY_0:
   case KEY_1:
@@ -169,21 +188,10 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
   case KEY_7:
   case KEY_8:
   case KEY_9:
-    gFInputCallback = tuneTo;
     FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
-    gFInputValue1 = 0;
-    gFInputValue2 = 0;
-    FINPUT_init();
-    gFInputActive = true;
+    FINPUT_Show(tuneTo);
     FINPUT_key(key, state);
-
     return true;
-
-    /* case KEY_F:
-      RADIO_SaveVFOToStorage(gRadioState, vfoN, &gChEd);
-      gChNum = -1;
-      APPS_run(APP_CH_CFG);
-      return true; */
 
   case KEY_STAR:
     LOOTLIST_init();
@@ -328,6 +336,10 @@ static void renderExtraInfo(uint8_t BASE) {
   if (afcVal != 0) {
     PrintSmallEx(14, 21, POS_L, C_FILL, "%+d", BK4819_GetAFCValue() * 10);
   } */
+
+  if (gSettings.iAmPro) {
+    PrintSmallEx(LCD_WIDTH - 1, BASE + 8 + 6, POS_R, C_FILL, "PRO");
+  }
 
   if (isTxFDifferent && gSettings.upconverter == 0) {
     PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "TX: %s",
