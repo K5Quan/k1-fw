@@ -1126,9 +1126,15 @@ bool RADIO_AdjustParam(VFOContext *ctx, ParamType param, uint32_t inc,
     return true;
   }
 
+  if (param == PARAM_TX_OFFSET) {
+    RADIO_SetParam(ctx, param, AdjustU(v, 0, BK4819_F_MAX, inc),
+                   save_to_eeprom);
+    RADIO_ApplySettings(ctx);
+    return true;
+  }
+
   // Параметры с диапазоном из FreqBand
-  if (param == PARAM_FREQUENCY || param == PARAM_TX_OFFSET ||
-      param == PARAM_TX_FREQUENCY) {
+  if (param == PARAM_FREQUENCY || param == PARAM_TX_FREQUENCY) {
     RADIO_SetParam(ctx, param, AdjustU(v, band->min_freq, band->max_freq, inc),
                    save_to_eeprom);
     RADIO_ApplySettings(ctx);

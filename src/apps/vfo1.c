@@ -10,6 +10,7 @@
 #include "../helper/numnav.h"
 #include "../helper/regs-menu.h"
 #include "../helper/scan.h"
+#include "../helper/vfomenu.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/chlist.h"
@@ -233,6 +234,9 @@ bool VFO1_key(KEY_Code_t key, Key_State_t state) {
   if (REGSMENU_Key(key, state)) {
     return true;
   }
+  if (VFOMENU_Key(key, state)) {
+    return true;
+  }
 
   // Обработка NUM NAV в режиме канала
   if (state == KEY_RELEASED && vfo->mode == MODE_CHANNEL && !gIsNumNavInput) {
@@ -454,4 +458,5 @@ void VFO1_render(void) {
   }
 
   REGSMENU_Draw();
+  VFOMENU_Draw();
 }
