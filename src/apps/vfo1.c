@@ -174,6 +174,10 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
       // mod
       RADIO_IncDecParam(ctx, PARAM_MODULATION, true, true);
       return true;
+    case KEY_5:
+      FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
+      FINPUT_Show(tuneTo);
+      return true;
     }
   }
 
