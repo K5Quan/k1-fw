@@ -408,7 +408,6 @@ void SCAN_Init(bool multiband) {
   scan.currentCps = 0;
 
   ApplyBandSettings();
-  BK4819_WriteRegister(BK4819_REG_3F, 0);
   vfo->is_open = false;
   RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
 }
