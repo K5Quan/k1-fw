@@ -349,9 +349,10 @@ uint8_t BK4819_GetAttenuation() {
 void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
   const bool enableAgc = gainIndex == AUTO_GAIN_INDEX;
   const AgcConfig *cfg = fm ? &AGC_DEFAULT : &AGC_FAST;
-  uint16_t reg13 = enableAgc ? 0x03BE : GAIN_TABLE[gainIndex].regValue;
-  uint16_t reg14 = fm ? 0x0019 : 0x0000;
-  uint16_t reg49 = (cfg->lo << 14) | (cfg->high << 7) | (cfg->low << 0);
+  uint16_t reg13 = enableAgc ? 0x03DF : GAIN_TABLE[gainIndex].regValue;
+  uint16_t reg14 = fm ? 0x0210 : 0x0000;
+  uint16_t reg49 =
+      fm ? 0x2AB2 : (cfg->lo << 14) | (cfg->high << 7) | (cfg->low << 0);
 
   uint16_t reg7E = BK4819_ReadRegister(BK4819_REG_7E);
   reg7E &= ~((1 << 15) | (0b111 << 12)); // Clear AGC and index bits
@@ -548,8 +549,12 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
 
   uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
 
-  BK4819_WriteRegister(BK4819_REG_30, reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
-  // BK4819_WriteRegister(BK4819_REG_30, 0x200);
+  if (precise) {
+    BK4819_WriteRegister(BK4819_REG_30, 0x200);
+  } else {
+    BK4819_WriteRegister(BK4819_REG_30,
+                         reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
+  }
   // SYSTICK_DelayUs(300); // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
@@ -1409,23 +1414,27 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(BK4819_REG_37, 0x9D1F); // LDO, XTAL EN
   BK4819_WriteRegister(BK4819_REG_36, 0x0022); // PA
 
-  BK4819_WriteRegister(BK4819_REG_10, 0x007A);
+  BK4819_WriteRegister(BK4819_REG_10, 0x0318);
+  BK4819_WriteRegister(BK4819_REG_11, 0x033A);
+  BK4819_WriteRegister(BK4819_REG_12, 0x03DB);
+  BK4819_WriteRegister(BK4819_REG_13, 0x03DF);
+  /* BK4819_WriteRegister(BK4819_REG_10, 0x007A);
   BK4819_WriteRegister(BK4819_REG_11, 0x027B);
   BK4819_WriteRegister(BK4819_REG_12, 0x037B);
-  BK4819_WriteRegister(BK4819_REG_13, 0x03BE);
+  BK4819_WriteRegister(BK4819_REG_13, 0x03BE); */
 
   BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
 
-  // BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
-  BK4819_WriteRegister(BK4819_REG_48,
+  BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  /* BK4819_WriteRegister(BK4819_REG_48,
                        (0b1100 << 10)        // ?
                            | (0b111111 << 4) // GAIN2
                            | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
-  );
+  ); */
 
-  BK4819_WriteRegister(0x40, 0x3516);
+  // BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
-  // RF_SetXtal(XTAL26M);
+  RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
@@ -1453,10 +1462,9 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(0x2F, 0x9890); // audio tx limit, emph rx gain
   BK4819_WriteRegister(0x53, 0x2028); // audio alc tc
 
-  BK4819_WriteRegister(BK4819_REG_7E, 0x303E); // tx dcc before alc
+  BK4819_WriteRegister(BK4819_REG_7E, 0x302E); // tx dcc before alc
   BK4819_WriteRegister(BK4819_REG_46, 0x600A);
   BK4819_WriteRegister(0x4A, 0x5430);
-  // BK4819_WriteRegister(BK4819_REG_07, 0x61CE); // CTCSS
 
   gGpioOutState = 0x9000;
 

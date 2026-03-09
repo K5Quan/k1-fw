@@ -34,7 +34,7 @@ void RF_EnterFsk() {
   // а) Останавливаем RX если был включен
   BK4819_WriteRegister(0x59, REG_59 & ~(1 << 12));
   // 1. Сначала отключаем FSK (софт-сброс согласно Application Notes)
-  RF_Write(0x58, 0x0000); // Disable FSK
+  // RF_Write(0x58, 0x0000); // Disable FSK
 
   // 2. Очищаем FIFO
   RF_Write(0x59, (1 << 15) | (1 << 14)); // Clear TX and RX FIFO

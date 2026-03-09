@@ -48,6 +48,7 @@ static void setChannel(uint16_t v) {
 
 static void tuneTo(uint32_t f, uint32_t _) {
   (void)_;
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, f, true);
   RADIO_ApplySettings(ctx);
   updateBand();
@@ -89,6 +90,7 @@ static bool handleFrequencyChange(KEY_Code_t key) {
   if (vfo->mode == MODE_CHANNEL) {
     RADIO_NextChannel((key == KEY_UP) ^ gSettings.invertButtons);
   } else {
+    RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
     RADIO_IncDecParam(ctx, PARAM_FREQUENCY,
                       (key == KEY_UP) ^ gSettings.invertButtons, true);
   }

@@ -82,6 +82,7 @@ static void ChangeState(ScanState newState) {
 
 static void ApplyBandSettings(void) {
   vfo->msm.f = gCurrentBand.start;
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, vfo->msm.f, false);
   RADIO_SetParam(ctx, PARAM_STEP, gCurrentBand.step, false);
   RADIO_ApplySettings(ctx);
@@ -195,6 +196,7 @@ static void HandleStateSwitching(void) {
     return;
   }
 
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
   SYSTICK_DelayUs(scan.scanDelayUs);
@@ -230,8 +232,6 @@ static void HandleStateSwitching(void) {
 
   if (programOpen) {
     // Потенциально есть сигнал - точная проверка
-    // scan.currentF += scan.stepF; // WTF?!
-
     ChangeState(SCAN_STATE_DECIDING);
   } else {
     // Точно нет сигнала - на следующую частоту
@@ -542,10 +542,9 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
   if (ctx->code.type == 0 && (int_bits & BK4819_REG_02_MASK_SQUELCH_LOST)) {
     sInt.sqOpen = true;
     RADIO_UnmuteAudioNow(gRadioState);
-    LogC(LOG_C_GREEN, "[INT] SQ -");
-    // TOAST_Push("SQ -");
     gRedrawScreen = true;
 
+    // принудительно слушаем
     if (scan.mode == SCAN_MODE_FREQUENCY || scan.mode == SCAN_MODE_CHANNEL) {
       if (scan.state == SCAN_STATE_SWITCHING ||
           scan.state == SCAN_STATE_DECIDING) {
@@ -553,7 +552,6 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
         scan.measurement.open = true;
         LOOT_Update(&scan.measurement);
         ChangeState(SCAN_STATE_LISTENING);
-        LogC(LOG_C_YELLOW, "[INT] Fast open → LISTENING");
       }
     }
   }
@@ -561,37 +559,24 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
   if (int_bits & BK4819_REG_02_MASK_SQUELCH_FOUND) {
     sInt.sqOpen = false;
     RADIO_MuteAudioNow(gRadioState);
-    LogC(LOG_C_GREEN, "[INT] SQ +");
-    // TOAST_Push("SQ +");
     gRedrawScreen = true;
   }
 
-  // --- Tail tone ---
   if (int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) {
     sInt.sqOpen = false;
     RADIO_MuteAudioNow(gRadioState);
-    LogC(LOG_C_GREEN, "[INT] TAIL");
-    // TOAST_Push("TAIL");
   }
 
-  // --- CTCSS Lost ---
   if ((int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) ||
       (int_bits & BK4819_REG_02_MASK_CDCSS_FOUND)) {
     sInt.sqOpen = false;
     RADIO_MuteAudioNow(gRadioState);
-    LogC(LOG_C_GREEN, "[INT] CT/CD -");
-    // TOAST_Push("CT/CD -");
   }
 
-  // --- CTCSS Found ---
   if ((int_bits & BK4819_REG_02_MASK_CTCSS_LOST) ||
       (int_bits & BK4819_REG_02_MASK_CDCSS_LOST)) {
     sInt.sqOpen = true;
     RADIO_UnmuteAudioNow(gRadioState);
-    LogC(LOG_C_GREEN, "[INT] CT/CD +");
-    TOAST_Push("CT/CD +");
-
-    LOOT_Update(&vfo->msm);
   }
 }
 bool SCAN_IsSqOpen(void) { return sInt.sqOpen; }
