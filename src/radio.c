@@ -344,6 +344,7 @@ static void enableCxCSS(VFOContext *ctx) {
   }
 }
 
+#include "./ui/toast.h"
 static void setupToneDetection(VFOContext *ctx) {
   BK4819_WriteRegister(BK4819_REG_7E, 0x302E); // DC flt BW 0=BYP
 
@@ -354,6 +355,8 @@ static void setupToneDetection(VFOContext *ctx) {
                    BK4819_REG_3F_FSK_RX_FINISHED;
 
   InterruptMask |= BK4819_REG_3F_SQUELCH_LOST | BK4819_REG_3F_SQUELCH_FOUND;
+  InterruptMask |= BK4819_REG_3F_CDCSS_FOUND | BK4819_REG_3F_CDCSS_LOST;
+  InterruptMask |= BK4819_REG_3F_CTCSS_FOUND | BK4819_REG_3F_CTCSS_LOST;
 
   if (gSettings.dtmfdecode) {
     BK4819_EnableDTMF();
@@ -367,12 +370,13 @@ static void setupToneDetection(VFOContext *ctx) {
     // Log("DCS on");
     BK4819_SetCDCSSCodeWord(
         DCS_GetGolayCodeWord(ctx->code.type, ctx->code.value));
-    InterruptMask |= BK4819_REG_3F_CDCSS_FOUND | BK4819_REG_3F_CDCSS_LOST;
+    TOAST_Push("CD ON");
     break;
   case CODE_TYPE_CONTINUOUS_TONE:
     // Log("CTCSS on");
     BK4819_SetCTCSSFrequency(CTCSS_Options[ctx->code.value]);
-    InterruptMask |= BK4819_REG_3F_CTCSS_FOUND | BK4819_REG_3F_CTCSS_LOST;
+    TOAST_Push("CT ON");
+
     break;
   default:
     // Log("STE on");
