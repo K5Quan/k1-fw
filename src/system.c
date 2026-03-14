@@ -328,6 +328,8 @@ void SYS_Main() {
   for (;;) {
     SETTINGS_UpdateSave();
 
+    checkInt();
+
     SCAN_Check();
 
     if (dtmfIdx > 0 && Now() - lastDtmf > 400) {
@@ -374,10 +376,6 @@ void SYS_Main() {
     }
 
     appRender();
-
-    if (checkInt()) {
-      continue;
-    }
 
     // __WFI();
   }
