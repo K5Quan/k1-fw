@@ -528,6 +528,7 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
   if ((int_bits & BK4819_REG_02_MASK_CxCSS_TAIL) ||
       (int_bits & BK4819_REG_02_MASK_CTCSS_FOUND) ||
       (int_bits & BK4819_REG_02_MASK_CDCSS_FOUND)) {
+    Log("[SCAN] TONE found (closed)");
     sqOpen = false;
     RADIO_MuteAudioNow(gRadioState);
   }
@@ -535,6 +536,7 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
   // CSS/CTCSS/CDCSS потеряны — открываем squelch
   if ((int_bits & BK4819_REG_02_MASK_CTCSS_LOST) ||
       (int_bits & BK4819_REG_02_MASK_CDCSS_LOST)) {
+    Log("[SCAN] TONE lost (open)");
     sqOpen = true;
     RADIO_UnmuteAudioNow(gRadioState);
   }

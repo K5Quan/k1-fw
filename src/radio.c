@@ -355,8 +355,6 @@ static void setupToneDetection(VFOContext *ctx) {
                    BK4819_REG_3F_FSK_RX_FINISHED;
 
   InterruptMask |= BK4819_REG_3F_SQUELCH_LOST | BK4819_REG_3F_SQUELCH_FOUND;
-  InterruptMask |= BK4819_REG_3F_CDCSS_FOUND | BK4819_REG_3F_CDCSS_LOST;
-  InterruptMask |= BK4819_REG_3F_CTCSS_FOUND | BK4819_REG_3F_CTCSS_LOST;
 
   if (gSettings.dtmfdecode) {
     BK4819_EnableDTMF();
@@ -368,12 +366,14 @@ static void setupToneDetection(VFOContext *ctx) {
   case CODE_TYPE_DIGITAL:
   case CODE_TYPE_REVERSE_DIGITAL:
     // Log("DCS on");
+    InterruptMask |= BK4819_REG_3F_CDCSS_FOUND | BK4819_REG_3F_CDCSS_LOST;
     BK4819_SetCDCSSCodeWord(
         DCS_GetGolayCodeWord(ctx->code.type, ctx->code.value));
     // TOAST_Push("CD ON");
     break;
   case CODE_TYPE_CONTINUOUS_TONE:
     // Log("CTCSS on");
+    InterruptMask |= BK4819_REG_3F_CTCSS_FOUND | BK4819_REG_3F_CTCSS_LOST;
     BK4819_SetCTCSSFrequency(CTCSS_Options[ctx->code.value]);
     // TOAST_Push("CT ON");
 
