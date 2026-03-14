@@ -36,9 +36,9 @@ static const char *graphMeasurementNames[] = {
 
 static void updateBand(void) {
   uint32_t f = RADIO_GetParam(ctx, PARAM_FREQUENCY);
-  if (!BANDS_InRange(f, &gCurrentBand)) {
+  // if (gCurrentBand.start == 0 && !BANDS_InRange(f, &gCurrentBand)) {
     gCurrentBand = BANDS_ByFrequency(f);
-  }
+  // }
 }
 
 static void setChannel(uint16_t v) {

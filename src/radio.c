@@ -934,8 +934,8 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     break;
   case PARAM_POWER: {
     ctx->power = value;
-    ctx->tx_state.power_level =
-        BANDS_CalculateOutputPower(ctx->power, ctx->tx_state.frequency);
+    ctx->tx_state.power_level = BANDS_CalculateOutputPower(
+        ctx->power, RADIO_GetParam(ctx, PARAM_TX_FREQUENCY_FACT));
 
     ctx->tx_state.pa_enabled = true;
     ctx->dirty[PARAM_TX_POWER] = true;
@@ -1580,6 +1580,7 @@ void RADIO_SaveVFOToStorage(const RadioState *state, uint8_t vfo_index,
   storage->rxF = ctx->frequency;
   storage->step = ctx->step;
 
+  storage->power = ctx->power;
   storage->bw = ctx->bandwidth;
   storage->modulation = ctx->modulation;
   storage->gainIndex = ctx->gain;

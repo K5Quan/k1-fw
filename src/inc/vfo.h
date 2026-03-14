@@ -144,9 +144,9 @@ typedef struct {
   struct {
     uint32_t frequency : 27; // Частота передачи (может отличаться от RX)
     TXStatus last_error : 3;
-    bool dirty : 1;     // Флаг изменения параметров TX
-    bool is_active : 1; // true, если идёт передача
-    uint8_t power_level : 4; // Уровень мощности
+    uint8_t power_level; // Уровень мощности
+    bool dirty : 1;      // Флаг изменения параметров TX
+    bool is_active : 1;  // true, если идёт передача
     OffsetDirection offsetDirection : 4;
     bool pa_enabled : 1;
     Code code;
