@@ -516,8 +516,7 @@ void BK4819_SetFrequency(uint32_t freq) {
   static uint16_t prev_low = 0;
   static uint16_t prev_high = 0;
 
-  freq += (gSettings.freqCorrection - UINT16_MAX / 2);
-  // printf("f=%u\n", freq);
+  freq += gSettings.freqCorrection;
 
   uint16_t low = freq & 0xFFFF;
   uint16_t high = (freq >> 16) & 0xFFFF;
@@ -1601,9 +1600,9 @@ void BK4819_Init(void) {
                            | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
   ); */
 
-  // BK4819_WriteRegister(0x40, 0x3516);
+  BK4819_WriteRegister(0x40, 0x3516);
   // BK4819_WriteRegister(0x40, 0x34F0);
-  RF_SetXtal(XTAL26M);
+  // RF_SetXtal(XTAL26M);
 
   const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80,  71,  58,  44,
                                  65,  55,  37,  23, 228, 203, 181, 159};
