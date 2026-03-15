@@ -134,6 +134,19 @@ static bool handleRepeatableKeys(KEY_Code_t key) {
     SCAN_SetDelay(
         AdjustU(SCAN_GetDelay(), 0, 10000, key == KEY_1 ? 100 : -100));
     return true;
+  case KEY_2:
+  case KEY_8:
+    if (key == KEY_2) {
+      gCurrentBand.end =
+          gCurrentBand.start + (gCurrentBand.end - gCurrentBand.start) * 2;
+    } else {
+      gCurrentBand.end =
+          gCurrentBand.start + (gCurrentBand.end - gCurrentBand.start) / 2;
+    }
+    gCurrentBand.end =
+        RoundToStep(gCurrentBand.end, StepFrequencyTable[gCurrentBand.step]);
+    SCAN_setBand(gCurrentBand);
+    return true;
 
   case KEY_3:
   case KEY_9:
@@ -144,7 +157,7 @@ static bool handleRepeatableKeys(KEY_Code_t key) {
 
   case KEY_UP:
   case KEY_DOWN:
-    shiftBand(key == KEY_UP);
+    shiftBand((key == KEY_UP) ^ gSettings.invertButtons);
     return true;
 
   default:
@@ -338,13 +351,15 @@ void SCANER_render(void) {
   }
 
   if (state != SCAN_STATE_LISTENING) {
+    LOOT_Sort(LOOT_SortByLastOpenTime, true);
     uint8_t y = 18 + 8;
     uint8_t cnt = 0;
     for (int16_t i = LOOT_Size() - 1; i >= 0 && cnt < 4; --i) {
       Loot *v = LOOT_Item(i);
       const uint32_t ago = (Now() - v->lastTimeOpen) / 1000;
       mhzToS(String, v->f);
-      PrintSmallEx(0, y, POS_L, C_FILL, "%s %u:%02u", String, ago / 60,
+      PrintSmallEx(0, y, POS_L, C_FILL, "%c%s %u:%02u",
+                   gLastActiveLoot == v ? '>' : ' ', String, ago / 60,
                    ago % 60);
       cnt++;
       y += 6;

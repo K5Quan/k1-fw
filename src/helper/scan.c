@@ -22,7 +22,7 @@
 static ScanContext scan = {
     .state = SCAN_STATE_IDLE,
     .mode = SCAN_MODE_SINGLE,
-    .warmupUs = 1200,
+    .warmupUs = 2500,
     .checkDelayMs = SQL_DELAY,
     .squelchLevel = 0,
     .isOpen = false,
