@@ -265,30 +265,28 @@ bool SCANER_key(KEY_Code_t key, Key_State_t state) {
 // ─── Рендер ───────────────────────────────────────────────────────────────
 
 // Горизонтальный "прогресс" сканирования: позиция внутри диапазона
-static void renderScanProgress(uint8_t y, uint32_t f) {
-  uint32_t bw = gCurrentBand.end - gCurrentBand.start;
-  if (bw == 0)
-    return;
-  // ограничиваем позицию
-  uint32_t pos = (f >= gCurrentBand.start) ? (f - gCurrentBand.start) : 0;
-  if (pos > bw)
-    pos = bw;
-  uint8_t px = (uint8_t)((uint32_t)(LCD_WIDTH - 2) * pos / bw);
-  // рамка
-  DrawVLine(0, y - 3, 4, C_FILL);
-  DrawVLine(LCD_WIDTH - 1, y - 3, 4, C_FILL);
-  DrawHLine(0, y - 3, LCD_WIDTH, C_FILL);
-  DrawHLine(0, y + 1, LCD_WIDTH, C_FILL);
-  // маркер
-  FillRect(px, y - 2, 3, 3, C_FILL);
-}
+static void renderScanProgress(uint8_t y, uint32_t f, ScanState state) {
+  uint8_t px =
+      ConvertDomain(f, gCurrentBand.start, gCurrentBand.end, 24, LCD_WIDTH);
 
-// Анимированная "бегущая" строка SCAN
-static void renderScanLabel(uint8_t x, uint8_t y) {
-  static const char *frames[] = {"SCAN -  ", "SCAN  - ", "SCAN   -", "SCAN  - ",
-                                 "SCAN -  "};
-  uint8_t frame = (Now() / 150) % 5;
-  PrintSmallEx(x, y, POS_L, C_FILL, frames[frame]);
+  DrawRect(24, y - 3, LCD_WIDTH - 24, 5, C_FILL);
+
+  switch (state) {
+  case SCAN_STATE_IDLE:
+    DrawVLine(px, y - 2, 3, C_FILL);
+    break;
+  case SCAN_STATE_TUNING:
+    DrawVLine(px, y - 2, 3, C_FILL);
+    PutPixel(px + 1, y - 1, C_FILL);
+    break;
+  case SCAN_STATE_CHECKING:
+    FillRect(px, y - 2, 3, 3, C_FILL);
+    break;
+  case SCAN_STATE_LISTENING:
+    FillRect(px, y - 2, 3, 3, C_FILL);
+    break;
+  }
+  PrintSmallEx(0, y + 1, POS_L, C_FILL, "%u/s", SCAN_GetCps());
 }
 
 static void renderBandBounds(uint8_t y) {
@@ -334,13 +332,9 @@ void SCANER_render(void) {
 
   switch (state) {
   case SCAN_STATE_TUNING:
-    renderScanLabel(0, 18);
-    PrintSmallEx(LCD_WIDTH, 18, POS_R, C_FILL, "%ucps", SCAN_GetCps());
     break;
 
   case SCAN_STATE_CHECKING:
-    PrintSmallEx(0, 18, POS_L, C_FILL, "Checking");
-    PrintSmallEx(LCD_WIDTH, 18, POS_R, C_FILL, "%ucps", SCAN_GetCps());
     break;
 
   case SCAN_STATE_LISTENING:
@@ -358,11 +352,11 @@ void SCANER_render(void) {
       Loot *v = LOOT_Item(i);
       const uint32_t ago = (Now() - v->lastTimeOpen) / 1000;
       mhzToS(String, v->f);
-      PrintSmallEx(0, y, POS_L, C_FILL, "%c%s %u:%02u",
-                   gLastActiveLoot == v ? '>' : ' ', String, ago / 60,
-                   ago % 60);
+      PrintMediumEx(0, y, POS_L, C_FILL, "%c%s %u:%02u",
+                    gLastActiveLoot == v ? '>' : ' ', String, ago / 60,
+                    ago % 60);
       cnt++;
-      y += 6;
+      y += 8;
     }
   }
 
@@ -370,7 +364,7 @@ void SCANER_render(void) {
     UI_DrawLoot(gLastActiveLoot, LCD_XCENTER, 14, POS_C);
   }
 
-  renderScanProgress(LCD_HEIGHT - 6 - 3, f);
+  renderScanProgress(LCD_HEIGHT - 6 - 3, f, state);
   renderBandBounds(LCD_HEIGHT - 1);
   PrintSmallEx(LCD_XCENTER, LCD_HEIGHT - 1, POS_C, C_FILL, "%s",
                RADIO_GetParamValueString(ctx, PARAM_FREQUENCY));
