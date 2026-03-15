@@ -20,7 +20,9 @@ int main(void) {
   GPIO_TurnOnBacklight();
 
   /* BK4819_Init();
+  // это включает помехуйство
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
+
   BK4819_RX_TurnOn();
 
   AUDIO_ToggleSpeaker(true);
@@ -28,6 +30,7 @@ int main(void) {
   BK4819_SelectFilter(25230000);
   BK4819_TuneTo(25230000, true);
 
+  __disable_irq();
   for (;;) {
     SYSTICK_DelayMs(1000);
   } */

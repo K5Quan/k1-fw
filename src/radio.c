@@ -346,7 +346,7 @@ static void enableCxCSS(VFOContext *ctx) {
 
 #include "./ui/toast.h"
 static void setupToneDetection(VFOContext *ctx) {
-  BK4819_WriteRegister(BK4819_REG_7E, 0x302E); // DC flt BW 0=BYP
+  // BK4819_WriteRegister(BK4819_REG_7E, 0x302E); // DC flt BW 0=BYP
 
   uint16_t InterruptMask = BK4819_REG_3F_CxCSS_TAIL;
 

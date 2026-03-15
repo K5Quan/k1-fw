@@ -377,6 +377,6 @@ void SYS_Main() {
 
     appRender();
 
-    // __WFI();
+    __WFI();
   }
 }

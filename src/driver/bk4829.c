@@ -300,18 +300,6 @@ void BK4819_ToggleGpioOut(BK4819_GPIO_PIN_t pin, bool enable) {
 // AGC Configuration
 // ============================================================================
 
-static void configure_agc_registers(void) {
-  /* BK4819_WriteRegister(0x12, (3u << 8) | (3u << 5) | (3u << 3) | (4u << 0));
-  BK4819_WriteRegister(0x11, (2u << 8) | (3u << 5) | (3u << 3) | (3u << 0));
-  BK4819_WriteRegister(0x10, (0u << 8) | (3u << 5) | (3u << 3) | (2u << 0));
-  BK4819_WriteRegister(0x14, (0u << 8) | (0u << 5) | (3u << 3) | (1u << 0)); */
-
-  // BK4819_WriteRegister(BK4819_REG_13, 0x03BE); //  11 101 11 110 /  -7dB
-  BK4819_WriteRegister(BK4819_REG_12, 0x037B); //  11 011 11 011 / -24dB
-  BK4819_WriteRegister(BK4819_REG_11, 0x027B); //  10 011 11 011 / -43dB
-  BK4819_WriteRegister(BK4819_REG_10, 0x007A); //  00 011 11 010 / -58dB
-}
-
 int8_t BK4819_GetAgcIndex() {
   int8_t idx = (BK4819_ReadRegister(BK4819_REG_7E) >> 12) & 7;
   if (idx > 3) {
@@ -360,8 +348,6 @@ void BK4819_SetAGC(bool fm, uint8_t gainIndex) {
            (3u << 12) |                  // AGC fix index
            (5u << 3) |                   // Default DC
            (6u << 0);                    // Default value
-
-  configure_agc_registers();
 
   BK4819_WriteRegister(BK4819_REG_13, reg13);
   BK4819_WriteRegister(BK4819_REG_14, reg14);
@@ -651,26 +637,8 @@ void BK4819_SetModulation(ModulationType type) {
 
   if (isSsb || type == MOD_AM) {
     BK4819_WriteRegister(0x4A, reg4A | 0b111111);
-    /* BK4819_WriteRegister(BK4819_REG_48,
-                         (0b1100 << 10)        // ?
-                             | (0b111111 << 4) // GAIN2
-                             | (0b1111 << 0)   // AFTER G1 G2
-    ); */
   } else {
     BK4819_WriteRegister(0x4A, reg4A & ~0b111111);
-    /* BK4819_WriteRegister(BK4819_REG_48,
-                         (0b1100 << 10)        // ?
-                             | (0b111010 << 4) // GAIN2
-                             | (0b1000 << 0)   // AFTER G1 G2
-
-    );
-                            */
-    /* BK4819_WriteRegister(BK4819_REG_48,
-                         (0b1100 << 10)        // ?
-                             | (0b111111 << 4) // GAIN2
-                             | (0b0011 << 0)   // DAC GAIN AFTER G1 G2
-    );
-                             */
   }
 
   uint16_t r31 = BK4819_ReadRegister(0x31);
@@ -680,20 +648,24 @@ void BK4819_SetModulation(ModulationType type) {
     BK4819_WriteRegister(0x2A, 0x7434); // noise gate time constants
     BK4819_WriteRegister(0x2B, 0x0400);
     BK4819_WriteRegister(0x2F, 0x9990);
-
-    /* BK4819_WriteRegister(0x54, 0x9775);
-    BK4819_WriteRegister(0x55, 0x32c6); */
-    /* BK4819_WriteRegister(0x54, 0x8846);
-    BK4819_WriteRegister(0x55, 0x38C0); */
   } else {
     BK4819_WriteRegister(0x31, r31 & 0xFFFE);
     BK4819_WriteRegister(0x42, 0x6B5A);
     BK4819_WriteRegister(0x2A, 0x7400);
     BK4819_WriteRegister(0x2B, 0x0000);
     BK4819_WriteRegister(0x2F, 0x9890);
+  }
 
-    /* BK4819_WriteRegister(0x54, 0x9009);
-    BK4819_WriteRegister(0x55, 0x31a9); */
+  if (type == MOD_FM) {
+    // Karina mod
+    BK4819_WriteRegister(0x28, 1536);  // 0x0600 - noise gate для FM
+    BK4819_WriteRegister(0x2C, 26210); // 0x6662 - emph/tx gain для FM
+    uint16_t reg4A = BK4819_ReadRegister(0x4A);
+    BK4819_WriteRegister(0x4A, (reg4A & ~127U) | 40);
+  } else {
+    BK4819_WriteRegister(0x28, 0x0B40); // восстановить дефолт
+    BK4819_WriteRegister(0x2C, 0x1822); // восстановить дефолт
+    // 0x4A уже обрабатывается выше в функции для AM/SSB
   }
 }
 
@@ -1579,17 +1551,12 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(BK4819_REG_00, 0x8000);
   BK4819_WriteRegister(BK4819_REG_00, 0x0000);
 
-  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F); // LDO, XTAL EN
-  BK4819_WriteRegister(BK4819_REG_36, 0x0022); // PA
+  BK4819_WriteRegister(BK4819_REG_37, 0x9D1F & ~(1 << 10)); // LDO, XTAL EN
+  BK4819_WriteRegister(BK4819_REG_36, 0x0022);              // PA
 
   BK4819_WriteRegister(BK4819_REG_10, 0x0318);
   BK4819_WriteRegister(BK4819_REG_11, 0x033A);
   BK4819_WriteRegister(BK4819_REG_12, 0x03DB);
-  BK4819_WriteRegister(BK4819_REG_13, 0x03DF);
-  /* BK4819_WriteRegister(BK4819_REG_10, 0x007A);
-  BK4819_WriteRegister(BK4819_REG_11, 0x027B);
-  BK4819_WriteRegister(BK4819_REG_12, 0x037B);
-  BK4819_WriteRegister(BK4819_REG_13, 0x03BE); */
 
   BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
 
@@ -1636,14 +1603,14 @@ void BK4819_Init(void) {
   RF_SetAfResponse_TX(1, ADD2); // согласные, улучшает разборчивость
   RF_SetAfResponse_TX(0, SUB1); // -1dB @ 300Hz Обрезает гул, бубнение
 
-  BK4819_WriteRegister(BK4819_REG_7E, 0x302E); // tx dcc before alc
+  BK4819_WriteRegister(BK4819_REG_7E, 0x3029); // #x302E tx dcc before alc
   BK4819_WriteRegister(BK4819_REG_46, 0x600A);
   BK4819_WriteRegister(0x4A, 0x5430);
 
   gGpioOutState = 0x9000;
 
   BK4819_WriteRegister(BK4819_REG_33, gGpioOutState);
-  // BK4819_WriteRegister(BK4819_REG_3F, 0);
+  BK4819_WriteRegister(BK4819_REG_3F, 0);
 
   BK4819_SetupPowerAmplifier(0, 0);
   BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);

@@ -72,7 +72,7 @@ const App apps[APPS_COUNT] = {
                       SETTINGS_key, SETTINGS_deinit},
     [APP_APPS_LIST] = {"Run app", APPSLIST_init, NULL, APPSLIST_render,
                        APPSLIST_key, NULL},
-    [APP_SCANER] = {"Spectrum", SCANER_init, SCANER_update, SCANER_render,
+    [APP_SCANER] = {"Scaner", SCANER_init, SCANER_update, SCANER_render,
                     SCANER_key, SCANER_deinit, true},
     [APP_FC] = {"FC", FC_init, FC_update, FC_render, FC_key, FC_deinit, true},
     [APP_VFO1] = {"1 VFO", VFO1_init, VFO1_update, VFO1_render, VFO1_key, NULL,

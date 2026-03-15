@@ -544,3 +544,4 @@ void SCAN_HandleInterrupt(uint16_t int_bits) {
 
 bool SCAN_IsSqOpen(void) { return sqOpen; }
 const char *SCAN_GetStateName(void) { return SCAN_STATE_NAMES[scan.state]; }
+ScanState SCAN_GetState(void) { return scan.state; }

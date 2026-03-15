@@ -9,17 +9,17 @@
 
 // Состояния машины состояний сканирования
 typedef enum {
-  SCAN_STATE_IDLE,      // Ждём команды (только в командном режиме)
-  SCAN_STATE_TUNING,    // Переключаем частоту и ждём warmup
-  SCAN_STATE_CHECKING,  // Ждём checkDelayMs и проверяем squelch железом
+  SCAN_STATE_IDLE, // Ждём команды (только в командном режиме)
+  SCAN_STATE_TUNING, // Переключаем частоту и ждём warmup
+  SCAN_STATE_CHECKING, // Ждём checkDelayMs и проверяем squelch железом
   SCAN_STATE_LISTENING, // Squelch открыт, слушаем сигнал
 } ScanState;
 
 // Режимы работы сканера
 typedef enum {
   SCAN_MODE_NONE,
-  SCAN_MODE_SINGLE,     // Мониторинг одной частоты (VFO)
-  SCAN_MODE_FREQUENCY,  // Частотное сканирование по диапазону
+  SCAN_MODE_SINGLE, // Мониторинг одной частоты (VFO)
+  SCAN_MODE_FREQUENCY, // Частотное сканирование по диапазону
   SCAN_MODE_CHANNEL,    // Сканирование по каналам
   SCAN_MODE_ANALYSER,   // Анализатор спектра
   SCAN_MODE_MULTIWATCH, // Мультивотч нескольких VFO
@@ -29,30 +29,30 @@ typedef enum {
 typedef struct {
   // Машина состояний
   ScanState state;
-  ScanMode  mode;
-  uint32_t  stateEnteredAt; // Время входа в текущее состояние (из ChangeState)
+  ScanMode mode;
+  uint32_t stateEnteredAt; // Время входа в текущее состояние (из ChangeState)
 
   // Диапазон сканирования
   uint32_t currentF;
   uint32_t startF;
   uint32_t endF;
   uint16_t stepF;
-  bool     cmdRangeActive; // В командном режиме: выполняем range-команду
+  bool cmdRangeActive; // В командном режиме: выполняем range-команду
 
   // Squelch
-  uint32_t    squelchLevel; // Программный порог (авто-адаптивный)
+  uint32_t squelchLevel; // Программный порог (авто-адаптивный)
   Measurement measurement;
-  bool        isOpen;       // Текущее состояние squelch
+  bool isOpen; // Текущее состояние squelch
 
   // Таймауты
-  uint32_t warmupUs;    // Задержка после переключения частоты (warmup)
+  uint32_t warmupUs; // Задержка после переключения частоты (warmup)
   uint32_t checkDelayMs; // Задержка перед аппаратной проверкой squelch
 
   // Статистика
   uint32_t scanCycles;
   uint32_t currentCps;
   uint32_t lastCpsTime;
-  uint8_t  idleCycles;  // Циклы без открытого squelch (для авто-снижения порога)
+  uint8_t idleCycles; // Циклы без открытого squelch (для авто-снижения порога)
 
   // Командный режим
   SCMD_Context *cmdCtx;
@@ -104,5 +104,6 @@ const char *SCAN_GetStateName(void);
 
 extern const char *SCAN_MODE_NAMES[];
 extern const char *SCAN_STATE_NAMES[];
+ScanState SCAN_GetState(void);
 
 #endif
