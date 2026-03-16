@@ -150,9 +150,9 @@ static void loadSettingsOrReset() {
   if (!lfs_file_exists("Bands.bnd")) {
     STORAGE_INIT("Bands.bnd", Band, MAX_BANDS);
   }
-  if (!lfs_file_exists("Channels.ch")) {
+  /* if (!lfs_file_exists("Channels.ch")) {
     STORAGE_INIT("Channels.ch", CH, 4096);
-  }
+  } */
 }
 
 static bool checkKeylock(KEY_State_t state, KEY_Code_t key) {

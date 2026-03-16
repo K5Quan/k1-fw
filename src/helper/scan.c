@@ -218,7 +218,12 @@ static void HandleStateTuning(void) {
     // Сигнала нет — на следующую частоту
     scan.measurement.open = false;
     SP_AddPoint(&scan.measurement);
-    scan.currentF += scan.stepF;
+    Loot *loot;
+    do {
+      scan.currentF += scan.stepF;
+      loot = LOOT_Get(scan.currentF);
+    } while ((loot && (loot->blacklist || loot->whitelist)) ||
+             (scan.currentF % 650000 == 0));
     // остаёмся в TUNING
   }
 }
@@ -252,8 +257,8 @@ static void HandleStateChecking(void) {
   } else {
     // Ложное срабатывание программного фильтра — повышаем порог и идём дальше
     scan.squelchLevel++;
-    scan.currentF +=
-        scan.stepF; // сдвигаем здесь, чтобы не перепроверять ту же частоту
+    // сдвигаем здесь, чтобы не перепроверять ту же частоту
+    scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
   }
 }
