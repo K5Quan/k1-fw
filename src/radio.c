@@ -888,7 +888,10 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     case MOD_LSB:
     case MOD_USB:
     case MOD_AM:
-      RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_6k, save_to_eeprom);
+      if (RADIO_GetParam(ctx, PARAM_FREQUENCY < 30 * MHZ)) {
+        RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_6k,
+                       save_to_eeprom);
+      }
       break;
     default:
       RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_12k,
@@ -1749,8 +1752,6 @@ void RADIO_UpdateSquelch(RadioState *state) {
   RADIO_UpdateMeasurement(&state->vfos[state->active_vfo_index]);
   if (vfo->is_open != vfo->msm.open) {
     gRedrawScreen = true; // TODO: mv
-    // RADIO_SetParam(ctx, PARAM_AFC_SPD, vfo->msm.open ? 57 : 63, false);
-    RADIO_ApplySettings(ctx);
     vfo->is_open = vfo->msm.open;
     RADIO_SwitchAudioToVFO(state, state->active_vfo_index);
   }

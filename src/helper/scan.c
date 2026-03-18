@@ -264,6 +264,14 @@ static void HandleStateChecking(void) {
 }
 
 static void HandleStateListening(void) {
+  // Если текущий loot был заблэклистен — сразу уходим
+  if (gLastActiveLoot && gLastActiveLoot->blacklist) {
+    scan.currentF += scan.stepF;
+    ChangeState(SCAN_STATE_TUNING);
+    gRedrawScreen = true;
+    return;
+  }
+
   bool wasOpen = scan.isOpen;
   scan.isOpen = sqOpen; // состояние из прерывания
 

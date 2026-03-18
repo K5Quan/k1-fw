@@ -40,7 +40,7 @@ Loot *LOOT_Get(uint32_t f) {
 
 int16_t LOOT_IndexOf(Loot *item) {
   for (uint16_t i = 0; i < LOOT_Size(); ++i) {
-    if (&item[i] == item) {
+    if (&loot[i] == item) {
       return i;
     }
   }
