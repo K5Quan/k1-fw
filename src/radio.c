@@ -888,7 +888,7 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
     case MOD_LSB:
     case MOD_USB:
     case MOD_AM:
-      if (RADIO_GetParam(ctx, PARAM_FREQUENCY < 30 * MHZ)) {
+      if (RADIO_GetParam(ctx, PARAM_FREQUENCY) < 30 * MHZ) {
         RADIO_SetParam(ctx, PARAM_BANDWIDTH, BK4819_FILTER_BW_6k,
                        save_to_eeprom);
       }

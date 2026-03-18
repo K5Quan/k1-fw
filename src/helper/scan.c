@@ -265,7 +265,9 @@ static void HandleStateChecking(void) {
 
 static void HandleStateListening(void) {
   // Если текущий loot был заблэклистен — сразу уходим
-  if (gLastActiveLoot && gLastActiveLoot->blacklist) {
+  if (gLastActiveLoot &&
+      (gLastActiveLoot->blacklist || gLastActiveLoot->whitelist)) {
+    RADIO_MuteAudioNow(gRadioState);
     scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
     gRedrawScreen = true;
