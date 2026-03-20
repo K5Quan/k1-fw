@@ -52,7 +52,7 @@ static void SPI_Init(void) {
   SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
   SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
   SPI_InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
-  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV64;
+  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV4;
   LL_SPI_Init(SPIx, &SPI_InitStruct);
 
   LL_SPI_Enable(SPIx);
@@ -219,7 +219,7 @@ void ST7565_Init(void) {
 
   CS_Assert();
   ST7565_WriteByte(ST7565_CMD_SOFTWARE_RESET);
-  SYSTICK_DelayMs(120);  // Критично: дисплею нужно время на сброс
+  SYSTICK_DelayMs(120); // Критично: дисплею нужно время на сброс
 
   send_init_cmds();
 
@@ -229,7 +229,7 @@ void ST7565_Init(void) {
   SYSTICK_DelayMs(1);
   for (uint8_t i = 0; i < 4; i++)
     ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b111);
-  SYSTICK_DelayMs(40);  // Критично: время на стабилизацию напряжения
+  SYSTICK_DelayMs(40); // Критично: время на стабилизацию напряжения
 
   ST7565_WriteByte(ST7565_CMD_SET_START_LINE | 0);
   ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1);

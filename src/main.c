@@ -18,55 +18,7 @@ int main(void) {
   BOARD_Init();
   GPIO_TurnOnBacklight();
 
-  /* for (;;) {
-    for (uint8_t i = 0; i < LCD_HEIGHT; ++i) {
-      UI_ClearStatus();
-      UI_ClearScreen();
-      DrawHLine(0, i, LCD_WIDTH, C_FILL);
-      ST7565_Blit();
-      SYSTICK_DelayMs(50);
-    }
-  } */
-
   AUDIO_IO_Init();
-
-  GPIO_TurnOnBacklight();
-
-  /* BK4819_Init();
-  // это включает помехуйство
-  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, true);
-
-  BK4819_RX_TurnOn();
-
-  AUDIO_ToggleSpeaker(true);
-
-  BK4819_SelectFilter(25230000);
-  BK4819_TuneTo(25230000, true);
-
-  __disable_irq();
-  for (;;) {
-    SYSTICK_DelayMs(1000);
-  } */
-
-  /* BK4819_Init();
-  BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, false);
-  BK4819_TuneTo(43400000, true);
-
-  for (;;) {
-    BK4819_PrepareTransmit();
-    SYSTICK_DelayMs(10);
-    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
-    SYSTICK_DelayMs(5);
-    BK4819_SetupPowerAmplifier(1, 43400000);
-
-    SYSTICK_DelayMs(3);
-
-    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, false);
-    BK4819_SetupPowerAmplifier(0, 0);
-    BK4819_TurnsOffTones_TurnsOnRX();
-
-    SYSTICK_DelayMs(250);
-  } */
 
   SYS_Main();
 }
