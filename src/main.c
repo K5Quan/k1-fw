@@ -6,6 +6,7 @@
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "helper/audio_io.h"
+#include "helper/pocsag.h"
 #include "system.h"
 #include "ui/graphics.h"
 #include <assert.h>

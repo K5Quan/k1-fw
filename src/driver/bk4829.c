@@ -468,29 +468,21 @@ void BK4819_SetFilterBandwidth(BK4819_FilterBandwidth_t bw) {
   if (bw > 9)
     return;
 
-  //                                       v
   static const uint8_t rf[] = {0, 1, 1, 3, 1, 2, 3, 4, 5, 7};
-  static const uint8_t wb[] = {0, 0, 1, 2, 0, 2, 2, 3, 4, 6};
+  static const uint8_t wb[] = {0, 0, 1, 2, 1, 2, 2, 3, 4, 6};
   static const uint8_t af[] = {1, 2, 0, 3, 0, 0, 7, 6, 5, 4};
   static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2};
-
-  /* static const uint8_t rf[] = {3, 3, 4, 4, 4, 5, 5, 6, 6, 7};
-  static const uint8_t wb[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 5};
-  static const uint8_t af[] = {1, 1, 1, 1, 0, 0, 3, 3, 4, 4};
-  static const uint8_t bs[] = {1, 1, 0, 0, 2, 2, 2, 2, 2, 2}; */
 
   const uint16_t value = //
       (0u << 15)         //
       | (rf[bw] << 12)   //
-      | (rf[bw] << 9)    // weak
+      | (wb[bw] << 9)    // weak
       | (af[bw] << 6)    //
       | (bs[bw] << 4)    //
       | (1u << 3)        //
       | (0u << 2)        //
       | (0u << 0);       //
 
-  // BK4819_WriteRegister(0x43, 0x347C); // AM 0b11010001111100
-  // BK4819_WriteRegister(0x43, 0x3028); // FM 0b11000000101000
   BK4819_WriteRegister(BK4819_REG_43, value);
 }
 
@@ -1566,7 +1558,14 @@ void BK4819_Init(void) {
 
   BK4819_WriteRegister(BK4819_REG_7B, 0x73DC);
 
-  BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  // BK4819_WriteRegister(BK4819_REG_48, 0x33A8);
+  // s0v4
+  BK4819_WriteRegister(
+      BK4819_REG_48,
+      (11u << 12) |   // ??? .. 0 ~ 15, doesn't seem to make any difference
+          (0 << 10) | // AF Rx Gain-1 00:0dB 01:-6dB 10:-12dB 11:-18dB
+          (58 << 4) | // AF Rx Gain-2 AF RX Gain2 (-26 dB ~ 5.5 dB): 0x00: Mute
+          (8 << 0));  // AF DAC Gain (after Gain-1 and Gain-2) 1111 - max
   /* BK4819_WriteRegister(BK4819_REG_48,
                        (0b1100 << 10)        // ?
                            | (0b111111 << 4) // GAIN2
