@@ -402,9 +402,9 @@ static bool keyAction(AppAction_t act) {
     APPS_run(APP_FILES);
     return true;
 
-  case KA_APP_OSC:
+  /* case KA_APP_OSC:
     APPS_run(APP_OSC);
-    return true;
+    return true; */
 
   case KA_EXIT_APP:
     APPS_exit();

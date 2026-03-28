@@ -14,7 +14,7 @@
 #include "files.h"
 #include "messenger.h"
 #include "newscan.h"
-#include "osc.h"
+// #include "osc.h"
 #include "scaner.h"
 #include "settings.h"
 #include "vfo1.h"
@@ -55,12 +55,12 @@ AppType_t APPS_Peek(void) {
 }
 
 const AppType_t appsAvailableToRun[RUN_APPS_COUNT] = {
-    APP_VFO1,      //
-    APP_SCANER,    //
-    APP_NEWSCAN,   //
-    APP_CMDSCAN,   //
-    APP_FC,        //
-    APP_OSC,       //
+    APP_VFO1,    //
+    APP_SCANER,  //
+    APP_NEWSCAN, //
+    APP_CMDSCAN, //
+    APP_FC,      //
+    // APP_OSC,       //
     APP_MESSENGER, //
     APP_FILES,     //
     APP_ABOUT,     //
@@ -83,8 +83,8 @@ const App apps[APPS_COUNT] = {
                      CMDEDIT_key, NULL},
     [APP_NEWSCAN] = {"Analyzer", NEWSCAN_init, NEWSCAN_update, NEWSCAN_render,
                      NEWSCAN_key, NEWSCAN_deinit, true},
-    [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key, OSC_deinit,
-                 true},
+    /* [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key,
+       OSC_deinit, true}, */
     [APP_MESSENGER] = {"MESSENGER", MESSENGER_init, MESSENGER_update,
                        MESSENGER_render, MESSENGER_key, MESSENGER_deinit, true},
     [APP_FILES] = {"Files", FILES_init, NULL, FILES_render, FILES_key, NULL},

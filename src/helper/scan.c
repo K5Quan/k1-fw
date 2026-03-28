@@ -460,11 +460,17 @@ void SCAN_Next(void) {
 
 void SCAN_NextBlacklist(void) {
   LOOT_BlacklistLast();
+  sqOpen = false;
+  RADIO_MuteAudioNow(gRadioState);
+  gRedrawScreen = true;
   SCAN_Next();
 }
 
 void SCAN_NextWhitelist(void) {
   LOOT_WhitelistLast();
+  sqOpen = false;
+  RADIO_MuteAudioNow(gRadioState);
+  gRedrawScreen = true;
   SCAN_Next();
 }
 
