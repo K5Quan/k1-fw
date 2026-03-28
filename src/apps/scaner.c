@@ -66,7 +66,7 @@ void SCANER_init(void) {
   BANDS_RangeClear();
   BANDS_RangePush(gCurrentBand);
 
-  SCAN_SetDelay(1200);
+  SCAN_SetDelay(1800);
 
   SCAN_SetMode(SCAN_MODE_FREQUENCY);
   SCAN_Init();

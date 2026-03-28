@@ -58,6 +58,8 @@ typedef struct {
   // Командный режим
   SCMD_Context *cmdCtx;
 
+  bool precise;
+
 } ScanContext;
 
 // ============================================================================
