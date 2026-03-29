@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/fagci/Downloads/**)",
+      "Bash(make)"
+    ]
+  },
+  "$version": 3
+}

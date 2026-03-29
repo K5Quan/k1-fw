@@ -64,6 +64,66 @@ const char *SCAN_STATE_NAMES[] = {
 // Вспомогательные функции
 // ============================================================================
 
+// Целочисленный квадратный корень (метод Ньютона)
+static uint32_t isqrt32(uint32_t x) {
+  if (x == 0)
+    return 0;
+  uint32_t root = x;
+  while (1) {
+    uint32_t next = (root + x / root) >> 1;
+    if (next >= root)
+      return root;
+    root = next;
+  }
+}
+
+static void NoiseHistory_Add(uint8_t rssi) {
+  // Если буфер полон, вычитаем вытесняемое значение из сумм
+  if (scan.noiseHist.count == NOISE_HISTORY_SIZE) {
+    uint8_t old = scan.noiseHist.values[scan.noiseHist.idx];
+    scan.noiseHist.sum -= old;
+    scan.noiseHist.sum_sq -= old * old;
+  } else {
+    scan.noiseHist.count++;
+  }
+  scan.noiseHist.values[scan.noiseHist.idx] = rssi;
+  scan.noiseHist.sum += rssi;
+  scan.noiseHist.sum_sq += rssi * rssi;
+  scan.noiseHist.idx = (scan.noiseHist.idx + 1) % NOISE_HISTORY_SIZE;
+
+  // Пересчитываем среднее и stddev
+  if (scan.noiseHist.count > 0) {
+    scan.noiseHist.mean = scan.noiseHist.sum / scan.noiseHist.count;
+    uint32_t variance = (scan.noiseHist.sum_sq / scan.noiseHist.count) -
+                        (scan.noiseHist.mean * scan.noiseHist.mean);
+    // Используем целочисленный sqrt (можно приблизить)
+    scan.noiseHist.stddev = (uint8_t)isqrt32(variance);
+  }
+}
+
+static void NoiseHistory_Clear(void) {
+  scan.noiseHist.idx = 0;
+  scan.noiseHist.count = 0;
+  scan.noiseHist.sum = 0;
+  scan.noiseHist.sum_sq = 0;
+  scan.noiseHist.mean = 0;
+  scan.noiseHist.stddev = 0;
+}
+
+static uint8_t GetAdaptiveThreshold(void) {
+  if (scan.noiseHist.count < 10) {
+    // Недостаточно данных — используем статический порог (например, из
+    // настроек) Можно также вернуть scan.squelchLevel, если он уже задан
+    return scan.squelchLevel ? scan.squelchLevel : 10;
+  }
+  uint8_t thr = scan.noiseHist.mean + scan.noiseHist.k * scan.noiseHist.stddev;
+  if (thr < 5)
+    thr = 5; // минимальный порог
+  if (thr > 250)
+    thr = 250;
+  return thr;
+}
+
 static bool IsGarbageFreq(uint32_t f) {
   return gSettings.skipGarbageFrequencies && (f % GARBAGE_FREQ_STEP == 0);
 }
@@ -123,6 +183,9 @@ static void BeginScanRange(uint32_t start, uint32_t end, uint16_t step) {
   scan.currentF = start;
   scan.stepF = step;
   scan.cmdRangeActive = true;
+
+  NoiseHistory_Clear();
+  scan.adaptiveThreshold = 0; // будет вычислен заново
 
   Log("[SCAN] Range: %u-%u Hz, step=%u", start, end, step);
   ChangeState(SCAN_STATE_TUNING);
@@ -192,6 +255,8 @@ static void HandleEndOfRange(void) {
   } else {
     // Обычный режим: возврат к началу диапазона
     scan.currentF = scan.startF;
+    NoiseHistory_Clear();
+    scan.adaptiveThreshold = 0;
     ChangeState(SCAN_STATE_TUNING);
     SP_Begin();
   }
@@ -212,6 +277,7 @@ static void HandleStateIdle(void) {
 }
 
 static void HandleStateTuning(void) {
+  scan.adaptiveThreshold = GetAdaptiveThreshold();
   // Пропускаем все нежелательные частоты.
   // Защита от stepF == 0: в канальном режиме startF == endF,
   // поэтому если текущая частота скиппабельна — выходим сразу в EndOfRange.
@@ -260,13 +326,13 @@ static void HandleStateTuning(void) {
     scan.squelchLevel = scan.measurement.rssi - 1;
   }
 
-  bool softOpen = (scan.measurement.rssi >= scan.squelchLevel);
-
+  bool softOpen = (scan.measurement.rssi >= scan.adaptiveThreshold);
   if (softOpen) {
-    // Возможен сигнал — ждём аппаратного подтверждения
+    // возможен сигнал
     ChangeState(SCAN_STATE_CHECKING);
   } else {
-    // Сигнала нет — на следующую частоту
+    // сигнала нет — запоминаем уровень шума
+    NoiseHistory_Add(scan.measurement.rssi);
     scan.measurement.open = false;
     SP_AddPoint(&scan.measurement);
     scan.currentF += scan.stepF;
@@ -301,6 +367,7 @@ static void HandleStateChecking(void) {
     ChangeState(SCAN_STATE_LISTENING);
   } else {
     // Ложное срабатывание — повышаем порог и переходим дальше
+    NoiseHistory_Add(scan.measurement.rssi);
     scan.squelchLevel++;
     scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
@@ -421,6 +488,14 @@ void SCAN_SetMode(ScanMode mode) {
 ScanMode SCAN_GetMode(void) { return scan.mode; }
 
 void SCAN_Init(void) {
+
+  scan.noiseHist.idx = 0;
+  scan.noiseHist.count = 0;
+  scan.noiseHist.sum = 0;
+  scan.noiseHist.sum_sq = 0;
+  scan.noiseHist.k = 2; // можно сделать настраиваемым через gSettings
+  scan.adaptiveThreshold = 0;
+
   scan.lastCpsTime = Now();
   scan.scanCycles = 0;
   scan.currentCps = 0;
