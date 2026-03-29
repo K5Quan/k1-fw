@@ -82,20 +82,24 @@ static void NoiseHistory_Add(uint8_t rssi) {
   if (scan.noiseHist.count == NOISE_HISTORY_SIZE) {
     uint8_t old = scan.noiseHist.values[scan.noiseHist.idx];
     scan.noiseHist.sum -= old;
-    scan.noiseHist.sum_sq -= old * old;
+    scan.noiseHist.sum_sq -= (uint32_t)old * old;
   } else {
     scan.noiseHist.count++;
   }
   scan.noiseHist.values[scan.noiseHist.idx] = rssi;
   scan.noiseHist.sum += rssi;
-  scan.noiseHist.sum_sq += rssi * rssi;
+  scan.noiseHist.sum_sq += (uint32_t)rssi * rssi;
   scan.noiseHist.idx = (scan.noiseHist.idx + 1) % NOISE_HISTORY_SIZE;
 
   // Пересчитываем среднее и stddev
   if (scan.noiseHist.count > 0) {
     scan.noiseHist.mean = scan.noiseHist.sum / scan.noiseHist.count;
-    uint32_t variance = (scan.noiseHist.sum_sq / scan.noiseHist.count) -
-                        (scan.noiseHist.mean * scan.noiseHist.mean);
+    uint32_t mean32 = scan.noiseHist.mean;
+    uint32_t variance = (scan.noiseHist.sum_sq / scan.noiseHist.count);
+    if (variance >= mean32 * mean32)
+      variance -= mean32 * mean32;
+    else
+      variance = 0;
     // Используем целочисленный sqrt (можно приблизить)
     scan.noiseHist.stddev = (uint8_t)isqrt32(variance);
   }
@@ -108,6 +112,7 @@ static void NoiseHistory_Clear(void) {
   scan.noiseHist.sum_sq = 0;
   scan.noiseHist.mean = 0;
   scan.noiseHist.stddev = 0;
+  memset(scan.noiseHist.values, 0, sizeof(scan.noiseHist.values));
 }
 
 static uint8_t GetAdaptiveThreshold(void) {
@@ -347,6 +352,7 @@ static void HandleStateChecking(void) {
 
   scan.isOpen = vfo->is_open;
   scan.measurement.open = scan.isOpen;
+  scan.measurement.f = scan.currentF;
   LOOT_Update(&scan.measurement);
   SP_AddPoint(&scan.measurement);
 
@@ -390,6 +396,7 @@ static void HandleStateListening(void) {
 
   if (ElapsedMs() >= timeout) {
     Log("[SCAN] %s timeout", scan.isOpen ? "Listen" : "Close");
+    scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
     gRedrawScreen = true;
   }
@@ -529,6 +536,7 @@ void SCAN_SetRange(uint32_t fs, uint32_t fe) {
 
 void SCAN_Next(void) {
   vfo->is_open = false;
+  scan.currentF += scan.stepF;
   RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
   ChangeState(SCAN_STATE_TUNING);
 }
