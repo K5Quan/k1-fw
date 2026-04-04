@@ -165,7 +165,7 @@ static void UpdateCPS(void) {
 // Применяет параметры текущего диапазона к радио и инициализирует спектр.
 static void ApplyBandSettings(void) {
   vfo->msm.f = gCurrentBand.start;
-  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, vfo->msm.f, false);
   RADIO_SetParam(ctx, PARAM_STEP, gCurrentBand.step, false);
   RADIO_ApplySettings(ctx);
@@ -302,7 +302,7 @@ static void HandleStateTuning(void) {
     return;
   }
 
-  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
+  RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
 

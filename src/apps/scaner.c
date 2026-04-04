@@ -14,6 +14,7 @@
 #include "../ui/finput.h"
 #include "../ui/lootlist.h"
 #include "../ui/statusline.h"
+#include "../ui/spectrum.h"
 #include "apps.h"
 #include <stdint.h>
 
@@ -266,8 +267,7 @@ bool SCANER_key(KEY_Code_t key, Key_State_t state) {
 
 // Горизонтальный "прогресс" сканирования: позиция внутри диапазона
 static void renderScanProgress(uint8_t y, uint32_t f, ScanState state) {
-  uint8_t px =
-      ConvertDomain(f, gCurrentBand.start, gCurrentBand.end, 24, LCD_WIDTH);
+  uint8_t px = SP_F2X(f);
 
   DrawRect(24, y - 3, LCD_WIDTH - 24, 5, C_FILL);
 
