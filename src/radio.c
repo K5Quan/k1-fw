@@ -1767,15 +1767,13 @@ static bool isBroadcastReceiver(const VFOContext *ctx) {
   return (ctx->radio_type == RADIO_SI4732 || ctx->radio_type == RADIO_BK1080);
 }
 
-#include "helper/scan.h"
-
 bool RADIO_CheckSquelch(VFOContext *ctx) {
   if (ctx->tx_state.is_active)
     return false;
   if (gMonitorMode)
     return true;
   if (ctx->radio_type == RADIO_BK4819) {
-    return SCAN_IsSqOpen();
+    return BK4819_IsSquelchOpen();
   }
   return gShowAllRSSI ? RADIO_GetSNR(ctx) > ctx->squelch.value : true;
 }

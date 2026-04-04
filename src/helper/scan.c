@@ -1,51 +1,31 @@
 #include "scan.h"
-#include "../apps/apps.h"
-#include "../dcs.h"
-#include "../driver/st7565.h"
+#include "../driver/bk4829.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
-#include "../external/printf/printf.h"
 #include "../helper/lootlist.h"
 #include "../helper/scancommand.h"
 #include "../radio.h"
 #include "../settings.h"
 #include "../ui/spectrum.h"
-#include "../ui/toast.h"
 #include "bands.h"
 #include "measurements.h"
-#include <stdbool.h>
 
-// ============================================================================
-// Константы
-// ============================================================================
-
-// Шаг "мусорных" частот, которые нужно пропускать
 #define GARBAGE_FREQ_STEP 650000U
-
-// Количество циклов до снижения порога сканирования
-#define SQUELCH_IDLE_DECAY_CYCLES 32U
-
-// ============================================================================
-// Глобальный контекст
-// ============================================================================
+#define SOFT_SQ_HEADROOM 15 // % смягчения аппаратных порогов
+#define STE_DEBOUNCE_MS 250 // окно подавления STE-хвоста
 
 static ScanContext scan = {
     .state = SCAN_STATE_IDLE,
     .mode = SCAN_MODE_SINGLE,
     .warmupUs = 2500,
     .checkDelayMs = SQL_DELAY,
-    .squelchLevel = 0,
     .isOpen = false,
     .cmdRangeActive = false,
     .cmdCtx = NULL,
 };
 
-// Флаг squelch из прерывания (ISR → main loop).
-// volatile гарантирует, что компилятор не закэширует значение между
-// обработчиком и основным циклом, даже при программных прерываниях.
-static volatile bool sqOpen = false;
-
 static SCMD_Context cmdctx;
+static uint32_t sqReopenAt = 0;
 
 const char *SCAN_MODE_NAMES[] = {
     [SCAN_MODE_NONE] = "None",         [SCAN_MODE_SINGLE] = "VFO",
@@ -61,91 +41,50 @@ const char *SCAN_STATE_NAMES[] = {
 };
 
 // ============================================================================
-// Вспомогательные функции
-// ============================================================================
 
-// Целочисленный квадратный корень (метод Ньютона)
-static uint32_t isqrt32(uint32_t x) {
-  if (x == 0)
-    return 0;
-  uint32_t root = x;
-  while (1) {
-    uint32_t next = (root + x / root) >> 1;
-    if (next >= root)
-      return root;
-    root = next;
+static void STE_StartGate(void) {
+  if (ctx->code.type != 0)
+    sqReopenAt = Now() + STE_DEBOUNCE_MS;
+}
+
+static bool IsSqOpenGated(void) {
+  return BK4819_IsSquelchOpen() && (Now() >= sqReopenAt);
+}
+
+// Пороги из GetSql(), смягчённые на SOFT_SQ_HEADROOM%:
+//   rssi: на 15% ниже порога открытия (ловим раньше)
+//   noise/glitch: на 15% выше (терпим больше)
+static bool SoftSq_Check(uint8_t rssi, uint8_t noise, uint8_t glitch) {
+  SQL sq = GetSql((uint8_t)RADIO_GetParam(ctx, PARAM_SQUELCH_VALUE));
+
+  if (rssi < (uint16_t)sq.ro * (100 - SOFT_SQ_HEADROOM) / 100)
+    return false;
+
+  uint8_t softNo = (uint8_t)((uint16_t)sq.no * (100 + SOFT_SQ_HEADROOM) / 100);
+  uint8_t softGo = (uint8_t)((uint16_t)sq.go * (100 + SOFT_SQ_HEADROOM) / 100);
+
+  switch (ctx->squelch.type) {
+  case 0:
+    return (noise <= softNo) && (glitch <= softGo); // RNG
+  case 1:
+    return (glitch <= softGo); // RG
+  case 2:
+    return (noise <= softNo); // RN
+  default:
+    return true; // R
   }
 }
 
-static void NoiseHistory_Add(uint8_t rssi) {
-  // Если буфер полон, вычитаем вытесняемое значение из сумм
-  if (scan.noiseHist.count == NOISE_HISTORY_SIZE) {
-    uint8_t old = scan.noiseHist.values[scan.noiseHist.idx];
-    scan.noiseHist.sum -= old;
-    scan.noiseHist.sum_sq -= (uint32_t)old * old;
-  } else {
-    scan.noiseHist.count++;
-  }
-  scan.noiseHist.values[scan.noiseHist.idx] = rssi;
-  scan.noiseHist.sum += rssi;
-  scan.noiseHist.sum_sq += (uint32_t)rssi * rssi;
-  scan.noiseHist.idx = (scan.noiseHist.idx + 1) % NOISE_HISTORY_SIZE;
-
-  // Пересчитываем среднее и stddev
-  if (scan.noiseHist.count > 0) {
-    scan.noiseHist.mean = scan.noiseHist.sum / scan.noiseHist.count;
-    uint32_t mean32 = scan.noiseHist.mean;
-    uint32_t variance = (scan.noiseHist.sum_sq / scan.noiseHist.count);
-    if (variance >= mean32 * mean32)
-      variance -= mean32 * mean32;
-    else
-      variance = 0;
-    // Используем целочисленный sqrt (можно приблизить)
-    scan.noiseHist.stddev = (uint8_t)isqrt32(variance);
-  }
-}
-
-static void NoiseHistory_Clear(void) {
-  scan.noiseHist.idx = 0;
-  scan.noiseHist.count = 0;
-  scan.noiseHist.sum = 0;
-  scan.noiseHist.sum_sq = 0;
-  scan.noiseHist.mean = 0;
-  scan.noiseHist.stddev = 0;
-  memset(scan.noiseHist.values, 0, sizeof(scan.noiseHist.values));
-}
-
-static uint8_t GetAdaptiveThreshold(void) {
-  if (scan.noiseHist.count < 10) {
-    // Недостаточно данных — используем статический порог (например, из
-    // настроек) Можно также вернуть scan.squelchLevel, если он уже задан
-    return scan.squelchLevel ? scan.squelchLevel : 10;
-  }
-  uint8_t thr = scan.noiseHist.mean + scan.noiseHist.k * scan.noiseHist.stddev;
-  if (thr < 5)
-    thr = 5; // минимальный порог
-  if (thr > 250)
-    thr = 250;
-  return thr;
-}
-
-static bool IsGarbageFreq(uint32_t f) {
-  return gSettings.skipGarbageFrequencies && (f % GARBAGE_FREQ_STEP == 0);
-}
-
-// Возвращает true если частоту нужно пропустить при сканировании:
-// - "мусорная" частота
-// - частота в чёрном или белом списке (уже обработана)
 static bool IsSkippable(uint32_t f) {
-  if (IsGarbageFreq(f))
+  if (gSettings.skipGarbageFrequencies && (f % GARBAGE_FREQ_STEP == 0))
     return true;
   Loot *l = LOOT_Get(f);
   return l && (l->blacklist || l->whitelist);
 }
 
-static void ChangeState(ScanState newState) {
-  if (scan.state != newState) {
-    scan.state = newState;
+static void ChangeState(ScanState s) {
+  if (scan.state != s) {
+    scan.state = s;
     scan.stateEnteredAt = Now();
   }
 }
@@ -162,7 +101,6 @@ static void UpdateCPS(void) {
   }
 }
 
-// Применяет параметры текущего диапазона к радио и инициализирует спектр.
 static void ApplyBandSettings(void) {
   vfo->msm.f = gCurrentBand.start;
   RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
@@ -170,98 +108,58 @@ static void ApplyBandSettings(void) {
   RADIO_SetParam(ctx, PARAM_STEP, gCurrentBand.step, false);
   RADIO_ApplySettings(ctx);
   SP_Init(&gCurrentBand);
-
-  LogC(LOG_C_BRIGHT_YELLOW, "[SCAN] Bounds: %u .. %u", gCurrentBand.start,
-       gCurrentBand.end);
-
-  if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, &gCurrentBand)) {
+  if (gLastActiveLoot && !BANDS_InRange(gLastActiveLoot->f, &gCurrentBand))
     gLastActiveLoot = NULL;
-  }
 }
 
-// Запускает сканирование в диапазоне [start, end] с шагом step.
-// step == 0 допустим только для одноканального режима (SCMD_CHANNEL),
-// где startF == endF и цикл перебора не используется.
 static void BeginScanRange(uint32_t start, uint32_t end, uint16_t step) {
   scan.startF = start;
   scan.endF = end;
   scan.currentF = start;
   scan.stepF = step;
   scan.cmdRangeActive = true;
-
-  NoiseHistory_Clear();
-  scan.adaptiveThreshold = 0; // будет вычислен заново
-
-  Log("[SCAN] Range: %u-%u Hz, step=%u", start, end, step);
   ChangeState(SCAN_STATE_TUNING);
 }
 
-// Вспомогательная функция для API-функций установки диапазона.
-// Обновляет поля band, применяет настройки и перезапускает сканирование
-// если активен режим сканирования по частоте/анализатор.
 static void UpdateBandAndRestart(void) {
   ApplyBandSettings();
-  if (scan.mode == SCAN_MODE_FREQUENCY || scan.mode == SCAN_MODE_ANALYSER) {
+  if (scan.mode == SCAN_MODE_FREQUENCY || scan.mode == SCAN_MODE_ANALYSER)
     BeginScanRange(gCurrentBand.start, gCurrentBand.end,
                    StepFrequencyTable[gCurrentBand.step]);
-  }
 }
 
-// ============================================================================
-// Обработка команд
 // ============================================================================
 
 static void ApplyCommand(SCMD_Command *cmd) {
   if (!cmd)
     return;
 
-  Log("[SCAN] CMD: type=%d, start=%lu, end=%lu", cmd->type, cmd->start,
-      cmd->end);
-
   switch (cmd->type) {
   case SCMD_CHANNEL:
-    // step=0 — канальный режим, currentF == endF, цикл перебора не нужен
     BeginScanRange(cmd->start, cmd->start, 0);
-    break;
-
+    return;
   case SCMD_RANGE:
     BeginScanRange(cmd->start, cmd->end, cmd->step);
-    break;
-
+    return;
   case SCMD_PAUSE:
-    Log("[SCAN] Pause %u ms", cmd->dwell_ms);
-    // TODO: заменить на неблокирующую задержку (таймер в ScanContext),
-    //       чтобы не зависать здесь при длинных паузах
-    SYSTICK_DelayMs(cmd->dwell_ms);
-    /* fall through */
-  case SCMD_MARKER:
-  default:
-    if (!SCMD_Advance(scan.cmdCtx)) {
-      SCMD_Rewind(scan.cmdCtx);
-    }
+    SYSTICK_DelayMs(cmd->dwell_ms); // TODO: неблокирующая задержка
     break;
-
-  case SCMD_JUMP:
-    Log("[SCAN] Jump — not implemented");
+  default:
     break;
   }
+  // MARKER, PAUSE (fall-through), JUMP, прочие — просто переходим дальше
+  if (!SCMD_Advance(scan.cmdCtx))
+    SCMD_Rewind(scan.cmdCtx);
 }
 
-// Вызывается когда currentF вышел за endF.
 static void HandleEndOfRange(void) {
   if (scan.cmdCtx) {
-    // Командный режим: переходим к следующей команде
-    if (!SCMD_Advance(scan.cmdCtx)) {
+    if (!SCMD_Advance(scan.cmdCtx))
       SCMD_Rewind(scan.cmdCtx);
-      Log("[SCAN] Command sequence restarted");
-    }
     scan.cmdRangeActive = false;
     ChangeState(SCAN_STATE_IDLE);
   } else {
-    // Обычный режим: возврат к началу диапазона
     scan.currentF = scan.startF;
-    NoiseHistory_Clear();
-    scan.adaptiveThreshold = 0;
     ChangeState(SCAN_STATE_TUNING);
     SP_Begin();
   }
@@ -269,32 +167,24 @@ static void HandleEndOfRange(void) {
 }
 
 // ============================================================================
-// State machine — частотное сканирование
-// ============================================================================
 
 static void HandleStateIdle(void) {
-  // Ожидаем следующую команду в командном режиме
-  if (scan.cmdCtx && !scan.cmdRangeActive) {
-    SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
-    if (cmd)
-      ApplyCommand(cmd);
-  }
+  if (!scan.cmdCtx || scan.cmdRangeActive)
+    return;
+  SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
+  if (cmd)
+    ApplyCommand(cmd);
 }
 
 static void HandleStateTuning(void) {
-  scan.adaptiveThreshold = GetAdaptiveThreshold();
-  // Пропускаем все нежелательные частоты.
-  // Защита от stepF == 0: в канальном режиме startF == endF,
-  // поэтому если текущая частота скиппабельна — выходим сразу в EndOfRange.
   if (scan.stepF == 0) {
     if (IsSkippable(scan.currentF)) {
       HandleEndOfRange();
       return;
     }
   } else {
-    while (scan.currentF <= scan.endF && IsSkippable(scan.currentF)) {
+    while (scan.currentF <= scan.endF && IsSkippable(scan.currentF))
       scan.currentF += scan.stepF;
-    }
   }
 
   if (scan.currentF > scan.endF) {
@@ -302,44 +192,33 @@ static void HandleStateTuning(void) {
     return;
   }
 
+  RADIO_MuteAudioNow(gRadioState);
+
   RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
 
   SYSTICK_DelayUs(scan.warmupUs);
+
   scan.measurement.rssi = RADIO_GetRSSI(ctx);
+  scan.measurement.noise = BK4819_GetNoise();
+  scan.measurement.glitch = BK4819_GetGlitch();
   scan.measurement.f = scan.currentF;
 
   scan.scanCycles++;
-  scan.idleCycles++;
-  if (scan.idleCycles >= SQUELCH_IDLE_DECAY_CYCLES) {
-    if (scan.squelchLevel)
-      scan.squelchLevel--;
-    scan.idleCycles = 0;
-  }
   UpdateCPS();
 
-  // Анализатор: просто пишем точку и едем дальше, без squelch-проверки
   if (scan.mode == SCAN_MODE_ANALYSER) {
     SP_AddPoint(&scan.measurement);
     scan.currentF += scan.stepF;
     return;
   }
 
-  // Инициализируем программный порог по первому измерению
-  if (!scan.squelchLevel && scan.measurement.rssi) {
-    scan.squelchLevel = scan.measurement.rssi - 1;
-  }
-
-  bool softOpen = (scan.measurement.rssi >= scan.adaptiveThreshold);
-  if (softOpen) {
-    // возможен сигнал
+  if (SoftSq_Check(scan.measurement.rssi, scan.measurement.noise,
+                   scan.measurement.glitch)) {
     ChangeState(SCAN_STATE_CHECKING);
   } else {
-    // сигнала нет — запоминаем уровень шума
-    NoiseHistory_Add(scan.measurement.rssi);
     scan.measurement.open = false;
-    SP_AddPoint(&scan.measurement);
     scan.currentF += scan.stepF;
   }
 }
@@ -348,68 +227,58 @@ static void HandleStateChecking(void) {
   if (ElapsedMs() < scan.checkDelayMs)
     return;
 
-  RADIO_UpdateSquelch(gRadioState);
-
-  scan.isOpen = vfo->is_open;
-  scan.measurement.open = scan.isOpen;
+  bool isOpen = BK4819_IsSquelchOpen();
+  scan.isOpen = isOpen;
+  scan.measurement.open = isOpen;
   scan.measurement.f = scan.currentF;
   LOOT_Update(&scan.measurement);
-  SP_AddPoint(&scan.measurement);
 
-  if (scan.isOpen) {
-    // Сигнал подтверждён
+  if (isOpen) {
+    vfo->is_open = true;
+    RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
     gRedrawScreen = true;
 
-    // Авто-вайтлист из командного файла
     if (scan.cmdCtx) {
       SCMD_Command *cmd = SCMD_GetCurrent(scan.cmdCtx);
-      if (cmd && (cmd->flags & SCMD_FLAG_AUTO_WHITELIST)) {
+      if (cmd && (cmd->flags & SCMD_FLAG_AUTO_WHITELIST))
         LOOT_WhitelistLast();
-        Log("[SCAN] Auto-whitelisted %u Hz", scan.currentF);
-      }
     }
 
-    scan.idleCycles = 0;
     ChangeState(SCAN_STATE_LISTENING);
   } else {
-    // Ложное срабатывание — повышаем порог и переходим дальше
-    NoiseHistory_Add(scan.measurement.rssi);
-    scan.squelchLevel++;
     scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
   }
 }
 
 static void HandleStateListening(void) {
+  if (Now() - scan.radioTimer < SQL_DELAY)
+    return;
+  scan.radioTimer = Now();
+
   bool wasOpen = scan.isOpen;
-  scan.isOpen = sqOpen; // состояние из прерывания
+  scan.isOpen = IsSqOpenGated();
 
-  // закрываемся без учёта прерывания, вдруг залипло
-  if (ctx->radio_type == RADIO_BK4819) {
-    scan.isOpen = BK4819_IsSquelchOpen();
-  }
-
-  SP_AddPoint(&scan.measurement);
-  RADIO_UpdateSquelch(gRadioState);
-
-  if (wasOpen != scan.isOpen) {
+  if (scan.isOpen != wasOpen) {
+    if (wasOpen) {
+      STE_StartGate();
+      RADIO_MuteAudioNow(gRadioState);
+    } else {
+      vfo->is_open = true;
+      RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
+    }
     gRedrawScreen = true;
   }
 
   uint32_t timeout = scan.isOpen ? SCAN_TIMEOUTS[gSettings.sqOpenedTimeout]
                                  : SCAN_TIMEOUTS[gSettings.sqClosedTimeout];
-
   if (ElapsedMs() >= timeout) {
-    Log("[SCAN] %s timeout", scan.isOpen ? "Listen" : "Close");
+    RADIO_MuteAudioNow(gRadioState);
     scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
     gRedrawScreen = true;
   }
 }
-
-// ============================================================================
-// State machine — Single VFO (мониторинг)
-// ============================================================================
 
 static void HandleModeSingle(void) {
   scan.measurement.rssi = vfo->msm.rssi;
@@ -425,8 +294,6 @@ static void HandleModeSingle(void) {
   }
 }
 
-// ============================================================================
-// Главная функция
 // ============================================================================
 
 void SCAN_Check(void) {
@@ -458,26 +325,16 @@ void SCAN_Check(void) {
 }
 
 // ============================================================================
-// API функции
-// ============================================================================
 
 void SCAN_SetMode(ScanMode mode) {
-  if (scan.cmdCtx && mode != scan.mode) {
+  if (scan.cmdCtx && mode != scan.mode)
     SCAN_SetCommandMode(false);
-  }
 
   scan.mode = mode;
-  Log("[SCAN] mode=%s", SCAN_MODE_NAMES[scan.mode]);
-
-  // Полный сброс счётчиков при смене режима
   scan.scanCycles = 0;
-  scan.squelchLevel = 0;
-  scan.idleCycles = 0;
   ChangeState(SCAN_STATE_IDLE);
 
   switch (mode) {
-  case SCAN_MODE_NONE:
-    break;
   case SCAN_MODE_SINGLE:
     scan.cmdRangeActive = false;
     scan.currentF = ctx->frequency;
@@ -488,11 +345,7 @@ void SCAN_SetMode(ScanMode mode) {
     BeginScanRange(gCurrentBand.start, gCurrentBand.end,
                    StepFrequencyTable[gCurrentBand.step]);
     break;
-  case SCAN_MODE_CHANNEL:
-    // TODO: channel mode
-    break;
-  case SCAN_MODE_MULTIWATCH:
-    // Обрабатывается в RADIO_UpdateMultiwatch
+  default:
     break;
   }
 }
@@ -500,14 +353,6 @@ void SCAN_SetMode(ScanMode mode) {
 ScanMode SCAN_GetMode(void) { return scan.mode; }
 
 void SCAN_Init(void) {
-
-  scan.noiseHist.idx = 0;
-  scan.noiseHist.count = 0;
-  scan.noiseHist.sum = 0;
-  scan.noiseHist.sum_sq = 0;
-  scan.noiseHist.k = 2; // можно сделать настраиваемым через gSettings
-  scan.adaptiveThreshold = 0;
-
   scan.lastCpsTime = Now();
   scan.scanCycles = 0;
   scan.currentCps = 0;
@@ -522,17 +367,14 @@ void SCAN_SetBand(Band b) {
   gCurrentBand = b;
   UpdateBandAndRestart();
 }
-
 void SCAN_SetStartF(uint32_t f) {
   gCurrentBand.start = f;
   UpdateBandAndRestart();
 }
-
 void SCAN_SetEndF(uint32_t f) {
   gCurrentBand.end = f;
   UpdateBandAndRestart();
 }
-
 void SCAN_SetRange(uint32_t fs, uint32_t fe) {
   gCurrentBand.start = fs;
   gCurrentBand.end = fe;
@@ -548,16 +390,12 @@ void SCAN_Next(void) {
 
 void SCAN_NextBlacklist(void) {
   LOOT_BlacklistLast();
-  sqOpen = false;
-  RADIO_MuteAudioNow(gRadioState);
   gRedrawScreen = true;
   SCAN_Next();
 }
 
 void SCAN_NextWhitelist(void) {
   LOOT_WhitelistLast();
-  sqOpen = false;
-  RADIO_MuteAudioNow(gRadioState);
   gRedrawScreen = true;
   SCAN_Next();
 }
@@ -567,25 +405,17 @@ uint32_t SCAN_GetDelay(void) { return scan.warmupUs; }
 uint32_t SCAN_GetCps(void) { return scan.currentCps; }
 
 // ============================================================================
-// Командный режим
-// ============================================================================
 
 void SCAN_LoadCommandFile(const char *filename) {
-  // Закрываем предыдущий контекст перед открытием нового
-  if (scan.cmdCtx) {
+  if (scan.cmdCtx)
     SCAN_SetCommandMode(false);
-  }
 
   scan.cmdCtx = &cmdctx;
-  memset(scan.cmdCtx, 0, sizeof(SCMD_Context));
-
-  SCMD_DebugDumpFile(filename);
 
   if (SCMD_Init(scan.cmdCtx, filename)) {
     scan.mode = SCAN_MODE_FREQUENCY;
     scan.cmdRangeActive = false;
     ChangeState(SCAN_STATE_IDLE);
-    Log("[SCAN] Loaded command file: %s", filename);
   } else {
     scan.cmdCtx = NULL;
     Log("[SCAN] Failed to load: %s", filename);
@@ -597,7 +427,6 @@ void SCAN_SetCommandMode(bool enabled) {
     SCMD_Close(scan.cmdCtx);
     scan.cmdCtx = NULL;
     scan.cmdRangeActive = false;
-    Log("[SCAN] Command mode disabled");
   }
 }
 
@@ -606,11 +435,8 @@ bool SCAN_IsCommandMode(void) { return scan.cmdCtx != NULL; }
 void SCAN_CommandForceNext(void) {
   if (!scan.cmdCtx)
     return;
-
-  Log("[SCAN] Force next command");
-  if (!SCMD_Advance(scan.cmdCtx)) {
+  if (!SCMD_Advance(scan.cmdCtx))
     SCMD_Rewind(scan.cmdCtx);
-  }
   scan.cmdRangeActive = false;
   ChangeState(SCAN_STATE_IDLE);
   gRedrawScreen = true;
@@ -632,77 +458,20 @@ uint16_t SCAN_GetCommandCount(void) {
   return scan.cmdCtx ? SCMD_GetCommandCount(scan.cmdCtx) : 0;
 }
 
-uint16_t SCAN_GetSquelchLevel(void) { return scan.squelchLevel; }
-
-// ============================================================================
-// Обработка прерываний BK4819
 // ============================================================================
 
 void SCAN_HandleInterrupt(uint16_t int_bits) {
-  // Squelch открылся (сигнал появился)
-  if (ctx->code.type == 0 && (int_bits & BK4819_REG_02_MASK_SQUELCH_LOST)) {
-    gRedrawScreen = true;
-    Log("[SCAN] SQ lost (open)");
-
-    uint32_t checkF =
-        (scan.mode == SCAN_MODE_SINGLE) ? ctx->frequency : scan.currentF;
-
-    if (IsSkippable(checkF)) {
-      sqOpen = false;
-      return;
-    }
-
-    sqOpen = true;
-    RADIO_UnmuteAudioNow(gRadioState);
-
-    // Прерывание застало нас в процессе перестройки — форсируем LISTENING
-    if (scan.mode == SCAN_MODE_FREQUENCY || scan.mode == SCAN_MODE_CHANNEL) {
-      if (scan.state == SCAN_STATE_TUNING ||
-          scan.state == SCAN_STATE_CHECKING) {
-        scan.measurement.f = scan.currentF;
-        scan.measurement.open = true;
-        LOOT_Update(&scan.measurement);
-        ChangeState(SCAN_STATE_LISTENING);
-      }
-    }
-  }
-
-  // Squelch закрылся (сигнал пропал)
-  if (int_bits & BK4819_REG_02_MASK_SQUELCH_FOUND) {
-    Log("[SCAN] SQ found (closed)");
-
-    // защита от преждевременного закрытия шумодава
-    if (ctx->radio_type == RADIO_BK4819) {
-      SYSTICK_DelayMs(5);
-      if (BK4819_IsSquelchOpen()) {
-        return;
-      }
-    }
-    sqOpen = false;
+  const uint16_t tail_mask = BK4819_REG_02_MASK_CxCSS_TAIL |
+                             BK4819_REG_02_MASK_CTCSS_LOST |
+                             BK4819_REG_02_MASK_CDCSS_LOST;
+  if (int_bits & tail_mask) {
+    STE_StartGate();
     RADIO_MuteAudioNow(gRadioState);
+    scan.isOpen = false;
     gRedrawScreen = true;
-  }
-
-  // Тон CTCSS/CDCSS найден — закрываем squelch
-  const uint16_t tone_found_mask = BK4819_REG_02_MASK_CxCSS_TAIL |
-                                   BK4819_REG_02_MASK_CTCSS_FOUND |
-                                   BK4819_REG_02_MASK_CDCSS_FOUND;
-  if (int_bits & tone_found_mask) {
-    Log("[SCAN] TONE found (closed)");
-    sqOpen = false;
-    RADIO_MuteAudioNow(gRadioState);
-  }
-
-  // Тон CTCSS/CDCSS потерян — открываем squelch
-  const uint16_t tone_lost_mask =
-      BK4819_REG_02_MASK_CTCSS_LOST | BK4819_REG_02_MASK_CDCSS_LOST;
-  if (int_bits & tone_lost_mask) {
-    Log("[SCAN] TONE lost (open)");
-    sqOpen = true;
-    RADIO_UnmuteAudioNow(gRadioState);
   }
 }
 
-bool SCAN_IsSqOpen(void) { return sqOpen; }
+bool SCAN_IsSqOpen(void) { return BK4819_IsSquelchOpen(); }
 const char *SCAN_GetStateName(void) { return SCAN_STATE_NAMES[scan.state]; }
 ScanState SCAN_GetState(void) { return scan.state; }

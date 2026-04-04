@@ -1602,7 +1602,7 @@ void BK4819_Init(void) {
   BK4819_WriteRegister(0x2F, 0x9890); // audio tx limit, emph rx gain
   BK4819_WriteRegister(0x53, 0x2028); // audio alc tc
 
-  RF_SetRxEqualizer(-3, +4);
+  // RF_SetRxEqualizer(-3, +4);
 
   BK4819_WriteRegister(BK4819_REG_7E, 0x3029); // #x302E tx dcc before alc
   BK4819_WriteRegister(BK4819_REG_46, 0x600A);
