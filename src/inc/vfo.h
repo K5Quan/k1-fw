@@ -30,7 +30,7 @@ typedef struct {
 } __attribute__((packed)) VFO;
 
 // Параметры
-typedef const enum {
+typedef enum {
   PARAM_RADIO,
   PARAM_PRECISE_F_CHANGE,
   PARAM_STEP,
