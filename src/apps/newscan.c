@@ -85,11 +85,14 @@ static bool sqTunerKey(KEY_Code_t key, Key_State_t state) {
 static bool stillModeKey(KEY_Code_t key, Key_State_t state) {
   switch (key) {
   case KEY_SIDE1:
-    if (state == KEY_LONG_PRESSED) {
+    if (state == KEY_LONG_PRESSED || state == KEY_LONG_PRESSED_CONT) {
       LOOT_BlacklistLast();
     } else {
       gMonitorMode = !gMonitorMode;
     }
+    return true;
+  case KEY_SIDE2:
+    LOOT_WhitelistLast();
     return true;
   case KEY_UP:
   case KEY_DOWN: {
