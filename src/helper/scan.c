@@ -11,13 +11,12 @@
 #include "measurements.h"
 
 #define GARBAGE_FREQ_STEP 650000U
-#define SOFT_SQ_HEADROOM 25 // % смягчения аппаратных порогов
 #define STE_DEBOUNCE_MS 250 // окно подавления STE-хвоста
 
 // --- Адаптивный детектор (EMA) ---
-#define ADAP_MIN_SAMPLES 8   // прогрев
-#define ADAP_EMA_SHIFT 4     // alpha = 1/16
-#define ADAP_WARMUP_SHIFT 2  // alpha = 1/4 при прогреве (быстрая сходимость)
+#define ADAP_MIN_SAMPLES 8 // прогрев
+#define ADAP_EMA_SHIFT 4   // alpha = 1/16
+#define ADAP_WARMUP_SHIFT 2 // alpha = 1/4 при прогреве (быстрая сходимость)
 #define DELTA_RSSI_THRESH 8  // порог резкого роста rssi
 #define DELTA_NOISE_THRESH 4 // порог резкого падения noise
 #define FLOOR_MARGIN_RSSI 6  // запас над EMA rssi
@@ -25,7 +24,7 @@
 #define FLOOR_MARGIN_GLITCH 3
 
 typedef struct {
-  uint16_t rssiEma;   // значение << ADAP_EMA_SHIFT
+  uint16_t rssiEma; // значение << ADAP_EMA_SHIFT
   uint16_t noiseEma;
   uint16_t glitchEma;
   uint8_t count;
@@ -73,30 +72,6 @@ static bool IsSqOpenGated(void) {
   return BK4819_IsSquelchOpen() && (Now() >= sqReopenAt);
 }
 
-// Пороги из GetSql(), смягчённые на SOFT_SQ_HEADROOM%:
-//   rssi: на 15% ниже порога открытия (ловим раньше)
-//   noise/glitch: на 15% выше (терпим больше)
-static bool SoftSq_Check(uint8_t rssi, uint8_t noise, uint8_t glitch) {
-  SQL sq = GetSql((uint8_t)RADIO_GetParam(ctx, PARAM_SQUELCH_VALUE));
-
-  if (rssi < (uint16_t)sq.ro * (100 - SOFT_SQ_HEADROOM) / 100)
-    return false;
-
-  uint8_t softNo = (uint8_t)((uint16_t)sq.no * (100 + SOFT_SQ_HEADROOM) / 100);
-  uint8_t softGo = (uint8_t)((uint16_t)sq.go * (100 + SOFT_SQ_HEADROOM) / 100);
-
-  switch (ctx->squelch.type) {
-  case 0:
-    return (noise <= softNo) && (glitch <= softGo); // RNG
-  case 1:
-    return (glitch <= softGo); // RG
-  case 2:
-    return (noise <= softNo); // RN
-  default:
-    return true; // R
-  }
-}
-
 // --- Адаптивный пол шума (EMA) ---
 
 // обновление EMA: ema += (sample - ema) >> shift
@@ -127,8 +102,8 @@ static void AdapFloor_UpdateEma(uint8_t rssi, uint8_t noise, uint8_t glitch) {
     afloor.glitchEma = (uint16_t)glitch << ADAP_EMA_SHIFT;
   } else {
     // при прогреве быстрее, потом медленнее
-    uint8_t sh = (afloor.count < ADAP_MIN_SAMPLES) ? ADAP_WARMUP_SHIFT
-                                                    : ADAP_EMA_SHIFT;
+    uint8_t sh =
+        (afloor.count < ADAP_MIN_SAMPLES) ? ADAP_WARMUP_SHIFT : ADAP_EMA_SHIFT;
     afloor.rssiEma = EmaUpdate(afloor.rssiEma, rssi, sh);
     afloor.noiseEma = EmaUpdate(afloor.noiseEma, noise, sh);
     afloor.glitchEma = EmaUpdate(afloor.glitchEma, glitch, sh);
@@ -392,8 +367,8 @@ static void HandleStateListening(void) {
     shouldLeave = ElapsedMs() >= SCAN_TIMEOUTS[gSettings.sqOpenedTimeout];
   } else {
     // закрыт: уходим по времени с момента закрытия
-    shouldLeave = sqClosedAt &&
-                  (Now() - sqClosedAt >= SCAN_TIMEOUTS[gSettings.sqClosedTimeout]);
+    shouldLeave = sqClosedAt && (Now() - sqClosedAt >=
+                                 SCAN_TIMEOUTS[gSettings.sqClosedTimeout]);
   }
 
   if (shouldLeave) {
@@ -426,7 +401,8 @@ void SCAN_Check(void) {
   if (scan.mode == SCAN_MODE_NONE)
     return;
 
-  // мультивотч только в SINGLE — при активном сканировании он конфликтует с радио
+  // мультивотч только в SINGLE — при активном сканировании он конфликтует с
+  // радио
   if (scan.mode == SCAN_MODE_SINGLE)
     RADIO_UpdateMultiwatch(gRadioState);
 
@@ -511,6 +487,7 @@ void SCAN_SetRange(uint32_t fs, uint32_t fe) {
 
 void SCAN_Next(void) {
   vfo->is_open = false;
+  RADIO_MuteAudioNow(gRadioState);
   scan.currentF += scan.stepF;
   RADIO_SwitchAudioToVFO(gRadioState, gRadioState->active_vfo_index);
   ChangeState(SCAN_STATE_TUNING);

@@ -671,7 +671,8 @@ void BK4819_SetupSquelch(SQL sq, uint8_t delayOpen, uint8_t delayClose) {
 
   BK4819_WriteRegister(BK4819_REG_4D, 0xA000 | sq.gc);
   BK4819_WriteRegister(BK4819_REG_4E, (1u << 14) | (delayOpen << 11) |
-                                          (delayClose << 9) | sq.go);
+                                          (delayClose << 9) | (1 << 8) | sq.go);
+
   BK4819_WriteRegister(BK4819_REG_4F, (sq.nc << 8) | sq.no);
   BK4819_WriteRegister(BK4819_REG_78, (sq.ro << 8) | sq.rc);
 }
