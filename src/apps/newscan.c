@@ -355,10 +355,11 @@ static void renderPeakMarker(VMinMax v) {
   if (!rssi)
     return;
 
-  SP_RenderMarker(SP_FindPeakX(), v);
+  // SP_RenderMarker(SP_FindPeakX(), v);
+  SP_RenderArrow(f);
 
-  FSmall(LCD_XCENTER, 12, POS_C, f);
-  PrintSmallEx(LCD_XCENTER, 12 + 6, POS_C, C_FILL, "%ddBm", Rssi2DBm(rssi));
+  FSmall(0, 12 + 6, POS_L, f);
+  PrintSmallEx(0, 12 + 6 + 6, POS_L, C_FILL, "%ddBm", Rssi2DBm(rssi));
 }
 
 static void renderStillInfo(void) {
