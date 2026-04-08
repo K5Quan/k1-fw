@@ -311,7 +311,15 @@ static void HandleStateChecking(void) {
   if (ElapsedMs() < scan.checkDelayMs)
     return;
 
-  bool isOpen = BK4819_IsSquelchOpen();
+  // накапливаем состояние скелча несколькими сэмплами
+  uint8_t openCount = 0;
+  for (uint8_t i = 0; i < 3; i++) {
+    if (BK4819_IsSquelchOpen())
+      openCount++;
+    SYSTICK_DelayMs(2);
+  }
+  bool isOpen = (openCount >= 2); // большинство открыто
+
   scan.isOpen = isOpen;
   scan.measurement.open = isOpen;
   scan.measurement.f = scan.currentF;
@@ -330,9 +338,13 @@ static void HandleStateChecking(void) {
 
     ChangeState(SCAN_STATE_LISTENING);
   } else {
-    // ложный кандидат — скормить в EMA, чтобы пол адаптировался к размазыванию
-    AdapFloor_UpdateEma(scan.measurement.rssi, scan.measurement.noise,
-                        scan.measurement.glitch);
+    // EMA обновляем только если RSSI у пола — иначе отравим порог реальным
+    // сигналом
+    uint8_t floorR = EmaGet(afloor.rssiEma);
+    if (scan.measurement.rssi <= floorR + FLOOR_MARGIN_RSSI + 2)
+      AdapFloor_UpdateEma(scan.measurement.rssi, scan.measurement.noise,
+                          scan.measurement.glitch);
+
     scan.currentF += scan.stepF;
     ChangeState(SCAN_STATE_TUNING);
   }
