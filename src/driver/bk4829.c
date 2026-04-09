@@ -1,6 +1,7 @@
 #include "bk4829.h"
 
 #include "../external/printf/printf.h"
+#include "../helper/measurements.h"
 #include "../settings.h"
 #include "bk4819-regs.h"
 #include "gpio.h"
@@ -677,8 +678,17 @@ void BK4819_SetupSquelch(SQL sq, uint8_t delayOpen, uint8_t delayClose) {
   BK4819_WriteRegister(BK4819_REG_78, (sq.ro << 8) | sq.rc);
 }
 
-void BK4819_Squelch(uint8_t sql, uint8_t openDelay, uint8_t closeDelay) {
-  BK4819_SetupSquelch(GetSql(sql), openDelay, closeDelay);
+void BK4819_Squelch(uint8_t sql, uint32_t freq, uint8_t openDelay, uint8_t closeDelay) {
+  SquelchPreset preset = GetSqlPreset(sql, freq);
+  SQL sq = {
+    .ro = preset.ro,
+    .rc = preset.rc,
+    .no = preset.no,
+    .nc = preset.nc,
+    .go = preset.go,
+    .gc = preset.gc,
+  };
+  BK4819_SetupSquelch(sq, openDelay, closeDelay);
 }
 
 void BK4819_SquelchType(SquelchType type) {

@@ -31,7 +31,8 @@ void SP_RenderLine(uint16_t rssi, VMinMax v);
 void SP_RenderArrow(uint32_t f);
 uint16_t SP_GetNoiseFloor();
 uint16_t SP_GetRssiMax();
-VMinMax SP_GetMinMax();
+VMinMax SP_GetMinMax(void);
+VMinMax SP_GetGraphMinMax(void);
 
 void SP_NextGraphUnit(bool next);
 void SP_RenderGraph(uint16_t min, uint16_t max);
@@ -41,6 +42,8 @@ void SP_ShiftGraph(int16_t n);
 uint16_t SP_GetLastGraphValue();
 
 uint16_t SP_GetPointRSSI(uint8_t i);
+uint16_t SP_GetPointNoise(uint8_t i);
+uint16_t SP_GetPointGlitch(uint8_t i);
 void SP_RenderPoint(Measurement *m, uint8_t i, uint8_t n, Band *b, VMinMax r,
                     Color c);
 void SP_RenderDbmGrid(VMinMax v, int8_t stepDbm);

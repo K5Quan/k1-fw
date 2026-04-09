@@ -15,6 +15,8 @@ GraphMeasurement graphMeasurement = GRAPH_RSSI;
 
 static uint8_t S_BOTTOM;
 static uint16_t rssiHistory[MAX_POINTS] = {0};
+static uint8_t noiseHistory[MAX_POINTS] = {0};
+static uint8_t glitchHistory[MAX_POINTS] = {0};
 static uint8_t x = 0;
 static uint8_t ox = UINT8_MAX;
 static uint8_t filledPoints;
@@ -51,6 +53,8 @@ static uint16_t spPeakRssiDisp = 0;
 void SP_ResetHistory(void) {
   filledPoints = 0;
   memset(rssiHistory, 0, sizeof(rssiHistory));
+  memset(noiseHistory, 0, sizeof(noiseHistory));
+  memset(glitchHistory, 0, sizeof(glitchHistory));
   memset(visited, 0, sizeof(visited));
 }
 
@@ -117,10 +121,15 @@ void SP_AddPoint(const Measurement *msm) {
     uint8_t byte = xi / 8, bit = xi % 8;
     if ((visited[byte] & (1 << bit)) == 0) {
       rssiHistory[xi] = msm->rssi;
+      noiseHistory[xi] = msm->noise;
+      glitchHistory[xi] = msm->glitch;
       visited[byte] |= (1 << bit);
     } else {
-      if (msm->rssi > rssiHistory[xi])
+      if (msm->rssi > rssiHistory[xi]) {
         rssiHistory[xi] = msm->rssi;
+        noiseHistory[xi] = msm->noise;
+        glitchHistory[xi] = msm->glitch;
+      }
     }
     if (xi + 1 > filledPoints)
       filledPoints = xi + 1;
@@ -139,6 +148,18 @@ VMinMax SP_GetMinMax(void) {
       .vMin = DBm2Rssi(SP_DBM_MIN),
       .vMax = DBm2Rssi(SP_DBM_MAX),
   };
+}
+
+// Get min/max for current graph measurement type
+VMinMax SP_GetGraphMinMax(void) {
+  switch (graphMeasurement) {
+  case GRAPH_NOISE:
+    return (VMinMax){.vMin = 0, .vMax = 128};
+  case GRAPH_GLITCH:
+    return (VMinMax){.vMin = 0, .vMax = 255};
+  default:
+    return SP_GetMinMax();  // RSSI uses default
+  }
 }
 
 
@@ -170,8 +191,18 @@ void SP_RenderMarker(uint8_t mx, VMinMax v) {
 void SP_Render(const Band *p, VMinMax v) {
   if (p) UI_DrawTicks(S_BOTTOM, p);
   DrawHLine(0, S_BOTTOM, MAX_POINTS, C_FILL);
+
+  // Use graph-specific min/max for Noise/Glitch
+  VMinMax rv = (graphMeasurement == GRAPH_RSSI) ? v : SP_GetGraphMinMax();
+
   for (uint8_t i = 0; i < filledPoints; ++i) {
-    uint8_t yVal = ConvertDomain(rssiHistory[i], v.vMin, v.vMax, 0, SPECTRUM_H);
+    uint16_t val;
+    switch (graphMeasurement) {
+    case GRAPH_NOISE:  val = noiseHistory[i];  break;
+    case GRAPH_GLITCH: val = glitchHistory[i]; break;
+    default:           val = rssiHistory[i];   break;
+    }
+    uint8_t yVal = ConvertDomain(val, rv.vMin, rv.vMax, 0, SPECTRUM_H);
     DrawVLine(i, S_BOTTOM - yVal, yVal, C_FILL);
   }
 }
@@ -192,7 +223,7 @@ void SP_RenderRssi(uint16_t rssi, char *text, bool top, VMinMax v) {
 
 void SP_RenderLine(uint16_t rssi, VMinMax v) {
   uint8_t yVal = ConvertDomain(rssi, v.vMin, v.vMax, 0, SPECTRUM_H);
-  DrawHLine(0, S_BOTTOM - yVal, filledPoints, C_FILL);
+  DrawHLine(0, S_BOTTOM - yVal, filledPoints, C_INVERT);
 }
 
 void SP_RenderPoint(Measurement *m, uint8_t i, uint8_t n, Band *b, VMinMax r,
@@ -213,6 +244,8 @@ uint16_t SP_GetNoiseFloor(void) {
 
 uint16_t SP_GetRssiMax(void)         { return Max(rssiHistory, filledPoints); }
 uint16_t SP_GetPointRSSI(uint8_t i)  { return rssiHistory[i]; }
+uint16_t SP_GetPointNoise(uint8_t i) { return noiseHistory[i]; }
+uint16_t SP_GetPointGlitch(uint8_t i) { return glitchHistory[i]; }
 uint16_t SP_GetLastGraphValue(void)  { return rssiHistory[MAX_POINTS - 1]; }
 
 void SP_RenderGraph(uint16_t min, uint16_t max) {

@@ -474,7 +474,7 @@ static bool setParamBK4819(VFOContext *ctx, ParamType p) {
     BK4819_SetFilterBandwidth(ctx->bandwidth);
     return true;
   case PARAM_SQUELCH_VALUE:
-    BK4819_Squelch(ctx->squelch.value, gSettings.sqlOpenTime,
+    BK4819_Squelch(ctx->squelch.value, ctx->frequency, gSettings.sqlOpenTime,
                    gSettings.sqlCloseTime);
     return true;
   case PARAM_SQUELCH_TYPE:
