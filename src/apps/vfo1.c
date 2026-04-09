@@ -374,10 +374,10 @@ static void renderExtraInfo(uint8_t BASE) {
     PrintSmallEx(LCD_WIDTH - 1, BASE + 8 + 6, POS_R, C_FILL, "PRO");
   }
 
-  if (isTxFDifferent && gSettings.upconverter == 0) {
+  if (isTxFDifferent && ctx->upconverter == 0) {
     PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "TX: %s",
                  RADIO_GetParamValueString(ctx, PARAM_TX_FREQUENCY_FACT));
-  } else if (gSettings.upconverter != 0) {
+  } else if (ctx->upconverter != 0) {
     PrintSmallEx(LCD_XCENTER, BASE + 6, POS_C, C_FILL, "RX: %s",
                  RADIO_GetParamValueString(ctx, PARAM_FREQUENCY_FACT));
   }

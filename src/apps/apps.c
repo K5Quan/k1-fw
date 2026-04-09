@@ -140,7 +140,8 @@ void APPS_run(AppType_t app) {
 
   if (apps[gCurrentApp].needsRadioState) {
     if (gRadioState) {
-      RADIO_SaveCurrentVFO(gRadioState);
+      // Save ALL VFOs from current app before switching
+      RADIO_SaveAllVFOs(gRadioState);
     }
     if (!gRadioState) {
       // Один раз: выделяем структуру и настраиваем
@@ -162,9 +163,20 @@ bool APPS_exit(void) {
   if (stackIndex == 0) {
     return false;
   }
+  
+  // Save VFO state before exiting current app
+  if (gRadioState && apps[gCurrentApp].needsRadioState) {
+    RADIO_SaveAllVFOs(gRadioState);
+  }
+  
   APPS_deinit();
   AppType_t app = popApp();
   gCurrentApp = APPS_Peek();
+
+  // Load VFO state for the app we're returning to
+  if (apps[gCurrentApp].needsRadioState && gRadioState) {
+    RADIO_LoadVFOs(gRadioState);
+  }
 
   APPS_init(gCurrentApp);
 

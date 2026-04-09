@@ -308,17 +308,30 @@ static void HandleStateTuning(void) {
 }
 
 static void HandleStateChecking(void) {
-  if (ElapsedMs() < scan.checkDelayMs)
+  static uint32_t lastEnteredAt = 0;
+  static bool vcoResetDone = false;
+  static uint32_t vcoResetAt = 0;
+
+  if (scan.stateEnteredAt != lastEnteredAt) {
+    lastEnteredAt = scan.stateEnteredAt;
+    vcoResetDone = false;
+    vcoResetAt = 0;
+  }
+
+  if (!vcoResetDone) {
+    uint16_t reg = BK4819_ReadRegister(BK4819_REG_30);
+    BK4819_WriteRegister(BK4819_REG_30, 0x200);
+    BK4819_WriteRegister(BK4819_REG_30, reg);
+
+    vcoResetAt = Now(); // отсчёт SQL_DELAY с этого момента
+    vcoResetDone = true;
+    return;
+  }
+
+  if (Now() - vcoResetAt < scan.checkDelayMs)
     return;
 
-  // накапливаем состояние скелча несколькими сэмплами
-  uint8_t openCount = 0;
-  for (uint8_t i = 0; i < 3; i++) {
-    if (BK4819_IsSquelchOpen())
-      openCount++;
-    SYSTICK_DelayMs(2);
-  }
-  bool isOpen = (openCount >= 2); // большинство открыто
+  bool isOpen = BK4819_IsSquelchOpen();
 
   scan.isOpen = isOpen;
   scan.measurement.open = isOpen;
@@ -338,6 +351,18 @@ static void HandleStateChecking(void) {
 
     ChangeState(SCAN_STATE_LISTENING);
   } else {
+    // выравнивание PLL: прогрев через предыдущую частоту и обратно
+    if (scan.stepF > 0) {
+      RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
+      RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF - scan.stepF, false);
+      RADIO_ApplySettings(ctx);
+      SYSTICK_DelayUs(scan.warmupUs);
+
+      RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
+      RADIO_ApplySettings(ctx);
+      SYSTICK_DelayUs(scan.warmupUs);
+    }
+
     // EMA обновляем только если RSSI у пола — иначе отравим порог реальным
     // сигналом
     uint8_t floorR = EmaGet(afloor.rssiEma);
