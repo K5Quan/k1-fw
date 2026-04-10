@@ -174,23 +174,23 @@ void BOARD_TIM3_Init(void) {
 // ---------------------------------------------------------------------------
 
 void BOARD_ADC_Init(void) {
-  LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
+  LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOB);
+  LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_0 | LL_GPIO_PIN_1, LL_GPIO_MODE_ANALOG);
 
-  LL_APB1_GRP2_ForceReset(LL_APB1_GRP2_PERIPH_ADC1);
-  LL_APB1_GRP2_ReleaseReset(LL_APB1_GRP2_PERIPH_ADC1);
+  LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
+  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV4);
 
   LL_ADC_SetCommonPathInternalCh(ADC1_COMMON, LL_ADC_PATH_INTERNAL_NONE);
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
-
-  // Regular sequencer: один канал CH8 (батарея)
-  LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
+  LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_DISABLE);
+  LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_SOFTWARE);
+  LL_ADC_REG_SetContinuousMode(ADC1, LL_ADC_REG_CONV_SINGLE);
+  LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_NONE);
   LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
   LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
-                                LL_ADC_SAMPLINGTIME_5CYCLES_5);
-
-  LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV2);
+                                LL_ADC_SAMPLINGTIME_41CYCLES_5);
 
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
@@ -208,12 +208,12 @@ uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
 
 void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
   LL_ADC_REG_StartConversionSWStart(ADC1);
-  uint32_t timeout = 100000;
-  while (!(ADC1->SR & ADC_SR_EOC) && timeout--)
+  while (!LL_ADC_IsActiveFlag_EOS(ADC1))
     ;
-  *pVoltage = (uint16_t)LL_ADC_REG_ReadConversionData12(ADC1);
+  LL_ADC_ClearFlag_JEOS(ADC1);
+
+  *pVoltage = LL_ADC_REG_ReadConversionData12(ADC1);
   *pCurrent = 0;
-  ADC1->SR &= ~ADC_SR_EOC;
 }
 
 uint16_t BOARD_ADC_GetAPRS(void) { return 0; }
