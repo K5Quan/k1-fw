@@ -1438,6 +1438,11 @@ void BK4819_SetScanFrequency(uint32_t Frequency) {
           BK4819_REG_51_AUTO_CDCSS_BW_DISABLE |
           BK4819_REG_51_AUTO_CTCSS_BW_DISABLE);
 
+  // Калибровка VCO после установки частоты (как в BK4819_TuneTo)
+  uint16_t reg30 = BK4819_ReadRegister(BK4819_REG_30);
+  BK4819_WriteRegister(BK4819_REG_30, 0x200);  // Включаем VCO калибровку
+  BK4819_WriteRegister(BK4819_REG_30, reg30);  // Восстанавливаем регистр
+
   BK4819_RX_TurnOn();
 }
 

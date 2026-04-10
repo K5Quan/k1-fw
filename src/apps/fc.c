@@ -54,8 +54,8 @@ static uint32_t scanRestartAt = 0;
 static void enableScan(void) {
   // Правильно инициализируем частоту для сканера — REG_51 в нужном состоянии
   uint32_t centerF = (filter == FILTER_VHF)
-                         ? 14500000u  // 145 МГц, середина VHF
-                         : 43300000u; // 433 МГц, середина UHF
+                         ? 14500000u  // 145 МГц, середина VHF (в 10 Гц)
+                         : 43300000u; // 433 МГц, середина UHF (в 10 Гц)
   BK4819_SetScanFrequency(
       centerF); // устанавливает частоту + REG_51 + RX_TurnOn
 
@@ -106,13 +106,23 @@ static void scheduleRestartScan(void) {
   scanRestartAt = Now() + SCAN_RESTART_DELAY_MS;
 }
 
+static uint32_t lastScreenUpdate = 0;
+#define SCREEN_UPDATE_INTERVAL_MS 500  // Не обновлять экран чаще чем раз в 500мс
+
+// Отслеживаем состояние шумодава для перерисовки только при изменении
+static bool lastSquelchOpen = false;
+
 // ─── Обработка результата сканирования ───────────────────────────────────────
 
 static void handleScanResult(void) {
   if (!BK4819_GetFrequencyScanResult(&currentFrequency))
     return;
 
-  gRedrawScreen = true;
+  // Не перерисовываем каждый раз — это создаёт SPI помехи!
+  if (Now() - lastScreenUpdate >= SCREEN_UPDATE_INTERVAL_MS) {
+    gRedrawScreen = true;
+    lastScreenUpdate = Now();
+  }
 
   if (bandAutoSwitch)
     filterSwitchCounter++;
@@ -149,6 +159,8 @@ void FC_init(void) {
   frequencyHits = 0;
   filterSwitchCounter = 0;
   pendingScanRestart = false;
+  lastScreenUpdate = 0;
+  lastSquelchOpen = false;
   // Гарантируем, что первая проверка шумодава не сработает мгновенно
   fcListenTimer = Now() + FC_SQUELCH_SETTLE_MS;
   SCAN_SetMode(SCAN_MODE_NONE);
@@ -192,9 +204,13 @@ void FC_update(void) {
 
     RADIO_UpdateSquelch(gRadioState);
 
-    if (vfo->is_open) {
+    // Перерисовываем только при изменении состояния шумодава
+    if (vfo->is_open != lastSquelchOpen) {
       gRedrawScreen = true;
-    } else {
+      lastSquelchOpen = vfo->is_open;
+    }
+
+    if (!vfo->is_open) {
       enableScan();
     }
 
