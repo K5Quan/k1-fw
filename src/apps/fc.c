@@ -140,8 +140,12 @@ static void handleScanResult(void) {
   if (frequencyHits >= REQUIRED_FREQUENCY_HITS) {
     uint32_t f = applyRounding(currentFrequency);
     disableScan();
+    BK4819_SetAFC(0);  // Явно отключаем AFC до перестройки
+
     RADIO_SetParam(ctx, PARAM_FREQUENCY, f, false);
     RADIO_ApplySettings(ctx);
+    BK4819_SetAFC(0);  // Гарантируем отключение после ApplySettings
+
     frequencyHits = 0;
     // Ждём оседания до первой проверки шумодава
     fcListenTimer = Now() + FC_SQUELCH_SETTLE_MS;

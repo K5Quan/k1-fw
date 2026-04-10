@@ -522,7 +522,7 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
     BK4819_WriteRegister(BK4819_REG_30,
                          reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
   }
-  // SYSTICK_DelayUs(300); // VCO stabilize time
+  SYSTICK_DelayUs(300); // VCO stabilize time — критично для стабильности частоты
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
 
@@ -1429,6 +1429,7 @@ void BK4819_SetScanFrequency(uint32_t Frequency) {
   // Калибровка VCO после установки частоты (как в BK4819_TuneTo)
   uint16_t reg30 = BK4819_ReadRegister(BK4819_REG_30);
   BK4819_WriteRegister(BK4819_REG_30, 0x200);  // Включаем VCO калибровку
+  SYSTICK_DelayUs(300);                         // VCO stabilize time
   BK4819_WriteRegister(BK4819_REG_30, reg30);  // Восстанавливаем регистр
 
   BK4819_RX_TurnOn();
