@@ -172,7 +172,10 @@ void FC_init(void) {
   SCAN_SetMode(SCAN_MODE_NONE);
 }
 
-void FC_deinit(void) { disableScan(); }
+void FC_deinit(void) {
+  disableScan();
+  gSuppressDisplayUpdates = false; // Разрешаем обновления экрана при выходе
+}
 
 void FC_update(void) {
   if (!CheckTimeout(&fcTimeout))
@@ -210,14 +213,14 @@ void FC_update(void) {
 
     RADIO_UpdateSquelch(gRadioState);
 
-    // Подавляем обновления дисплея при открытом шумодаве — SPI создаёт помехи
+    // Подавляем SPI дисплея при открытом шумодаве — щелчки в приёмнике
     gSuppressDisplayUpdates = vfo->is_open;
 
-    // Перерисовываем только при изменении состояния шумодава
-    if (vfo->is_open != lastSquelchOpen) {
+    // Перерисовываем только при закрытии шумодава (переход из open → closed)
+    if (!vfo->is_open && lastSquelchOpen) {
       gRedrawScreen = true;
-      lastSquelchOpen = vfo->is_open;
     }
+    lastSquelchOpen = vfo->is_open;
 
     if (!vfo->is_open) {
       enableScan();
