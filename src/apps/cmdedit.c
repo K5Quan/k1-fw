@@ -41,7 +41,7 @@ static Menu cmdMenu;
 static uint8_t selected_index;
 
 // Устанавливается из cmdscan.c перед APPS_run(APP_CMDEDIT)
-char gCmdEditFilename[32] = "/scans/cmd1.bin";
+char gCmdEditFilename[32] = "/scans/cmd1.cmd";
 
 // ============================================================================
 // Поля редактирования

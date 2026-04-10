@@ -5,6 +5,7 @@
 #include "../helper/keymap.h"
 #include "../helper/menu.h"
 #include "../settings.h"
+#include "../ui/chlist.h"
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "about.h"
@@ -87,6 +88,8 @@ const App apps[APPS_COUNT] = {
                      ANALYSER_key, ANALYSER_deinit, true},
     [APP_SQVIEWER] = {"SQ Editor", SQVIEWER_init, NULL, SQVIEWER_render,
                      SQVIEWER_key, SQVIEWER_deinit, false},
+    [APP_CHLIST] = {"CH Editor", CHLIST_init, NULL, CHLIST_render,
+                     CHLIST_key, CHLIST_deinit, false},
     /* [APP_OSC] = {"OSC", OSC_init, OSC_update, OSC_render, OSC_key,
        OSC_deinit, true}, */
     [APP_MESSENGER] = {"MESSENGER", MESSENGER_init, MESSENGER_update,

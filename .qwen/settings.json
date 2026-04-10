@@ -5,7 +5,9 @@
       "Bash(make)",
       "Bash(sed *)",
       "Bash(arm-none-eabi-gcc *)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   },
   "$version": 3

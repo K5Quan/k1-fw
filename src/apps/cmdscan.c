@@ -29,7 +29,7 @@ static CmdScanState cmdState = {.isActive = false,
                                 .profileNum = 1,
                                 .cmdIndex = 0,
                                 .execCount = 0,
-                                .filename = "/scans/cmd1.bin"};
+                                .filename = "/scans/cmd1.cmd"};
 
 // =============================
 // Вспомогательные функции
@@ -37,7 +37,7 @@ static CmdScanState cmdState = {.isActive = false,
 
 // Загрузить профиль по номеру
 static void LoadProfile(uint8_t num) {
-  snprintf(cmdState.filename, sizeof(cmdState.filename), "/scans/cmd%d.bin",
+  snprintf(cmdState.filename, sizeof(cmdState.filename), "/scans/cmd%d.cmd",
            num);
 
   // Закрываем предыдущий файл если был открыт

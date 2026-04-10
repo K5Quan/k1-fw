@@ -228,6 +228,28 @@ static void navigateTo(const char *name) {
       APPS_runWithFile(APP_SQVIEWER, fullPath);
       return;
     }
+    if (strcmp(ext, "ch") == 0) {
+      // Open channel list editor with this file
+      char fullPath[MAX_PATH_LEN];
+      if (strcmp(gCurrentPath, "/") == 0) {
+        snprintf(fullPath, sizeof(fullPath), "/%s", name);
+      } else {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", gCurrentPath, name);
+      }
+      APPS_runWithFile(APP_CHLIST, fullPath);
+      return;
+    }
+    if (strcmp(ext, "cmd") == 0) {
+      // Open command editor with this file
+      char fullPath[MAX_PATH_LEN];
+      if (strcmp(gCurrentPath, "/") == 0) {
+        snprintf(fullPath, sizeof(fullPath), "/%s", name);
+      } else {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", gCurrentPath, name);
+      }
+      APPS_runWithFile(APP_CMDEDIT, fullPath);
+      return;
+    }
     if (strcmp(ext, "bmp") == 0) {
       showingScreenshot = true;
       snprintf(screenshotPath, sizeof(screenshotPath), "%s/%s",
