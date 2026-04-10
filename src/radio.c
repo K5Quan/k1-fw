@@ -2042,7 +2042,7 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
   uint32_t v = RADIO_GetParam(ctx, param);
   switch (param) {
   case PARAM_RSSI:
-    sprintf(buf, "%+ddB", Rssi2DBm(v));
+    snprintf(buf, sizeof(buf), "%+ddB", Rssi2DBm(v));
     break;
   case PARAM_MODULATION:
     if (ctx->radio_type == RADIO_BK4819) {
@@ -2066,7 +2066,7 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
     }
     return "?(WIP)";
   case PARAM_STEP:
-    sprintf(buf, "%d.%02d", StepFrequencyTable[v] / KHZ,
+    snprintf(buf, sizeof(buf), "%d.%02d", StepFrequencyTable[v] / KHZ,
             StepFrequencyTable[v] % KHZ);
     break;
   case PARAM_FREQUENCY:
@@ -2077,20 +2077,20 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
     mhzToS(buf, v);
     break;
   case PARAM_RADIO:
-    sprintf(buf, "%s", RADIO_NAMES[ctx->radio_type]);
+    snprintf(buf, sizeof(buf), "%s", RADIO_NAMES[ctx->radio_type]);
     break;
   case PARAM_TX_OFFSET_DIR:
-    sprintf(buf, "%s", TX_OFFSET_NAMES[ctx->tx_state.offsetDirection]);
+    snprintf(buf, sizeof(buf), "%s", TX_OFFSET_NAMES[ctx->tx_state.offsetDirection]);
     break;
   case PARAM_GAIN:
     if (ctx->radio_type == RADIO_BK4819) {
       bkAttToS(buf, v);
       break;
     } else if (ctx->radio_type == RADIO_SI4732) {
-      sprintf(buf, v == 0 ? "Auto" : "%u", v - 1);
+      snprintf(buf, sizeof(buf), v == 0 ? "Auto" : "%u", v - 1);
       break;
     }
-    sprintf(buf, "Auto");
+    snprintf(buf, sizeof(buf), "Auto");
     break;
 
   case PARAM_RX_CODE:
@@ -2119,25 +2119,25 @@ const char *RADIO_GetParamValueString(const VFOContext *ctx, ParamType param) {
   case PARAM_SQUELCH_VALUE:
   case PARAM_PRECISE_F_CHANGE:
   case PARAM_COUNT:
-    sprintf(buf, "%u", v);
+    snprintf(buf, sizeof(buf), "%u", v);
     break;
   case PARAM_AF_RX_300:
   case PARAM_AF_RX_3K:
   case PARAM_AF_TX_300:
   case PARAM_AF_TX_3K:
-    sprintf(buf, "%+ddB", (int)v - 4);
+    snprintf(buf, sizeof(buf), "%+ddB", (int)v - 4);
     break;
   case PARAM_VOLUME:
-    sprintf(buf, "%u%", v);
+    snprintf(buf, sizeof(buf), "%u%%", v);
     break;
   case PARAM_SQUELCH_TYPE:
-    sprintf(buf, "%s", SQ_TYPE_NAMES[ctx->squelch.type]);
+    snprintf(buf, sizeof(buf), "%s", SQ_TYPE_NAMES[ctx->squelch.type]);
     break;
   case PARAM_UPCONVERTER:
     if (v == 0) {
-      sprintf(buf, "Off");
+      snprintf(buf, sizeof(buf), "Off");
     } else {
-      sprintf(buf, "+%d.%02d", v / MHZ, (v % MHZ) / KHZ);
+      snprintf(buf, sizeof(buf), "+%d.%02d", v / MHZ, (v % MHZ) / KHZ);
     }
     break;
   }

@@ -64,9 +64,9 @@ static void applySquelchPreset(void) {
     sq.ro = preset.ro;
     sq.no = preset.no;
     sq.go = preset.go;
-    sq.rc = sq.ro > 4 ? sq.ro - 4 : 0;
-    sq.nc = sq.no + 4;
-    sq.gc = sq.go + 4;
+    sq.rc = sq.ro > SQ_HYSTERESIS ? sq.ro - SQ_HYSTERESIS : 0;
+    sq.nc = sq.no + SQ_HYSTERESIS;
+    sq.gc = sq.go + SQ_HYSTERESIS;
   }
 }
 
@@ -110,7 +110,7 @@ static bool sqTunerKey(KEY_Code_t key, Key_State_t state) {
     sqEditParam = SQ_EDIT_RSSI;
     int32_t delta = (key == KEY_1) ? sqStp : -(int32_t)sqStp;
     sq.ro = AdjustU(sq.ro, 0, 255, delta);
-    sq.rc = sq.ro > 4 ? sq.ro - 4 : 0;
+    sq.rc = sq.ro > SQ_HYSTERESIS ? sq.ro - SQ_HYSTERESIS : 0;
     return true;
   }
   case KEY_2:
@@ -120,7 +120,7 @@ static bool sqTunerKey(KEY_Code_t key, Key_State_t state) {
     sqEditParam = SQ_EDIT_NOISE;
     int32_t delta = (key == KEY_2) ? sqStp : -(int32_t)sqStp;
     sq.no = AdjustU(sq.no, 0, 128, delta);
-    sq.nc = sq.no + 4;
+    sq.nc = sq.no + SQ_HYSTERESIS;
     return true;
   }
   case KEY_3:
@@ -130,7 +130,7 @@ static bool sqTunerKey(KEY_Code_t key, Key_State_t state) {
     sqEditParam = SQ_EDIT_GLITCH;
     int32_t delta = (key == KEY_3) ? sqStp : -(int32_t)sqStp;
     sq.go = AdjustU(sq.go, 0, 255, delta);
-    sq.gc = sq.go + 4;
+    sq.gc = sq.go + SQ_HYSTERESIS;
     return true;
   }
   case KEY_4:
@@ -282,9 +282,9 @@ bool ANALYSER_key(KEY_Code_t key, Key_State_t state) {
         sq.ro = preset.ro;
         sq.no = preset.no;
         sq.go = preset.go;
-        sq.rc = sq.ro > 4 ? sq.ro - 4 : 0;
-        sq.nc = sq.no + 4;
-        sq.gc = sq.go + 4;
+        sq.rc = sq.ro > SQ_HYSTERESIS ? sq.ro - SQ_HYSTERESIS : 0;
+        sq.nc = sq.no + SQ_HYSTERESIS;
+        sq.gc = sq.go + SQ_HYSTERESIS;
         sqEditParam = SQ_EDIT_RSSI;
       }
       return true;

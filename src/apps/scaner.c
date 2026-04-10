@@ -322,7 +322,6 @@ void SCANER_render(void) {
 
   ScanState state = SCAN_GetState();
 
-  LOOT_Sort(LOOT_SortByLastOpenTime, true);
   uint8_t y = 15 + 7;
   uint8_t cnt = 0;
 

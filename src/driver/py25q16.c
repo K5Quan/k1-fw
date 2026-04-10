@@ -193,6 +193,7 @@ static bool wait_for_dma_complete(uint32_t max_wait_ms) {
       LL_SPI_DisableDMAReq_RX(SPIx);
       return false;
     }
+    __WFI(); // Засыпаем до прерывания DMA — экономим CPU
   }
   return true;
 }

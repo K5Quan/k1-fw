@@ -130,22 +130,6 @@ static inline uint16_t scale_frequency(uint16_t freq) {
   return (((uint32_t)freq * 1353245u) + (1u << 16)) >> 17; // with rounding
 }
 
-static uint8_t BK_SPI_Transfer8(uint8_t data) {
-  while (!LL_SPI_IsActiveFlag_TXE(SPI1))
-    ;
-  LL_SPI_TransmitData8(SPI1, data);
-  while (!LL_SPI_IsActiveFlag_RXNE(SPI1))
-    ;
-  return LL_SPI_ReceiveData8(SPI1);
-}
-
-static uint16_t BK_SPI_Transfer16(void) {
-  uint16_t value = 0;
-  value = BK_SPI_Transfer8(0x00) << 8;
-  value |= BK_SPI_Transfer8(0x00);
-  return value;
-}
-
 static uint16_t BK4819_ReadU16(void) {
   unsigned int i;
   uint16_t Value;
@@ -1501,68 +1485,6 @@ void BK4819_ToggleAFDAC(bool enable) {
 void BK4819_Enable_AfDac_DiscMode_TxDsp(void) {
   BK4819_Idle();
   BK4819_WriteRegister(BK4819_REG_30, 0x0302);
-}
-
-void RF_SetRxEqualizer(int8_t db_low, int8_t db_high) {
-  /* --- 300 Гц → REG 0x54, 0x55 --- */
-  if (db_low >= 4) {
-    BK4819_WriteRegister(0x54, 0x8d8f);
-    BK4819_WriteRegister(0x55, 0x3359);
-  } /* +4dB */
-  else if (db_low == 3) {
-    BK4819_WriteRegister(0x54, 0x8ed8);
-    BK4819_WriteRegister(0x55, 0x3232);
-  } /* +3dB */
-  else if (db_low == 2) {
-    BK4819_WriteRegister(0x54, 0x8f46);
-    BK4819_WriteRegister(0x55, 0x31e7);
-  } /* +2dB */
-  else if (db_low == 1) {
-    BK4819_WriteRegister(0x54, 0x8f90);
-    BK4819_WriteRegister(0x55, 0x31f3);
-  } /* +1dB */
-  else if (db_low == 0) {
-    BK4819_WriteRegister(0x54, 0x9009);
-    BK4819_WriteRegister(0x55, 0x31a9);
-  } /*  0dB */
-  else if (db_low == -1) {
-    BK4819_WriteRegister(0x54, 0x91c1);
-    BK4819_WriteRegister(0x55, 0x3040);
-  } /* -1dB */
-  else if (db_low == -2) {
-    BK4819_WriteRegister(0x54, 0x920b);
-    BK4819_WriteRegister(0x55, 0x3010);
-  } /* -2dB */
-  else {
-    BK4819_WriteRegister(0x54, 0x935a);
-    BK4819_WriteRegister(0x55, 0x2eff);
-  } /* -3dB */
-
-  /* --- 3 кГц → REG 0x75 --- */
-  if (db_high >= 4) {
-    BK4819_WriteRegister(0x75, 0xcc35);
-  } /* +4dB */
-  else if (db_high == 3) {
-    BK4819_WriteRegister(0x75, 0xd42d);
-  } /* +3dB */
-  else if (db_high == 2) {
-    BK4819_WriteRegister(0x75, 0xdf22);
-  } /* +2dB */
-  else if (db_high == 1) {
-    BK4819_WriteRegister(0x75, 0xe61c);
-  } /* +1dB */
-  else if (db_high == 0) {
-    BK4819_WriteRegister(0x75, 0xf50b);
-  } /*  0dB */
-  else if (db_high == -1) {
-    BK4819_WriteRegister(0x75, 0xfa02);
-  } /* -1dB */
-  else if (db_high == -2) {
-    BK4819_WriteRegister(0x75, 0xf200);
-  } /* -2dB */
-  else {
-    BK4819_WriteRegister(0x75, 0xda00);
-  } /* -4dB (-3dB отсутствует в драйвере) */
 }
 
 // ============================================================================
