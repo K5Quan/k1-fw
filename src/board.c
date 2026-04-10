@@ -170,7 +170,7 @@ void BOARD_TIM3_Init(void) {
 }
 
 // ---------------------------------------------------------------------------
-// ADC
+// ADC — только для чтения батареи (CH8, single conversion, без DMA)
 // ---------------------------------------------------------------------------
 
 void BOARD_ADC_Init(void) {
@@ -179,32 +179,16 @@ void BOARD_ADC_Init(void) {
   LL_APB1_GRP2_ForceReset(LL_APB1_GRP2_PERIPH_ADC1);
   LL_APB1_GRP2_ReleaseReset(LL_APB1_GRP2_PERIPH_ADC1);
 
-  // Отключено — DMA для регулярного канала (APRS audio) создаёт RF помехи
-  // BOARD_DMA_Init();
-
   LL_ADC_SetCommonPathInternalCh(ADC1_COMMON, LL_ADC_PATH_INTERNAL_NONE);
   LL_ADC_SetResolution(ADC1, LL_ADC_RESOLUTION_12B);
   LL_ADC_SetDataAlignment(ADC1, LL_ADC_DATA_ALIGN_RIGHT);
 
-  // -----------------------------------------------------------------------
-  // Regular group: CH9 (APRS audio) — отключён, DMA не запускается
-  // -----------------------------------------------------------------------
+  // Regular sequencer: один канал CH8 (батарея)
   LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
   LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_DISABLE);
-  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_9);
-  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_9,
-                                LL_ADC_SAMPLINGTIME_239CYCLES_5);
-
-  // -----------------------------------------------------------------------
-  // Injected group: CH8 (battery voltage) — software-triggered, single shot
-  // Не использует DMA, не создаёт RF помех
-  // -----------------------------------------------------------------------
-  LL_ADC_INJ_SetTriggerSource(ADC1, LL_ADC_INJ_TRIG_SOFTWARE);
-  LL_ADC_INJ_SetSequencerLength(ADC1, LL_ADC_INJ_SEQ_SCAN_DISABLE); // 1 rank
-  LL_ADC_INJ_SetSequencerRanks(ADC1, LL_ADC_INJ_RANK_1, LL_ADC_CHANNEL_8);
+  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_8);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_8,
                                 LL_ADC_SAMPLINGTIME_5CYCLES_5);
-  LL_ADC_INJ_SetTrigAuto(ADC1, LL_ADC_INJ_TRIG_INDEPENDENT);
 
   LL_RCC_SetADCClockSource(LL_RCC_ADC_CLKSOURCE_PCLK_DIV2);
 
@@ -212,69 +196,27 @@ void BOARD_ADC_Init(void) {
   while (LL_ADC_IsCalibrationOnGoing(ADC1))
     ;
 
-  // DMA не запускаем — только injected channel для батареи
-  // LL_SYSCFG_SetDMARemap(DMA1, LL_DMA_CHANNEL_1, LL_SYSCFG_DMA_MAP_ADC1);
-  // LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
-
   LL_ADC_Enable(ADC1);
-
-  // TIM3 не запускаем — триггер регулярного канала не нужен
-  // LL_TIM_EnableCounter(TIM3);
 }
 
-void BOARD_ADC_StartAPRS_DMA(void) {
-  if (!LL_ADC_IsEnabled(ADC1)) {
-    LL_ADC_Enable(ADC1);
-    SYSTICK_DelayUs(10);
-  }
-  if (!LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_1)) {
-    LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
-  }
-  LL_ADC_REG_StartConversionSWStart(ADC1);
-}
-
-void BOARD_ADC_StopAPRS_DMA(void) {
-  LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
-  LL_ADC_StopConversion(ADC1);
-  while (LL_ADC_REG_IsStopConversionOngoing(ADC1))
-    ;
-  LL_ADC_Disable(ADC1);
-  aprs_ready1 = false;
-  aprs_ready2 = false;
-}
-
-uint32_t BOARD_ADC_GetAvailableAPRS_DMA(void) {
-  return (aprs_ready1 || aprs_ready2) ? APRS_BUFFER_SIZE : 0;
-}
-
+void BOARD_ADC_StartAPRS_DMA(void) { (void)0; }
+void BOARD_ADC_StopAPRS_DMA(void) { (void)0; }
+uint32_t BOARD_ADC_GetAvailableAPRS_DMA(void) { return 0; }
 uint32_t BOARD_ADC_ReadAPRS_DMA(uint16_t *dest, uint32_t max_samples) {
-  // Отключено — DMA не работает
-  (void)dest;
-  (void)max_samples;
-  return 0;
+  (void)dest; (void)max_samples; return 0;
 }
 
 void BOARD_ADC_GetBatteryInfo(uint16_t *pVoltage, uint16_t *pCurrent) {
-  // Trigger a single injected conversion on CH8 (battery voltage).
-  // Per RM 16.3.12.1: set JSWSTART while ADC is running; wait for JEOC.
-  // The injected conversion interrupts the ongoing regular sequence and
-  // resumes it afterwards — no need to stop DMA/regular group.
-  LL_ADC_INJ_StartConversionSWStart(ADC1);
-
+  LL_ADC_REG_StartConversionSWStart(ADC1);
   uint32_t timeout = 100000;
-  while (!LL_ADC_IsActiveFlag_JEOS(ADC1) && timeout--)
+  while (!(ADC1->SR & ADC_SR_EOC) && timeout--)
     ;
-
-  *pVoltage =
-      (uint16_t)LL_ADC_INJ_ReadConversionData12(ADC1, LL_ADC_INJ_RANK_1);
+  *pVoltage = (uint16_t)LL_ADC_REG_ReadConversionData12(ADC1);
   *pCurrent = 0;
-
-  LL_ADC_ClearFlag_JEOS(ADC1);
+  ADC1->SR &= ~ADC_SR_EOC;
 }
 
-uint16_t BOARD_ADC_GetAPRS(void) {
-  return 0; // DMA отключено — APRS не работает
-}
+uint16_t BOARD_ADC_GetAPRS(void) { return 0; }
 
 // ---------------------------------------------------------------------------
 // DAC
