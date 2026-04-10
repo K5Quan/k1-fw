@@ -33,8 +33,7 @@ static void SPI_Init(void) {
   InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   InitStruct.Alternate = LL_GPIO_AF0_SPI1;
   InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  // MEDIUM — снижаем RF помехи, но достаточно для SPI
-  InitStruct.Speed = LL_GPIO_SPEED_FREQ_MEDIUM;
+  InitStruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
 
   InitStruct.Pin = LL_GPIO_PIN_5;
   InitStruct.Pull = LL_GPIO_PULL_UP;
