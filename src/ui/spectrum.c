@@ -24,8 +24,8 @@ static Band    *range;
 static uint16_t step;
 
 // fallback-границы (используются до первого EMA)
-#define SP_DBM_MIN (-115)
-#define SP_DBM_MAX  (-50)
+#define SP_DBM_MIN (-120)
+#define SP_DBM_MAX  (-60)
 
 // автодиапазон: [emaFloor - DBM_MARGIN_BELOW ... emaFloor + DBM_SPAN]
 #define DBM_SPAN         40  // дБ, высота шкалы
@@ -68,9 +68,30 @@ static void updateDbmFloorEma(void) {
 static uint8_t dbm2Y(int16_t dbm) {
   if (dbm <= spDbmMin) return 0;
   if (dbm >= spDbmMax) return SPECTRUM_H;
+  uint8_t y = (uint8_t)((int32_t)(dbm - spDbmMin) * SPECTRUM_H
+                        / (spDbmMax - spDbmMin));
+  return y < 2 ? 2 : y;  // слабый сигнал — минимум 2 пикселя
+}
+/* static uint8_t dbm2Y(int16_t dbm) {
+  if (dbm <= spDbmMin) return 0;
+  if (dbm >= spDbmMax) return SPECTRUM_H;
+
+  // линейно нормируем в [0 .. SPECTRUM_H²]
+  uint32_t linear = (uint32_t)(dbm - spDbmMin)
+                    * (SPECTRUM_H * SPECTRUM_H)
+                    / (spDbmMax - spDbmMin);
+
+  // целочисленный sqrt — цикл ≤ 44 итерации, ок для embedded
+  uint8_t y = 0;
+  while ((uint32_t)(y + 1) * (y + 1) <= linear) y++;
+  return y;
+} */
+/* static uint8_t dbm2Y(int16_t dbm) {
+  if (dbm <= spDbmMin) return 0;
+  if (dbm >= spDbmMax) return SPECTRUM_H;
   return (uint8_t)((int32_t)(dbm - spDbmMin) * SPECTRUM_H
                    / (spDbmMax - spDbmMin));
-}
+} */
 
 // ────────────────────────────────────────────────────────────────────
 

@@ -495,12 +495,6 @@ void BK4819_SetFrequency(uint32_t freq) {
   }
 
   if (high != prev_high) {
-    /* if (high > 914) { // 599M
-      BK4819_WriteRegister(0x3E, 0xA037);
-    } else {
-      BK4819_WriteRegister(0x3E, 0x94c6);
-    } */
-
     BK4819_WriteRegister(BK4819_REG_39, high);
     prev_high = high;
   }
@@ -522,7 +516,8 @@ void BK4819_TuneTo(uint32_t freq, bool precise) {
     BK4819_WriteRegister(BK4819_REG_30,
                          reg & ~(BK4819_REG_30_ENABLE_VCO_CALIB));
   }
-  SYSTICK_DelayUs(300); // VCO stabilize time — критично для стабильности частоты
+  /* SYSTICK_DelayUs(
+      300); // VCO stabilize time — критично для стабильности частоты */
   BK4819_WriteRegister(BK4819_REG_30, reg);
 }
 
@@ -1428,9 +1423,9 @@ void BK4819_SetScanFrequency(uint32_t Frequency) {
 
   // Калибровка VCO после установки частоты (как в BK4819_TuneTo)
   uint16_t reg30 = BK4819_ReadRegister(BK4819_REG_30);
-  BK4819_WriteRegister(BK4819_REG_30, 0x200);  // Включаем VCO калибровку
-  SYSTICK_DelayUs(300);                         // VCO stabilize time
-  BK4819_WriteRegister(BK4819_REG_30, reg30);  // Восстанавливаем регистр
+  BK4819_WriteRegister(BK4819_REG_30, 0x200); // Включаем VCO калибровку
+  SYSTICK_DelayUs(300);                       // VCO stabilize time
+  BK4819_WriteRegister(BK4819_REG_30, reg30); // Восстанавливаем регистр
 
   BK4819_RX_TurnOn();
 }

@@ -1,5 +1,6 @@
 #include "scan.h"
 #include "../driver/bk4829.h"
+#include "../driver/hrtime.h"
 #include "../driver/systick.h"
 #include "../driver/uart.h"
 #include "../helper/lootlist.h"
@@ -38,6 +39,9 @@ static ScanAlgo scanAlgo = SCAN_ALGO_ADAPTIVE;
 static uint8_t calFloor[MAX_CAL_CHANNELS]; // откалиброванный шум по каналам
 static uint16_t calChannelCount = 0;
 static bool calDone = false;
+
+// --- Non-blocking pause state ---
+static uint32_t pauseStart = 0;
 
 // --- Адаптивный детектор (EMA) ---
 #define ADAP_MIN_SAMPLES 8 // прогрев
@@ -254,7 +258,7 @@ static void RunCalibration(void) {
       RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, false, false);
       RADIO_SetParam(ctx, PARAM_FREQUENCY, f, false);
       RADIO_ApplySettings(ctx);
-      SYSTICK_DelayUs(CAL_WARMUP_US);
+      HRTIME_DelayUs(CAL_WARMUP_US);
       // усредняем noise (не rssi — ищем именно шумовую полку)
       calFloor[idx] += BK4819_GetNoise() / CAL_PASSES;
     }
@@ -282,9 +286,17 @@ static void ApplyCommand(SCMD_Command *cmd) {
   case SCMD_RANGE:
     BeginScanRange(cmd->start, cmd->end, cmd->step);
     return;
-  case SCMD_PAUSE:
-    SYSTICK_DelayMs(cmd->dwell_ms); // TODO: неблокирующая задержка
+  case SCMD_PAUSE: {
+    uint32_t targetTicks = HRTIME_UsToTicks(cmd->dwell_ms * 1000u);
+    if (pauseStart == 0) {
+      pauseStart = HRTIME_Now();
+    }
+    if (!HRTIME_Elapsed(pauseStart, targetTicks)) {
+      return; /* still waiting — SCAN_Check will retry */
+    }
+    pauseStart = 0;
     break;
+  }
   default:
     break;
   }
@@ -323,7 +335,7 @@ static void TakeMeasurement(bool precise) {
   RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, precise, false);
   RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
   RADIO_ApplySettings(ctx);
-  SYSTICK_DelayUs(scan.warmupUs);
+  HRTIME_DelayUs(scan.warmupUs);
   scan.measurement.rssi = RADIO_GetRSSI(ctx);
   scan.measurement.noise = BK4819_GetNoise();
   scan.measurement.glitch = BK4819_GetGlitch();
@@ -339,7 +351,7 @@ static void TakeMeasurementStatistical(bool precise) {
   RADIO_ApplySettings(ctx);
 
   for (uint8_t i = 0; i < STAT_PASSES; i++) {
-    SYSTICK_DelayUs(STAT_WARMUP_US);
+    HRTIME_DelayUs(STAT_WARMUP_US);
     uint8_t r = RADIO_GetRSSI(ctx);
     uint8_t n = BK4819_GetNoise();
     uint8_t g = BK4819_GetGlitch();
@@ -491,11 +503,11 @@ static void HandleStateChecking(void) {
       RADIO_SetParam(ctx, PARAM_PRECISE_F_CHANGE, true, false);
       RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF - scan.stepF, false);
       RADIO_ApplySettings(ctx);
-      SYSTICK_DelayUs(scan.warmupUs);
+      HRTIME_DelayUs(scan.warmupUs);
 
       RADIO_SetParam(ctx, PARAM_FREQUENCY, scan.currentF, false);
       RADIO_ApplySettings(ctx);
-      SYSTICK_DelayUs(scan.warmupUs);
+      HRTIME_DelayUs(scan.warmupUs);
     }
 
     // EMA обновляем только если rssi строго ниже порога детекции —

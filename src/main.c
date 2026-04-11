@@ -3,6 +3,7 @@
 #include "driver/bk4819-regs.h"
 #include "driver/bk4829.h"
 #include "driver/gpio.h"
+#include "driver/hrtime.h"
 #include "driver/st7565.h"
 #include "driver/systick.h"
 #include "helper/audio_io.h"
@@ -79,6 +80,7 @@ void testScan() {
 
 int main(void) {
   SYSTICK_Init();
+  HRTIME_Init();
 
   BOARD_Init();
   GPIO_TurnOnBacklight();
