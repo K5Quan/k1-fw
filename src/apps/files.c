@@ -11,8 +11,8 @@
 #include <string.h>
 
 // Increased MAX_NAME_LEN from 12 to 16 to fit filenames like "Settings.set" (12 chars + null)
-// Memory: 20 × 20 = 400 bytes → 20 × 24 = 480 bytes (80 bytes more, still acceptable)
-#define MAX_FILES     20
+// Memory: 12 × 24 = 288 bytes (reduced from 480)
+#define MAX_FILES     12
 #define MAX_PATH_LEN  64
 #define MAX_NAME_LEN  16   // 15 символов + '\0'; достаточно для имён типа "Settings.set"
 
