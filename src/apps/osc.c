@@ -20,7 +20,7 @@
 #define SMALL_FONT_H 6
 #define OSC_TOP_MARGIN 24
 #define OSC_GRAPH_H (LCD_HEIGHT - OSC_TOP_MARGIN - 1)
-#define MAX_VAL 4095u
+#define MAX_VAL 4095
 #define FFT_BINS 64
 
 // ---------------------------------------------------------------------------

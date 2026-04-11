@@ -193,6 +193,8 @@ static bool handleRelease(KEY_Code_t key, Key_State_t state) {
       FINPUT_setup(0, BK4819_F_MAX, UNIT_MHZ, false);
       FINPUT_Show(tuneTo);
       return true;
+    default:
+      break;
     }
   }
 

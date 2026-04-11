@@ -25,6 +25,7 @@
 #include "inc/common.h"
 #include "inc/vfo.h"
 #include "misc.h"
+#include "radio_switch.h"
 #include "settings.h"
 #include <stdint.h>
 #include <string.h>
@@ -1067,6 +1068,7 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
       ctx->dirty[i] = true;
     }
     break;
+  case PARAM_FREQUENCY_FACT:
   case PARAM_TX_FREQUENCY_FACT:
   case PARAM_TX_STATE:
   case PARAM_RSSI:
@@ -1088,11 +1090,9 @@ void RADIO_SetParam(VFOContext *ctx, ParamType param, uint32_t value,
        RADIO_GetParamValueString(ctx, param), save_to_eeprom ? " [W]" : "");
 #endif /* ifdef DEBUG_PARAMS */
 
-  // TODO: make dirty only when changed.
-  // but, potential BUG: param not applied when 0
-  if (old_value != value) {
-    ctx->dirty[param] = true;
-  }
+  // Always mark dirty to ensure param is applied to hardware,
+  // even if value hasn't changed (important for initial setup)
+  ctx->dirty[param] = true;
 
   // Если значение изменилось и требуется сохранение - устанавливаем флаг
   if (save_to_eeprom && (old_value != value)) {
@@ -1375,9 +1375,15 @@ bool RADIO_StartTX(VFOContext *ctx) {
 
   uint8_t power = ctx->tx_state.power_level;
 
-  // HACK
+  // Properly close VFO through RXSW before TX
   vfo->is_open = false;
-  RADIO_EnableAudioRouting(gRadioState, false);
+  RXSW_SwitchTo(&gRadioState->rx_switch, ctx, false);
+
+  // Save and exit FSK mode if active (FSK conflicts with TX)
+  bool fsk_was_active = (gCurrentApp != APP_MESSENGER);
+  if (fsk_was_active) {
+    RF_ExitFsk();
+  }
 
   BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, false);
 
@@ -1428,21 +1434,18 @@ void RADIO_StopTX(VFOContext *ctx) {
   RADIO_SetupToneDetection(ctx);
   BK4819_SelectFilter(ctx->frequency);
   BK4819_TuneTo(ctx->frequency, true);
+
+  // Restore FSK mode if it was active before TX
+  if (gCurrentApp != APP_MESSENGER) {
+    RF_EnterFsk();
+  }
 }
 
 void RADIO_ToggleTX(VFOContext *ctx, bool on) {
   if (on) {
-    // HACK
-    if (gCurrentApp != APP_MESSENGER) {
-      RF_ExitFsk();
-    }
     RADIO_StartTX(ctx);
   } else {
     RADIO_StopTX(ctx);
-    // HACK
-    if (gCurrentApp != APP_MESSENGER) {
-      RF_EnterFsk();
-    }
   }
 }
 

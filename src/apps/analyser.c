@@ -290,6 +290,8 @@ static bool analyzerModeKey(KEY_Code_t key, Key_State_t state) {
   case KEY_STAR:
     APPS_run(APP_LOOTLIST);
     return true;
+  default:
+    break;
   }
   return false;
 }

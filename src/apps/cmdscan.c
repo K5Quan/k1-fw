@@ -13,6 +13,7 @@
 #include "../ui/graphics.h"
 #include "../ui/statusline.h"
 #include "apps.h"
+#include "cmdedit.h"
 
 // =============================
 // Состояние приложения

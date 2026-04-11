@@ -90,7 +90,7 @@ void RADIO_SlowRSSIUpdate();
 void RADIO_MuteAudioNow(RadioState *state);
 void RADIO_UnmuteAudioNow(RadioState *state);
 
-inline const char *RADIO_GetParamName(ParamType p);
+const char *RADIO_GetParamName(ParamType p);
 
 extern RadioState *gRadioState;
 extern ExtendedVFOContext *vfo;

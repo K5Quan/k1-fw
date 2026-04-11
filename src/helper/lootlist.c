@@ -6,6 +6,7 @@
 #include "../inc/band.h"
 #include "../radio.h"
 #include "bands.h"
+#include "storage.h"
 #include <stdint.h>
 
 static Loot loot[LOOT_SIZE_MAX] = {0};
