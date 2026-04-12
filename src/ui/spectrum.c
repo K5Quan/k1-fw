@@ -23,45 +23,26 @@ static uint8_t  filledPoints;
 static Band    *range;
 static uint16_t step;
 
-// fallback-границы (используются до первого EMA)
+// fallback-границы (до первого скана)
 #define SP_DBM_MIN (-120)
 #define SP_DBM_MAX  (-60)
 
-// автодиапазон: [emaFloor - DBM_MARGIN_BELOW ... emaFloor + DBM_SPAN]
-#define DBM_SPAN         40  // дБ, высота шкалы
-#define DBM_MARGIN_BELOW  5  // запас ниже шумового пола
-
-static int16_t spDbmFloorEma = SP_DBM_MIN;
-#define FLOOR_EMA_ALPHA_NUM 1
-#define FLOOR_EMA_ALPHA_DEN 8
+#define DBM_SPAN  40  // дБ, высота шкалы
 
 // текущие границы в дБм (пересчитываются в SP_Begin)
 static int16_t spDbmMin = SP_DBM_MIN;
 static int16_t spDbmMax = SP_DBM_MIN + DBM_SPAN;
 
 static void updateDbmFloorEma(void) {
-  if (filledPoints < 10) return;
+  if (filledPoints < 1) return;
 
-  // 25-й перцентиль → дБм
-  uint16_t temp[MAX_POINTS];
-  memcpy(temp, rssiHistory, sizeof(uint16_t) * filledPoints);
-  for (uint8_t i = 0; i < filledPoints - 1; i++)
-    for (uint8_t j = i + 1; j < filledPoints; j++)
-      if (temp[i] > temp[j]) {
-        uint16_t t = temp[i]; temp[i] = temp[j]; temp[j] = t;
-      }
-  int16_t floorDbm = Rssi2DBm(temp[filledPoints / 4]);
+  // минимальный RSSI в истории → нижняя граница шкалы
+  uint16_t minRssi = rssiHistory[0];
+  for (uint8_t i = 1; i < filledPoints; i++)
+    if (rssiHistory[i] < minRssi) minRssi = rssiHistory[i];
 
-  if (spDbmFloorEma == SP_DBM_MIN)
-    spDbmFloorEma = floorDbm;
-  else
-    spDbmFloorEma = (spDbmFloorEma * (FLOOR_EMA_ALPHA_DEN - FLOOR_EMA_ALPHA_NUM)
-                    + floorDbm * FLOOR_EMA_ALPHA_NUM) / FLOOR_EMA_ALPHA_DEN;
-
-  // нижняя граница кратна 10 дБ (как TinySA)
-  int16_t newMin = (int16_t)((spDbmFloorEma - DBM_MARGIN_BELOW) / 10) * 10;
-  spDbmMin = newMin;
-  spDbmMax = newMin + DBM_SPAN;
+  spDbmMin = Rssi2DBm(minRssi);
+  spDbmMax = spDbmMin + DBM_SPAN;
 }
 
 // дБм → высота бара в пикселях [0..SPECTRUM_H]
@@ -127,7 +108,6 @@ void SP_ResetHistory(void) {
   memset(noiseHistory,  0, sizeof(noiseHistory));
   memset(glitchHistory, 0, sizeof(glitchHistory));
   memset(visited,       0, sizeof(visited));
-  spDbmFloorEma = SP_DBM_MIN;
   spDbmMin      = SP_DBM_MIN;
   spDbmMax      = SP_DBM_MIN + DBM_SPAN;
 }
